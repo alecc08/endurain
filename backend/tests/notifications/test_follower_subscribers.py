@@ -4,13 +4,15 @@ from unittest.mock import MagicMock, patch
 
 from jasil.events import new_event
 
+import core.exceptions as core_exceptions
+
 
 def _event(event_type, payload):
     return new_event(event_type, payload, source="test")
 
 
 class TestOnFollowerRequestedNotify:
-    @patch("modules.notifications.subscribers.notifications_integration")
+    @patch("modules.notifications.subscribers.notifications_service")
     def test_noop_for_non_int_ids(self, mock_notif):
         from modules.notifications.subscribers import on_follower_requested_notify
 
@@ -20,7 +22,7 @@ class TestOnFollowerRequestedNotify:
     @patch("modules.notifications.subscribers.websocket_integration")
     @patch("modules.notifications.subscribers.core_async_bridge")
     @patch("modules.notifications.subscribers.core_database")
-    @patch("modules.notifications.subscribers.notifications_integration")
+    @patch("modules.notifications.subscribers.notifications_service")
     def test_creates_notification_and_dispatches(self, mock_notif, mock_db, mock_bridge, mock_ws):
         from modules.notifications.subscribers import on_follower_requested_notify
 
@@ -38,7 +40,7 @@ class TestOnFollowerRequestedNotify:
     @patch("modules.notifications.subscribers.websocket_integration")
     @patch("modules.notifications.subscribers.core_async_bridge")
     @patch("modules.notifications.subscribers.core_database")
-    @patch("modules.notifications.subscribers.notifications_integration")
+    @patch("modules.notifications.subscribers.notifications_service")
     def test_skips_dispatch_for_replayed_event(self, mock_notif, mock_db, mock_bridge, mock_ws):
         from modules.notifications.subscribers import notify_follower_requested_for_event
 
@@ -50,9 +52,19 @@ class TestOnFollowerRequestedNotify:
         notify_follower_requested_for_event(_event("follower.requested", {"requester_user_id": 1, "target_user_id": 2}))
         mock_bridge.dispatch.assert_not_called()
 
+    @patch("modules.notifications.subscribers.core_async_bridge")
+    @patch("modules.notifications.subscribers.core_database")
+    @patch("modules.notifications.subscribers.notifications_service")
+    def test_drops_event_for_a_deleted_user_without_raising(self, mock_notif, mock_db, mock_bridge):
+        from modules.notifications.subscribers import notify_follower_requested_for_event
+
+        mock_notif.create_follow_request_notification.side_effect = core_exceptions.NotFoundError("User not found")
+        notify_follower_requested_for_event(_event("follower.requested", {"requester_user_id": 1, "target_user_id": 2}))
+        mock_bridge.dispatch.assert_not_called()
+
     @patch("jasil.subscribers.logger")
     @patch("modules.notifications.subscribers.core_database")
-    @patch("modules.notifications.subscribers.notifications_integration")
+    @patch("modules.notifications.subscribers.notifications_service")
     def test_swallows_errors(self, mock_notif, mock_db, mock_logger):
         from modules.notifications.subscribers import on_follower_requested_notify
 
@@ -62,7 +74,7 @@ class TestOnFollowerRequestedNotify:
 
 
 class TestOnFollowerAcceptedNotify:
-    @patch("modules.notifications.subscribers.notifications_integration")
+    @patch("modules.notifications.subscribers.notifications_service")
     def test_noop_for_non_int_ids(self, mock_notif):
         from modules.notifications.subscribers import on_follower_accepted_notify
 
@@ -72,7 +84,7 @@ class TestOnFollowerAcceptedNotify:
     @patch("modules.notifications.subscribers.websocket_integration")
     @patch("modules.notifications.subscribers.core_async_bridge")
     @patch("modules.notifications.subscribers.core_database")
-    @patch("modules.notifications.subscribers.notifications_integration")
+    @patch("modules.notifications.subscribers.notifications_service")
     def test_creates_notification_and_dispatches(self, mock_notif, mock_db, mock_bridge, mock_ws):
         from modules.notifications.subscribers import on_follower_accepted_notify
 
@@ -90,7 +102,7 @@ class TestOnFollowerAcceptedNotify:
     @patch("modules.notifications.subscribers.websocket_integration")
     @patch("modules.notifications.subscribers.core_async_bridge")
     @patch("modules.notifications.subscribers.core_database")
-    @patch("modules.notifications.subscribers.notifications_integration")
+    @patch("modules.notifications.subscribers.notifications_service")
     def test_skips_dispatch_for_replayed_event(self, mock_notif, mock_db, mock_bridge, mock_ws):
         from modules.notifications.subscribers import notify_follower_accepted_for_event
 
@@ -104,7 +116,7 @@ class TestOnFollowerAcceptedNotify:
 
     @patch("jasil.subscribers.logger")
     @patch("modules.notifications.subscribers.core_database")
-    @patch("modules.notifications.subscribers.notifications_integration")
+    @patch("modules.notifications.subscribers.notifications_service")
     def test_swallows_errors(self, mock_notif, mock_db, mock_logger):
         from modules.notifications.subscribers import on_follower_accepted_notify
 
