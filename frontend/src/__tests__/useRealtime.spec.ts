@@ -199,6 +199,23 @@ describe('useRealtime', () => {
     expect(MockWebSocket.instances).toHaveLength(2)
   })
 
+  it('refetches notifications when the socket reopens after a drop, not on the first open', async () => {
+    vi.useFakeTimers()
+    const realtime = useRealtime()
+    realtime.connect()
+    await flushPromises()
+    const first = latestSocket()
+    first.open()
+    expect(invalidateQueries).not.toHaveBeenCalled()
+
+    first.onclose?.()
+    vi.advanceTimersByTime(2_000)
+    await flushPromises()
+    latestSocket().open()
+
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['notifications'] })
+  })
+
   it('does not reconnect after an intentional disconnect', async () => {
     vi.useFakeTimers()
     const realtime = useRealtime()

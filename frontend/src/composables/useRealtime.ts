@@ -53,6 +53,9 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let intentionalClose = false
 // Guards against overlapping ticket fetches while a connection is being opened.
 let connecting = false
+// Whether this session has been connected before, so a reconnect can catch up on
+// pushes that were dropped while the socket was down.
+let hasBeenOpen = false
 
 /**
  * Routes a parsed frame to its query invalidations and subscribed handlers.
@@ -166,6 +169,11 @@ async function openSocket(): Promise<void> {
   next.onopen = () => {
     reconnectAttempts = 0
     status.value = 'open'
+    if (hasBeenOpen) {
+      // Pushes sent while the socket was down are gone for good; refetch instead.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all() })
+    }
+    hasBeenOpen = true
   }
   next.onmessage = (event: MessageEvent) => {
     try {
@@ -213,6 +221,7 @@ export function useRealtime() {
     intentionalClose = true
     clearReconnectTimer()
     reconnectAttempts = 0
+    hasBeenOpen = false
     if (socket) {
       // Detach onclose first so closing doesn't schedule a reconnect.
       socket.onclose = null
