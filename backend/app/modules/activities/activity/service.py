@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 import core.calendar as core_calendar
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.pagination as core_pagination
@@ -31,7 +32,7 @@ import modules.activities.activity.schema as activity_schema
 import modules.activities.activity.stats as activity_stats
 import modules.activities.contributor_registry as activities_contributor_registry
 import modules.followers.integration_service as followers_integration
-import modules.gears.gear.dependencies as gears_dependencies
+import modules.gears.gear.integration_service as gears_integration
 import modules.server_settings.integration_service as server_settings_integration
 import modules.users.users.integration_service as users_integration
 
@@ -655,7 +656,7 @@ def edit_activity(
         "Editing an activity",
         extra=core_logger.context(activity_id=activity_id, user_id=user_id),
     )
-    gears_dependencies.require_owned_gears(user_id, [activity_attributes.gear_id], db)
+    gears_integration.require_owned_gears(user_id, [activity_attributes.gear_id], db)
     # Only the fields the client actually sent; the CRUD applies the same set.
     changed_fields = [field for field in activity_attributes.model_dump(exclude_unset=True) if field != "id"]
     try:
@@ -664,15 +665,13 @@ def edit_activity(
         # The row changed between the crud's load (where the precondition was
         # checked) and the flush.
         db.rollback()
-        if activity_crud.get_activity_by_id_from_user_id(activity_id, user_id, db) is None:
-            raise core_exceptions.NotFoundError(f"Activity {activity_id} not found") from err
-        logger.warning(
-            "Rejected a stale activity edit",
-            extra=core_logger.context(activity_id=activity_id, user_id=user_id),
-        )
-        raise core_exceptions.PreconditionFailedError(
-            "The activity was modified by someone else; re-read it and retry"
-        ) from err
+        exists = activity_crud.get_activity_by_id_from_user_id(activity_id, user_id, db) is not None
+        if exists:
+            logger.warning(
+                "Rejected a stale activity edit",
+                extra=core_logger.context(activity_id=activity_id, user_id=user_id),
+            )
+        raise core_etag.stale_write_error("activity", exists, f"Activity {activity_id} not found") from err
     activity_event_publishers.publish_activity_updated(activity_id, user_id, db, changed_fields=changed_fields)
     db.commit()
     logger.info(
@@ -786,6 +785,29 @@ def bulk_set_activities_gear(
     logger.info(
         "Bulk-assigned gear to activities",
         extra=core_logger.context(user_id=user_id, requested=len(gear_assignments), updated=len(updated_ids)),
+    )
+    return len(updated_ids)
+
+
+def clear_activities_gear(gear_id: int, user_id: int, db: Session, *, source: str) -> int:
+    """Unassign a gear from every activity of a user that carries it.
+
+    Used when the gear is deleted: the foreign key would null the column silently, so
+    this does it explicitly and publishes one ``activity.updated`` per row, staged with
+    the update. The caller commits.
+
+    Args:
+        gear_id: The gear being removed.
+        user_id: The owning user id.
+        db: Database session.
+        source: The caller recorded on the published events.
+
+    Returns:
+        The number of activities updated.
+    """
+    updated_ids = activity_crud.clear_gear_from_activities(gear_id, user_id, db)
+    activity_event_publishers.publish_activities_updated(
+        updated_ids, user_id, db, changed_fields=["gear_id"], source=source
     )
     return len(updated_ids)
 

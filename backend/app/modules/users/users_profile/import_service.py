@@ -20,6 +20,7 @@ from io import BytesIO
 from typing import Any
 
 import jasil.runtime as platform_runtime
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 import core.exceptions as core_exceptions
@@ -31,9 +32,9 @@ import modules.activities.activity.schema as activity_schema
 import modules.activities.activity_file_storage.integration_service as activity_file_storage_integration
 import modules.activities.activity_media.integration_service as activity_media_integration
 import modules.activities.contributor_registry as activities_contributor_registry
-import modules.gears.gear.crud as gear_crud
+import modules.gears.gear.integration_service as gear_integration
 import modules.gears.gear.schema as gear_schema
-import modules.gears.gear_components.crud as gear_components_crud
+import modules.gears.gear_components.integration_service as gear_components_integration
 import modules.gears.gear_components.schema as gear_components_schema
 import modules.health.health_targets.crud as health_targets_crud
 import modules.health.health_targets.schema as health_targets_schema
@@ -412,14 +413,48 @@ class ImportService:
             gear_data["user_id"] = self.user_id
             original_id = gear_data.get("id")
             gear_data.pop("id", None)
+            gear_data.pop("version", None)
 
-            gear = gear_schema.GearCreate(**gear_data)
-            new_gear = gear_crud.create_gear(gear, self.user_id, self.db)
-            gears_id_mapping[original_id] = new_gear.id
+            try:
+                gear = gear_schema.GearCreate(**gear_data)
+            except ValidationError:
+                logger.warning("Skipped an invalid gear")
+                continue
+            gears_id_mapping[original_id] = self._import_gear(gear)
             self.counts["gears"] += 1
 
+        # The gear surface stages; the importer owns the commit.
+        self.db.commit()
         logger.info(f"Imported {self.counts['gears']} gears")
         return gears_id_mapping
+
+    def _import_gear(self, gear: gear_schema.GearCreate) -> int:
+        """Import one gear, tolerating what the user already has.
+
+        A gear whose nickname the user already has maps onto that gear. A provider gear
+        ID the user already holds on another gear is dropped, so the archive cannot make
+        the import fail.
+
+        Args:
+            gear: The gear from the archive.
+
+        Returns:
+            The ID of the gear the archived one maps to.
+        """
+        existing = gear_integration.get_gear_user_by_nickname(self.user_id, gear.nickname, self.db)
+        if existing is not None:
+            return existing.id
+        try:
+            with self.db.begin_nested():
+                return gear_integration.create_gear(gear, self.user_id, self.db).id
+        except core_exceptions.ConflictError:
+            existing = gear_integration.get_gear_user_by_nickname(self.user_id, gear.nickname, self.db)
+            if existing is not None:
+                return existing.id
+            logger.warning("Dropped the provider gear IDs of an imported gear that are already taken")
+        without_ids = gear.model_copy(update={"strava_gear_id": None, "garminconnect_gear_id": None})
+        with self.db.begin_nested():
+            return gear_integration.create_gear(without_ids, self.user_id, self.db).id
 
     async def collect_and_import_gear_components_data(
         self, gear_components_data: list[Any], gears_id_mapping: dict[int, int]
@@ -436,18 +471,29 @@ class ImportService:
             return
 
         for gear_component_data in gear_components_data:
-            gear_component_data["gear_id"] = (
-                gears_id_mapping.get(gear_component_data["gear_id"])
-                if gear_component_data.get("gear_id") in gears_id_mapping
-                else None
-            )
+            new_gear_id = gears_id_mapping.get(gear_component_data.get("gear_id"))
+            if new_gear_id is None:
+                logger.warning("Skipped a gear component whose gear is not in the archive")
+                continue
+            gear_component_data["gear_id"] = new_gear_id
 
             gear_component_data.pop("id", None)
+            gear_component_data.pop("version", None)
 
-            gear_component = gear_components_schema.GearComponentCreate(**gear_component_data)
-            gear_components_crud.create_gear_component(gear_component, self.user_id, self.db)
+            try:
+                gear_component = gear_components_schema.GearComponentCreate(**gear_component_data)
+            except ValidationError:
+                logger.warning("Skipped an invalid gear component")
+                continue
+            retired, purchased = gear_component.retired_date, gear_component.purchase_date
+            if retired is not None and purchased is not None and retired <= purchased:
+                logger.warning("Skipped a gear component retired on or before its purchase date")
+                continue
+            gear_components_integration.create_gear_component(gear_component, self.user_id, self.db)
             self.counts["gear_components"] += 1
 
+        # The gear component surface stages; the importer owns the commit.
+        self.db.commit()
         logger.info(f"Imported {self.counts['gear_components']} gear components")
 
     async def collect_and_import_user_data(

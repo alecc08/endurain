@@ -52,7 +52,7 @@ def parse_if_match(header: str) -> set[str]:
     return tags
 
 
-def require_if_match(header: str | None, current_version: int | None) -> None:
+def require_if_match(header: str | None, current_version: int | None, resource: str = "activity") -> None:
     """Enforce an ``If-Match`` precondition against the stored version.
 
     A missing header is allowed: requiring it would break every existing client
@@ -62,6 +62,7 @@ def require_if_match(header: str | None, current_version: int | None) -> None:
     Args:
         header: The request's ``If-Match`` value, if any.
         current_version: The stored row's version.
+        resource: What the row is, named in the refusal message.
 
     Returns:
         None.
@@ -76,4 +77,22 @@ def require_if_match(header: str | None, current_version: int | None) -> None:
     if _WILDCARD in accepted:
         return
     if current_version is None or str(current_version) not in accepted:
-        raise core_exceptions.PreconditionFailedError("The activity was modified by someone else; re-read it and retry")
+        raise core_exceptions.PreconditionFailedError(
+            f"The {resource} was modified by someone else; re-read it and retry"
+        )
+
+
+def stale_write_error(resource: str, still_exists: bool, not_found_message: str) -> Exception:
+    """Pick the refusal for a write that lost the version race at flush time.
+
+    Args:
+        resource: What the row is, named in the refusal message.
+        still_exists: Whether the row can still be read after the rollback.
+        not_found_message: The message when the row was deleted meanwhile.
+
+    Returns:
+        A ``NotFoundError`` when the row is gone, else a ``PreconditionFailedError``.
+    """
+    if not still_exists:
+        return core_exceptions.NotFoundError(not_found_message)
+    return core_exceptions.PreconditionFailedError(f"The {resource} was modified by someone else; re-read it and retry")

@@ -12,6 +12,7 @@ from jasil.providers import EventBusProvider
 import core.config as core_config
 import core.logger as core_logger
 import core.scheduler as core_scheduler
+import modules.activities.activity.integration_service as activity_integration
 import modules.activities.activity_exercise_titles.integration_service as activity_exercise_titles_integration
 import modules.activities.activity_file_storage.scheduled_jobs as activity_file_storage_scheduled_jobs
 import modules.activities.activity_file_storage.subscriber_registry as activity_file_storage_subscriber_registry
@@ -32,6 +33,9 @@ import modules.activities.activity_workout_steps.integration_service as activity
 import modules.activities.contributor_registry as activities_contributor_registry
 import modules.auth.password_reset_tokens.subscriber_registry as password_reset_tokens_subscriber_registry
 import modules.auth.sign_up_tokens.subscriber_registry as sign_up_tokens_subscriber_registry
+import modules.gears.contributor_registry as gears_contributor_registry
+import modules.gears.contributors as gears_contributors
+import modules.gears.gear_components.integration_service as gear_components_integration
 import modules.notifications.subscriber_registry as notifications_subscriber_registry
 
 logger = core_logger.get_logger(__name__)
@@ -237,6 +241,18 @@ def configure_activity_contributors() -> None:
         activity_exercise_titles_integration.profile_global_contributor()
     )
     activities_contributor_registry.register_thumbnail_url_resolver(activity_thumbnail_integration.thumbnail_url)
+
+
+def configure_gear_contributors() -> None:
+    """Install the readers the gears namespace asks the activities and component packages to answer."""
+    gears_contributor_registry.register(
+        gears_contributors.GearReaders(
+            usage=activity_integration.get_gear_usage_totals,
+            usage_by_window=activity_integration.get_gear_usage_totals_by_window,
+            components_cost=gear_components_integration.get_gear_components_total_cost,
+            clear_activities_gear=activity_integration.clear_activities_gear,
+        )
+    )
 
 
 def register_bus_subscribers(events: EventBusProvider) -> None:
