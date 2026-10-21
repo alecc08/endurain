@@ -17,7 +17,7 @@ SEND_TIMEOUT_SECONDS = 5.0
 MAX_CONNECTIONS_PER_USER = 5
 
 
-async def send_json_to_all(websockets: Sequence[WebSocket], message: dict) -> list[BaseException]:
+async def send_json_to_all(websockets: Sequence[WebSocket], message: dict) -> list[tuple[WebSocket, BaseException]]:
     """
     Send a JSON message to several connections, isolating each one's failure.
 
@@ -29,13 +29,17 @@ async def send_json_to_all(websockets: Sequence[WebSocket], message: dict) -> li
         message: JSON-serializable data to send.
 
     Returns:
-        The failure of each connection that did not take the message (empty when all did).
+        Each connection that did not take the message with its failure (empty when all did).
     """
     results = await asyncio.gather(
         *(asyncio.wait_for(websocket.send_json(message), timeout=SEND_TIMEOUT_SECONDS) for websocket in websockets),
         return_exceptions=True,
     )
-    return [result for result in results if isinstance(result, BaseException)]
+    return [
+        (websocket, result)
+        for websocket, result in zip(websockets, results, strict=True)
+        if isinstance(result, BaseException)
+    ]
 
 
 class WebSocketManager:
@@ -103,8 +107,9 @@ class WebSocketManager:
             message: JSON-serializable data to send.
         """
         failures = await send_json_to_all(self.get_connections(user_id), message)
-        for failure in failures:
+        for _, failure in failures:
             logger.debug(f"WebSocket send failed for user {user_id}", exc_info=failure)
+        self.discard_failed(failures)
 
     async def broadcast(self, message: dict) -> None:
         """
@@ -114,8 +119,28 @@ class WebSocketManager:
             message: JSON-serializable data to broadcast.
         """
         websockets = [websocket for connections in self.active_connections.values() for websocket in connections]
-        for failure in await send_json_to_all(websockets, message):
+        failures = await send_json_to_all(websockets, message)
+        for _, failure in failures:
             logger.debug("WebSocket broadcast send failed", exc_info=failure)
+        self.discard_failed(failures)
+
+    def discard_failed(self, failures: Sequence[tuple[WebSocket, BaseException]]) -> None:
+        """
+        Unregister connections whose send failed at the transport.
+
+        A stalled or closed connection would otherwise cost every later push another
+        timeout. A payload that cannot be serialized says nothing about the connection,
+        so it stays registered.
+
+        Args:
+            failures: Connection and failure pairs, as returned by ``send_json_to_all``.
+        """
+        for websocket, failure in failures:
+            if isinstance(failure, TypeError | ValueError):
+                continue
+            for user_id, connections in list(self.active_connections.items()):
+                if websocket in connections:
+                    self.disconnect(user_id, websocket)
 
     def get_connections(self, user_id: int) -> list[WebSocket]:
         """

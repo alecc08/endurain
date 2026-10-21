@@ -477,8 +477,8 @@ class ImportService:
                 continue
             gear_component_data["gear_id"] = new_gear_id
 
-            gear_component_data.pop("id", None)
-            gear_component_data.pop("version", None)
+            for owner_or_derived in ("id", "version", "user_id", "current_distance", "current_time"):
+                gear_component_data.pop(owner_or_derived, None)
 
             try:
                 gear_component = gear_components_schema.GearComponentCreate(**gear_component_data)

@@ -267,7 +267,7 @@ def delete_read_notifications_before(cutoff: datetime, limit: int, db: Session) 
     stale_ids = (
         select(notifications_models.Notification.id)
         .where(
-            notifications_models.Notification.read.is_(True),
+            notifications_models.Notification.read,
             notifications_models.Notification.created_at < cutoff,
         )
         .limit(limit)

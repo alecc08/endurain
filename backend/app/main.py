@@ -116,7 +116,9 @@ def _run_alembic_migrations() -> None:
     alembic_cfg.attributes["configure_logger"] = False
     # Replicas start together; the session-level advisory lock makes one migrate while
     # the others wait, then find the schema already at head.
-    with core_database.engine.connect() as lock_connection:
+    # AUTOCOMMIT keeps the connection out of a transaction, so an idle-in-transaction timeout cannot end
+    # the session (and release the lock) during a slow migration.
+    with core_database.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as lock_connection:
         lock_connection.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _MIGRATION_LOCK_KEY})
         try:
             command.upgrade(alembic_cfg, "head")

@@ -750,7 +750,7 @@ limitations rather than half-done:
   contributor pattern the activity children already use: `users_profile`
   export/import asks each module for its section instead of importing them.
   `gears` no longer closes a cycle: it sits below activities (`_MUST_NOT_IMPORT`), states the
-  usage questions it needs answered in `gears/contributors.py`, and `module_registry.configure_gear_contributors`
+  required usage questions in `gears/contributors.py`, and `module_registry.configure_gear_contributors`
   installs the activities answers. A `layers` contract (core, identity, followers/gears/health,
   activities, providers) can then state the module-level direction once. The remaining edge that
   closes a cycle lives in `users`.

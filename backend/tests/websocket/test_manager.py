@@ -263,3 +263,26 @@ class TestSendIsolation:
 
         assert len(failures) == 1
         healthy.send_json.assert_awaited_once_with({"k": "v"})
+
+    async def test_a_stalled_connection_is_unregistered_after_a_send(self, manager):
+        async def never(_message):
+            await asyncio.sleep(3600)
+
+        stalled, healthy = AsyncMock(), AsyncMock()
+        stalled.send_json.side_effect = never
+        await manager.connect(1, stalled)
+        await manager.connect(1, healthy)
+
+        with patch.object(websocket_manager, "SEND_TIMEOUT_SECONDS", 0.01):
+            await manager.send_message(1, {"k": "v"})
+
+        assert manager.get_connections(1) == [healthy]
+
+    async def test_an_unserializable_payload_keeps_the_connection(self, manager):
+        socket = AsyncMock()
+        socket.send_json.side_effect = TypeError("not serializable")
+        await manager.connect(1, socket)
+
+        await manager.send_message(1, {"k": object()})
+
+        assert manager.get_connections(1) == [socket]

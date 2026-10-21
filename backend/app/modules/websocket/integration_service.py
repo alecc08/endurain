@@ -48,10 +48,11 @@ async def push_to_user(user_id: int, message: dict) -> bool:
         logger.debug("No websocket connection for the user in this process", extra=core_logger.context(user_id=user_id))
         return False
     failures = await websocket_manager.send_json_to_all(connections, message)
-    for err in failures:
+    for _, err in failures:
         logger.debug(
             "Websocket push failed; the durable record is unaffected",
             exc_info=err,
             extra=core_logger.context(user_id=user_id),
         )
+    websocket_manager.get_websocket_manager().discard_failed(failures)
     return len(failures) < len(connections)
