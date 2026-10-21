@@ -63,6 +63,7 @@ class ParseState:
     cad_waypoints: list[dict] = field(default_factory=list)
     power_waypoints: list[dict] = field(default_factory=list)
     vel_waypoints: list[dict] = field(default_factory=list)
+    measured_vel_times: set[str] = field(default_factory=set)
     pace_waypoints: list[dict] = field(default_factory=list)
     prev_latitude: float | None = None
     prev_longitude: float | None = None
@@ -337,6 +338,16 @@ def _process_trackpoint(
 
     timestamp = core_timezone.format_utc(time)
 
+    # A segment's first point (and a non-advancing clock) yields a 0 placeholder,
+    # not a measurement; only max speed ignores it, the stored stream keeps it.
+    if (
+        state.prev_waypoint_time is not None
+        and state.prev_latitude is not None
+        and state.prev_longitude is not None
+        and time > state.prev_waypoint_time
+    ):
+        state.measured_vel_times.add(timestamp)
+
     if latitude is not None and longitude is not None:
         state.lat_lon_waypoints.append(
             {
@@ -431,6 +442,9 @@ def _compute_derived_metrics(
         state.avg_speed, state.max_speed = activities_computation.calculate_avg_and_max(
             state.vel_waypoints,
             "vel",
+        )
+        state.max_speed = activities_computation.calculate_robust_max(
+            [waypoint["vel"] for waypoint in state.vel_waypoints if waypoint["time"] in state.measured_vel_times],
         )
 
     if state.power_waypoints:
@@ -588,6 +602,7 @@ def parse_gpx_file(
                     state.hr_waypoints,
                     state.cad_waypoints,
                     state.vel_waypoints,
+                    measured_vel_times=state.measured_vel_times,
                 )
             )
 

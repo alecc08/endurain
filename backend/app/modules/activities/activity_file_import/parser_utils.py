@@ -184,6 +184,7 @@ def _compute_lap_metrics(
     hr_waypoints: list[dict],
     cad_waypoints: list[dict],
     vel_waypoints: list[dict],
+    measured_vel_times: set[str] | None = None,
 ) -> LapMetrics:
     """Compute metrics for a single activity lap.
 
@@ -198,6 +199,9 @@ def _compute_lap_metrics(
         hr_waypoints: Full HR stream.
         cad_waypoints: Full cadence stream.
         vel_waypoints: Full velocity stream.
+        measured_vel_times: Timestamps of velocity samples that are real
+            measurements; max speed ignores the others. ``None`` treats every
+            sample as measured.
 
     Returns:
         Dict with all computed lap metrics.
@@ -257,6 +261,13 @@ def _compute_lap_metrics(
             lap_vel,
             "vel",
         )
+        max_speed = activities_computation.calculate_robust_max(
+            [
+                waypoint["vel"]
+                for waypoint in lap_vel
+                if measured_vel_times is None or waypoint["time"] in measured_vel_times
+            ],
+        )
 
     avg_power, max_power, norm_power = None, None, None
     if lap_power:
@@ -301,6 +312,7 @@ def generate_activity_laps(
     cad_waypoints: list[dict],
     vel_waypoints: list[dict],
     distance_per_lap_km: float = 1.0,
+    measured_vel_times: set[str] | None = None,
 ) -> list[LapMetrics]:
     """Split waypoints into distance-based laps and compute metrics.
 
@@ -312,6 +324,9 @@ def generate_activity_laps(
         cad_waypoints: List of cadence dicts.
         vel_waypoints: List of velocity dicts.
         distance_per_lap_km: Km per lap (default 1.0).
+        measured_vel_times: Timestamps of velocity samples that are real
+            measurements, for sources that emit placeholder samples; ``None``
+            treats every sample as measured.
 
     Returns:
         List of lap dicts with computed metrics.
@@ -347,6 +362,7 @@ def generate_activity_laps(
                     hr_waypoints=hr_waypoints,
                     cad_waypoints=cad_waypoints,
                     vel_waypoints=vel_waypoints,
+                    measured_vel_times=measured_vel_times,
                 )
             )
             lap_start = current_point
@@ -365,6 +381,7 @@ def generate_activity_laps(
                 hr_waypoints=hr_waypoints,
                 cad_waypoints=cad_waypoints,
                 vel_waypoints=vel_waypoints,
+                measured_vel_times=measured_vel_times,
             )
         )
 
