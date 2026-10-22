@@ -102,6 +102,7 @@ async def _safe_run_async[T, **P](
 
 # Arbitrary constant identifying the migration lock among the database's advisory locks.
 _MIGRATION_LOCK_KEY = 7_203_419_001
+_MIGRATION_LOCK_TIMEOUT_SECONDS = 600
 
 
 def _run_alembic_migrations() -> None:
@@ -119,11 +120,20 @@ def _run_alembic_migrations() -> None:
     # AUTOCOMMIT keeps the connection out of a transaction, so an idle-in-transaction timeout cannot end
     # the session (and release the lock) during a slow migration.
     with core_database.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as lock_connection:
-        lock_connection.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _MIGRATION_LOCK_KEY})
+        locked = False
         try:
+            # A replica waits for the one migrating, but not forever if that one hangs.
+            lock_connection.execute(text(f"SET lock_timeout = '{_MIGRATION_LOCK_TIMEOUT_SECONDS}s'"))
+            lock_connection.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _MIGRATION_LOCK_KEY})
+            locked = True
             command.upgrade(alembic_cfg, "head")
         finally:
-            lock_connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _MIGRATION_LOCK_KEY})
+            # The connection goes back to the pool; do not leave the timeout on it, even when the wait timed out.
+            try:
+                if locked:
+                    lock_connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _MIGRATION_LOCK_KEY})
+            finally:
+                lock_connection.execute(text("RESET lock_timeout"))
 
 
 async def _retrieve_recent_garmin_health() -> None:
@@ -229,6 +239,12 @@ async def startup_event(fastapi_app: FastAPI) -> None:
     # Start the event bus. No-op for the in-process bus (local); starts the
     # Redis Streams consumer thread in distributed mode.
     platform.events.start()
+
+    # Subscribe this process to the realtime hint channel and start receiving: a hint
+    # published by any replica or by the worker is pushed here when this process holds
+    # the user's socket. The worker never does this; it only publishes.
+    runtime_module_registry.register_realtime_subscribers(platform.realtime)
+    platform.realtime.start()
 
     # Phase 1: critical pre-flight tasks.
     _run_alembic_migrations()
