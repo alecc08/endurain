@@ -3,6 +3,7 @@ import type {
   ServerSettings,
   ServerSettingsDto,
   ServerSettingsEditDto,
+  ServerSettingsUpdate,
   TileMapsTemplate,
   TileMapsTemplateDto,
 } from '@/features/serverSettings/types'
@@ -10,7 +11,7 @@ import type {
 import { apiFetch } from '@/services/http'
 
 /**
- * Maps a raw `ServerSettingsRead` payload to the clean {@link ServerSettings}
+ * Maps a raw `ServerSettingsAdminRead` payload to the clean {@link ServerSettings}
  * model — the single boundary where the backend wire format (snake_case) is
  * normalized so components never see the raw DTO.
  *
@@ -34,7 +35,7 @@ export function mapServerSettings(dto: ServerSettingsDto): ServerSettings {
     ssoAutoRedirect: dto.sso_auto_redirect,
     tileserverUrl: dto.tileserver_url,
     tileserverAttribution: dto.tileserver_attribution,
-    tileserverApiKey: dto.tileserver_api_key ?? null,
+    tileserverApiKeySet: dto.tileserver_api_key_set,
     tileserverRegenerateThumbnailsOnChange: dto.tileserver_regenerate_thumbnails_on_change,
     mapBackgroundColor: dto.map_background_color,
     passwordType: dto.password_type,
@@ -63,23 +64,22 @@ export function mapTileMapsTemplate(dto: TileMapsTemplateDto): TileMapsTemplate 
 
 /**
  * Rebuilds the full editable wire payload from a {@link ServerSettings}. Every
- * column is sent because the edit endpoint forbids extra fields and replaces
- * the whole record, so unedited fields must round-trip untouched. Deriving the
+ * editable column is sent because the edit endpoint forbids extra fields and
+ * replaces the whole record, so unedited fields must round-trip untouched. The
+ * row id and the login-photo flag are read-only: the photo routes own the flag. Deriving the
  * return type from the generated schema turns a missing field into a compile
  * error instead of a runtime `422`.
  *
  * @param settings - The server settings (already merged with any edits).
- * @returns The snake-cased editable body.
+ * @returns The snake-cased editable body; it carries the tile API key only when one is being set or removed.
  */
-export function toServerSettingsWire(settings: ServerSettings): ServerSettingsEditDto {
+export function toServerSettingsWire(settings: ServerSettingsUpdate): ServerSettingsEditDto {
   return {
-    id: settings.id,
     units: settings.units,
     currency: settings.currency,
     num_records_per_page: settings.numRecordsPerPage,
     public_shareable_links: settings.publicShareableLinks,
     public_shareable_links_user_info: settings.publicShareableLinksUserInfo,
-    login_photo_set: settings.loginPhotoSet,
     signup_enabled: settings.signupEnabled,
     signup_require_admin_approval: settings.signupRequireAdminApproval,
     signup_require_email_verification: settings.signupRequireEmailVerification,
@@ -88,18 +88,21 @@ export function toServerSettingsWire(settings: ServerSettings): ServerSettingsEd
     sso_auto_redirect: settings.ssoAutoRedirect,
     tileserver_url: settings.tileserverUrl,
     tileserver_attribution: settings.tileserverAttribution,
-    tileserver_api_key: settings.tileserverApiKey,
     tileserver_regenerate_thumbnails_on_change: settings.tileserverRegenerateThumbnailsOnChange,
     map_background_color: settings.mapBackgroundColor,
     password_type: settings.passwordType,
     password_length_regular_users: settings.passwordLengthRegularUsers,
     password_length_admin_users: settings.passwordLengthAdminUsers,
+    // Omitted keeps the stored key; the backend never returns it, so it cannot round-trip.
+    ...(settings.tileserverApiKey !== undefined && {
+      tileserver_api_key: settings.tileserverApiKey,
+    }),
   }
 }
 
 /**
  * Fetches the full server settings (admin scope `server_settings:read`). The
- * backend returns the decrypted tile-server API key for admins.
+ * tile-server API key is never returned, only whether one is stored.
  *
  * @param signal - Optional abort signal for cancellation.
  * @returns The server settings, mapped to the clean model.
@@ -111,7 +114,7 @@ export async function fetchServerSettings(signal?: AbortSignal): Promise<ServerS
 }
 
 /**
- * Fetches the available tile-server presets (admin scope `server_settings:read`).
+ * Fetches the available tile-server presets (public endpoint).
  *
  * @param signal - Optional abort signal for cancellation.
  * @returns The tile-map presets, mapped to the clean model.
@@ -119,7 +122,7 @@ export async function fetchServerSettings(signal?: AbortSignal): Promise<ServerS
  */
 export async function fetchTileMapsTemplates(signal?: AbortSignal): Promise<TileMapsTemplate[]> {
   const dtos = await apiFetch<TileMapsTemplateDto[] | null>(
-    '/server_settings/tile_maps_templates',
+    '/public/server_settings/tile_maps_templates',
     {
       signal,
     },
@@ -136,7 +139,9 @@ export async function fetchTileMapsTemplates(signal?: AbortSignal): Promise<Tile
  * @returns The updated server settings, mapped to the clean model.
  * @throws {HttpError} When the request fails (e.g. invalid tile-server URL).
  */
-export async function updateServerSettings(settings: ServerSettings): Promise<ServerSettings> {
+export async function updateServerSettings(
+  settings: ServerSettingsUpdate,
+): Promise<ServerSettings> {
   const dto = await apiFetch<ServerSettingsDto>('/server_settings', {
     method: 'PUT',
     body: JSON.stringify(toServerSettingsWire(settings)),

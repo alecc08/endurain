@@ -9,7 +9,6 @@ from fastapi import (
     Request,
     status,
 )
-from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 import core.database as core_database
@@ -19,7 +18,7 @@ import modules.auth.identity_service as auth_identity_service
 import modules.auth.sign_up_tokens.schema as sign_up_tokens_schema
 import modules.auth.sign_up_tokens.utils as sign_up_tokens_utils
 import modules.notifications.integration_service as notifications_integration
-import modules.server_settings.utils as server_settings_utils
+import modules.server_settings.integration_service as server_settings_integration
 import modules.users.users.crud as users_crud
 import modules.users.users.schema as users_schema
 import modules.users.users.utils as users_utils
@@ -34,7 +33,7 @@ router = APIRouter()
     response_model=sign_up_tokens_schema.SignUpResponse,
 )
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
-async def signup(
+def signup(
     request: Request,
     user: users_schema.UsersSignup,
     identity_service: Annotated[
@@ -62,7 +61,7 @@ async def signup(
         HTTPException: 403 if sign-up is disabled.
     """
     # Get server settings to check if signup is enabled
-    server_settings = server_settings_utils.get_server_settings_or_404(db)
+    server_settings = server_settings_integration.get_server_settings(db)
 
     # Check if signup is enabled
     if not server_settings.signup_enabled:
@@ -84,7 +83,7 @@ async def signup(
 
     if server_settings.signup_require_email_verification:
         # Send the sign-up email
-        await run_in_threadpool(sign_up_tokens_utils.request_sign_up_verification_email, created_user.id, db)
+        sign_up_tokens_utils.request_sign_up_verification_email(created_user.id, db)
         message += " Email sent with verification instructions."
         email_verification_required = True
     if server_settings.signup_require_admin_approval:
@@ -127,7 +126,7 @@ def verify_email(
         HTTPException: 412 if email verification is not enabled.
     """
     # Get server settings
-    server_settings = server_settings_utils.get_server_settings_or_404(db)
+    server_settings = server_settings_integration.get_server_settings(db)
     if not server_settings.signup_require_email_verification:
         raise HTTPException(
             status_code=status.HTTP_412_PRECONDITION_FAILED,

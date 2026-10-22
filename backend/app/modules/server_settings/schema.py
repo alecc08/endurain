@@ -1,3 +1,5 @@
+"""Request and response shapes for server settings."""
+
 import re
 from enum import Enum
 
@@ -8,23 +10,14 @@ from pydantic import (
     StrictBool,
     StrictInt,
     StrictStr,
-    computed_field,
     field_validator,
 )
 
-import core.config as core_config
 import core.sanitization as core_sanitization
-
-# Default allowed tile domains for map tiles
-DEFAULT_ALLOWED_TILE_DOMAINS: list[str] = [
-    "https://*.openstreetmap.org",  # OpenStreetMap
-    "https://*.stadiamaps.com",  # Stadia Maps
-]
 
 
 class Units(Enum):
-    """
-    An enumeration representing measurement units.
+    """An enumeration representing measurement units.
 
     Attributes:
         METRIC: Metric system (e.g., meters, kilograms).
@@ -36,8 +29,7 @@ class Units(Enum):
 
 
 class Currency(Enum):
-    """
-    An enumeration representing supported currencies.
+    """An enumeration representing supported currencies.
 
     Attributes:
         EURO: Represents the Euro currency.
@@ -51,8 +43,7 @@ class Currency(Enum):
 
 
 class PasswordType(Enum):
-    """
-    An enumeration representing password policy types.
+    """An enumeration representing password policy types.
 
     Attributes:
         STRICT (str): Strict password policy.
@@ -64,8 +55,7 @@ class PasswordType(Enum):
 
 
 class ServerSettingsBase(BaseModel):
-    """
-    Pydantic model for server settings configuration.
+    """Pydantic model for server settings configuration.
 
     This model defines all configurable server settings for the Endurain application,
     including units, currency, authentication methods, map configuration, and password policies.
@@ -74,9 +64,8 @@ class ServerSettingsBase(BaseModel):
         units (Units): Unit system for measurements (METRIC or IMPERIAL).
         public_shareable_links (StrictBool): Enable/disable public shareable links.
         public_shareable_links_user_info (StrictBool): Show user info on public shareable links.
-        login_photo_set (StrictBool): Whether login photo is configured.
         currency (Currency): Currency type (EURO, DOLLAR, or POUND).
-        num_records_per_page (StrictInt): Number of records per page in lists (1-100, default: 25).
+        num_records_per_page (StrictInt): Number of records per page in lists (1-100).
         signup_enabled (StrictBool): Allow new user registration.
         sso_enabled (StrictBool): Enable SSO/IdP authentication.
         local_login_enabled (StrictBool): Allow local username/password authentication.
@@ -85,8 +74,8 @@ class ServerSettingsBase(BaseModel):
         tileserver_attribution (StrictStr): Attribution string for map tile server.
         map_background_color (StrictStr): Hex color code for map background (#RRGGBB format).
         password_type (PasswordType): Password policy enforcement level (STRICT or LENGTH_ONLY).
-        password_length_regular_users (StrictInt): Minimum password length for regular users (8-128, default: 8).
-        password_length_admin_users (StrictInt): Minimum password length for admin users (8-128, default: 12).
+        password_length_regular_users (StrictInt): Minimum password length for regular users (8-128).
+        password_length_admin_users (StrictInt): Minimum password length for admin users (8-128).
 
     Validators:
         - validate_tileserver_url: Ensures tile server URL is secure, uses proper protocol, contains required placeholders, and blocks dangerous patterns.
@@ -99,16 +88,15 @@ class ServerSettingsBase(BaseModel):
         - Supports ORM attribute mapping.
     """
 
-    units: Units = Field(Units.METRIC, description="Units (metric, imperial)")
+    units: Units = Field(..., description="Units (metric, imperial)")
     public_shareable_links: StrictBool = Field(..., description="Allow public shareable links (true - yes, false - no)")
     public_shareable_links_user_info: StrictBool = Field(
         ...,
         description="Allow show user info on public shareable links (true - yes, false - no)",
     )
-    login_photo_set: StrictBool = Field(..., description="Is login photo set (true - yes, false - no)")
     currency: Currency = Field(..., description="Currency (euro, dollar, pound)")
     num_records_per_page: StrictInt = Field(
-        25,
+        ...,
         ge=1,
         le=100,
         description="Number of records per page in lists",
@@ -140,15 +128,15 @@ class ServerSettingsBase(BaseModel):
         description=("Background color for the map (hex format)"),
     )
     tileserver_regenerate_thumbnails_on_change: StrictBool = Field(
-        False,
+        ...,
         description=("Delete and regenerate all activity thumbnails when tile server settings change"),
     )
-    password_type: PasswordType = Field(PasswordType.STRICT, description="Password type policy (strict, length_only)")
+    password_type: PasswordType = Field(..., description="Password type policy (strict, length_only)")
     password_length_regular_users: StrictInt = Field(
-        8, ge=8, le=128, description="Minimum password length for regular users"
+        ..., ge=8, le=128, description="Minimum password length for regular users"
     )
     password_length_admin_users: StrictInt = Field(
-        12, ge=8, le=128, description="Minimum password length for admin users"
+        ..., ge=8, le=128, description="Minimum password length for admin users"
     )
 
     model_config = ConfigDict(
@@ -161,8 +149,7 @@ class ServerSettingsBase(BaseModel):
     @field_validator("tileserver_url")
     @classmethod
     def validate_tileserver_url(cls, value: str) -> str:
-        """
-        Validate tile server URL for security and correctness.
+        """Validate tile server URL for security and correctness.
 
         Args:
             value: Tile server URL template.
@@ -190,7 +177,7 @@ class ServerSettingsBase(BaseModel):
 
         # Must contain required tile coordinate placeholders
         required = ["{z}", "{x}", "{y}"]
-        missing = [p for p in required if p not in value.lower()]
+        missing = [p for p in required if p not in value]
         if missing:
             missing_str = ", ".join(missing)
             raise ValueError(f"Tile server URL must contain placeholders: {missing_str}")
@@ -216,8 +203,7 @@ class ServerSettingsBase(BaseModel):
     @field_validator("tileserver_attribution")
     @classmethod
     def validate_attribution(cls, value: str) -> str:
-        """
-        Sanitize tileserver attribution to prevent XSS.
+        """Sanitize tileserver attribution to prevent XSS.
 
         Args:
             value: Raw attribution string.
@@ -228,39 +214,30 @@ class ServerSettingsBase(BaseModel):
         return core_sanitization.sanitize_attribution(value) or ""
 
 
-class ServerSettings(ServerSettingsBase):
-    """
-    Internal complete server settings schema with identifier.
+class ServerSettingsEdit(ServerSettingsBase):
+    """Request body for editing the server settings.
 
-    Extends ServerSettingsBase by adding the id field for internal
-    operations. Not typically used for API responses.
-
-    Attributes:
-        id: Unique identifier (always 1, singleton pattern).
-        tileserver_api_key: API key encrypted for the tile server.
-    """
-
-    id: StrictInt = Field(..., description="Unique identifier for server settings (always 1)")
-    tileserver_api_key: StrictStr | None = Field(
-        default=None,
-        max_length=512,
-        description="API key encrypted for the tile server",
-    )
-
-
-class ServerSettingsEdit(ServerSettings):
-    """
-    Edit schema for server settings updates.
-
-    Extends ServerSettings with signup requirement fields.
+    A full replacement: every setting except the tile API key is required. The row
+    id and the login-photo flag are not here: the id is fixed (singleton) and the
+    flag is set only by the login-photo upload and delete routes, so a stale form
+    can never reset it.
 
     Attributes:
+        tileserver_api_key: Plain-text API key for the tile server; stored encrypted
+            and never returned. Omit it to keep the stored key; send null or an
+            empty string to remove it.
         signup_require_admin_approval: Require admin approval for new sign-ups
             (true - yes, false - no).
         signup_require_email_verification: Require email verification for new
             sign-ups (true - yes, false - no).
     """
 
+    # Capped so the Fernet token (about 1.37x the plain length) fits the 512-char column.
+    tileserver_api_key: StrictStr | None = Field(
+        default=None,
+        max_length=256,
+        description="API key for the tile server (write-only); omit to keep, null or empty to remove",
+    )
     signup_require_admin_approval: StrictBool = Field(
         ...,
         description="Require admin approval for new sign-ups (true - yes, false - no)",
@@ -272,18 +249,54 @@ class ServerSettingsEdit(ServerSettings):
 
 
 class ServerSettingsRead(ServerSettingsEdit):
-    """
-    Complete server settings response schema for API responses.
+    """The settings row as stored, for in-process use only.
 
-    Read-only view of all server settings including administrative
-    signup configuration. Used for authenticated endpoints returning
-    complete server configuration.
+    Never a response model: the tile API key is the stored (encrypted) value.
+    Clients get :class:`ServerSettingsAdminRead` or :class:`ServerSettingsReadPublic`.
+
+    Attributes:
+        id: Unique identifier (always 1, singleton pattern).
+        login_photo_set: Whether a custom login photo is configured.
     """
+
+    # Wider than the edit cap: the stored value is the Fernet token, which this model also reads.
+    tileserver_api_key: StrictStr | None = Field(
+        default=None,
+        max_length=512,
+        description="API key for the tile server",
+    )
+    id: StrictInt = Field(..., description="Unique identifier for server settings (always 1)")
+    login_photo_set: StrictBool = Field(..., description="Is login photo set (true - yes, false - no)")
+
+
+class ServerSettingsAdminRead(ServerSettingsBase):
+    """Complete server settings response for admins; the tile API key is never returned.
+
+    Attributes:
+        id: Unique identifier (always 1, singleton pattern).
+        login_photo_set: Whether a custom login photo is configured.
+        tileserver_api_key_set: Whether a tile API key is stored.
+        signup_require_admin_approval: Require admin approval for new sign-ups.
+        signup_require_email_verification: Require email verification for new sign-ups.
+    """
+
+    id: StrictInt = Field(..., description="Unique identifier for server settings (always 1)")
+    login_photo_set: StrictBool = Field(..., description="Is login photo set (true - yes, false - no)")
+    tileserver_api_key_set: StrictBool = Field(
+        ..., description="Is a tile server API key stored (true - yes, false - no)"
+    )
+    signup_require_admin_approval: StrictBool = Field(
+        ...,
+        description="Require admin approval for new sign-ups (true - yes, false - no)",
+    )
+    signup_require_email_verification: StrictBool = Field(
+        ...,
+        description="Require email verification for new sign-ups (true - yes, false - no)",
+    )
 
 
 class ServerSettingsReadPublic(ServerSettingsBase):
-    """
-    Public-facing schema for unauthenticated server settings access.
+    """Public-facing schema for unauthenticated server settings access.
 
     Provides only public-safe server settings, excluding sensitive
     configuration like signup requirements. Used for the public API
@@ -293,21 +306,21 @@ class ServerSettingsReadPublic(ServerSettingsBase):
     excludes admin-level configuration fields.
 
     Attributes:
+        login_photo_set: Whether a custom login photo is configured.
         allowed_redirect_schemes: Custom URI schemes (ALLOWED_REDIRECT_SCHEMES) that
             SSO redirects may target, so the frontend validates the same allow-list
             as the backend.
     """
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def allowed_redirect_schemes(self) -> list[str]:
-        """Return the configured custom redirect schemes, sorted."""
-        return sorted(core_config.settings.ALLOWED_REDIRECT_SCHEMES)
+    login_photo_set: StrictBool = Field(..., description="Is login photo set (true - yes, false - no)")
+    allowed_redirect_schemes: list[str] = Field(
+        ...,
+        description="Custom URI schemes SSO redirects may target",
+    )
 
 
 class TileMapsTemplate(BaseModel):
-    """
-    Schema representing available tile map templates.
+    """Schema representing available tile map templates.
 
     Attributes:
         name: Human-readable name of the tile map template.

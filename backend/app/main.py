@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import cast
@@ -23,7 +24,6 @@ import jasil.runtime as platform_runtime
 import jasil.settings as jasil_settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
@@ -53,8 +53,8 @@ import modules.auth.utils as auth_utils
 import modules.garmin.health_utils as garmin_health_utils
 import modules.garmin.provider_registry as garmin_provider_registry
 import modules.garmin.scheduled_jobs as garmin_scheduled_jobs
-import modules.server_settings.schema as server_settings_schema
-import modules.server_settings.utils as server_settings_utils
+import modules.server_settings.constants as server_settings_constants
+import modules.server_settings.integration_service as server_settings_integration
 import modules.strava.provider_registry as strava_provider_registry
 import modules.strava.scheduled_jobs as strava_scheduled_jobs
 from api import router as api_router
@@ -149,23 +149,37 @@ def _purge_expired_tokens() -> None:
     idp_link_token_utils.delete_idp_link_expired_tokens_from_db()
 
 
+def _read_allowed_tile_domains() -> list[str]:
+    """Read the CSP tile domains in a short-lived session.
+
+    Returns:
+        The built-in tile domains plus the configured custom tile server's.
+    """
+    with SessionLocal() as db:
+        return server_settings_integration.get_allowed_tile_domains(db)
+
+
 def _init_allowed_tile_domains(fastapi_app: FastAPI) -> None:
     """Populate ``app.state.allowed_tile_domains`` for CSP.
+
+    The security-headers middleware re-reads it periodically, so an edit made in
+    another process reaches this one too.
 
     Falls back to the built-in default provider list if
     the database lookup fails so the application can
     still serve requests with a safe CSP.
     """
-    with SessionLocal() as db:
-        try:
-            fastapi_app.state.allowed_tile_domains = server_settings_utils.get_allowed_tile_domains(db)
-            allowed_tile_domains = fastapi_app.state.allowed_tile_domains
-            logger.info(f"Allowed tile domains: {allowed_tile_domains}", extra=core_logger.context(console=True))
-        except Exception as err:
-            logger.error(f"Error initializing tile domains, using defaults: {type(err).__name__}", exc_info=err)
-            # Fallback to built-in providers so CSP
-            # remains restrictive but functional.
-            fastapi_app.state.allowed_tile_domains = server_settings_schema.DEFAULT_ALLOWED_TILE_DOMAINS.copy()
+    fastapi_app.state.allowed_tile_domains_loader = _read_allowed_tile_domains
+    fastapi_app.state.allowed_tile_domains_read_at = time.monotonic()
+    try:
+        fastapi_app.state.allowed_tile_domains = _read_allowed_tile_domains()
+        allowed_tile_domains = fastapi_app.state.allowed_tile_domains
+        logger.info(f"Allowed tile domains: {allowed_tile_domains}", extra=core_logger.context(console=True))
+    except Exception as err:
+        logger.error(f"Error initializing tile domains, using defaults: {type(err).__name__}", exc_info=err)
+        # Fallback to built-in providers so CSP
+        # remains restrictive but functional.
+        fastapi_app.state.allowed_tile_domains = server_settings_constants.DEFAULT_ALLOWED_TILE_DOMAINS.copy()
 
 
 async def _resolve_trusted_proxy_hostnames() -> dict[str, list[str]]:
@@ -441,6 +455,8 @@ def create_app() -> FastAPI:
     else:
         cors_allow_origins = [core_config.settings.ENDURAIN_HOST]
 
+    # The websocket handshake is not covered by CORS, so its route checks the same list.
+    fastapi_app.state.cors_allow_origins = cors_allow_origins
     fastapi_app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_allow_origins,
@@ -488,11 +504,6 @@ def create_app() -> FastAPI:
 
     # Static mounts must be registered before the
     # catch-all frontend route included by api_router.
-    fastapi_app.mount(
-        f"/{core_config.SERVER_IMAGES_DIR}",
-        StaticFiles(directory=core_config.SERVER_IMAGES_DIR),
-        name="server_images",
-    )
     # NOTE: activity thumbnails, activity media and user photos are intentionally
     # NOT mounted as public static files. Each is served by a token-gated route
     # (modules.activities.activity_thumbnail.public_router,

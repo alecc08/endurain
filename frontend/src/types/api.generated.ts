@@ -3872,7 +3872,7 @@ export interface paths {
          * @description Get public server settings (unauthenticated).
          *
          *     Protection Mechanisms:
-         *     - Rate limiting: 60 requests per minute per IP (prevents DoS attacks)
+         *     - Rate limiting: the application's default per-IP limit applies.
          *
          *     Returns only the public subset of server configuration
          *     (sensitive signup approval/verification settings excluded).
@@ -3882,6 +3882,41 @@ export interface paths {
          *         Public subset of server configuration.
          */
         get: operations["read_public_server_settings_api_v1_public_server_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/server_settings/login_photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Login Photo
+         * @description Serve the custom login page photo (unauthenticated).
+         *
+         *     The login screen renders before anyone is signed in, so the photo is public by
+         *     design; it is one admin-chosen image, not user data. The response carries an
+         *     ETag, so a client that already holds the photo gets a 304 without the body.
+         *
+         *     Args:
+         *         request: The HTTP request, for its ``If-None-Match`` header.
+         *         storage: The platform storage provider.
+         *         db: Database session.
+         *
+         *     Returns:
+         *         The image bytes, or a 304 when the client's copy is current.
+         *
+         *     Raises:
+         *         NotFoundError: 404 when no custom photo is stored.
+         */
+        get: operations["read_login_photo_api_v1_public_server_settings_login_photo_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3902,7 +3937,7 @@ export interface paths {
          * @description Retrieve available tile map templates for server settings (unauthenticated).
          *
          *     Protection Mechanisms:
-         *     - Rate limiting: 60 requests per minute per IP (prevents DoS attacks)
+         *     - Rate limiting: the application's default per-IP limit applies.
          *
          *     This endpoint returns a list of all available tile map templates that can be
          *     used for configuring map display options in server settings.
@@ -3961,21 +3996,25 @@ export interface paths {
          *     Requires admin authentication with server_settings:read scope.
          *
          *     Returns:
-         *         Current server settings configuration with decrypted API key.
+         *         Current server settings configuration. The tile API key is never returned,
+         *         only whether one is stored.
          */
         get: operations["read_server_settings_api_v1_server_settings_get"];
         /**
          * Edit Server Settings
          * @description Update server settings.
          *
-         *     Requires admin authentication with server_settings:write scope.
+         *     Requires admin authentication with server_settings:write scope. The body replaces
+         *     the whole configuration; only the tile API key may be omitted, which keeps the
+         *     stored one.
          *
          *     Args:
-         *         request: FastAPI request object for accessing app state.
+         *         request: The HTTP request object.
          *         server_settings_attributes: Settings to update.
+         *         db: Database session.
          *
          *     Returns:
-         *         Updated server settings configuration.
+         *         Updated server settings configuration, without the tile API key.
          */
         put: operations["edit_server_settings_api_v1_server_settings_put"];
         post?: never;
@@ -4028,7 +4067,9 @@ export interface paths {
          *
          *     Args:
          *         request: The HTTP request object.
+         *         token_user_id: The requesting admin's user ID, from the access token.
          *         mail: The platform mail provider.
+         *         db: Database session.
          *
          *     Returns:
          *         A confirmation message naming the recipient address.
@@ -4038,36 +4079,6 @@ export interface paths {
          *         UpstreamError: 502 if the mail server did not accept the message.
          */
         post: operations["send_test_email_api_v1_server_settings_email_test_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/server_settings/tile_maps_templates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Tile Maps Templates
-         * @description Retrieve available tile map templates for server settings.
-         *
-         *     This endpoint returns a list of all available tile map templates that can
-         *     be used for configuring map display options in server settings.
-         *
-         *     Returns:
-         *         List of tile map template configurations available for the server.
-         *
-         *     Raises:
-         *         HTTPException: If the user lacks the required 'server_settings:read'
-         *         scope.
-         */
-        get: operations["list_tile_maps_templates_api_v1_server_settings_tile_maps_templates_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4090,10 +4101,13 @@ export interface paths {
          *     Requires admin authentication with server_settings:write scope.
          *
          *     Args:
+         *         request: The HTTP request object.
          *         file: Image file to upload.
+         *         storage: The platform storage provider.
+         *         db: Database session.
          *
          *     Returns:
-         *         Full file path where file was saved.
+         *         A confirmation message.
          */
         post: operations["upload_login_photo_api_v1_server_settings_upload_login_post"];
         /**
@@ -4102,11 +4116,10 @@ export interface paths {
          *
          *     Requires admin authentication with server_settings:write scope.
          *
-         *     Returns:
-         *         Success confirmation message.
-         *
-         *     Raises:
-         *         HTTPException: If deletion fails.
+         *     Args:
+         *         request: The HTTP request object.
+         *         storage: The platform storage provider.
+         *         db: Database session.
          */
         delete: operations["delete_login_photo_api_v1_server_settings_upload_login_delete"];
         options?: never;
@@ -4828,35 +4841,6 @@ export interface paths {
          *         JSON object with a single "ticket" key.
          */
         post: operations["issue_ws_ticket_api_v1_ws_ticket_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/server_images/{server_img}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Server Img Return
-         * @description Retrieves the file path for a given server image.
-         *
-         *     Args:
-         *         server_img (str): The identifier or filename of the server image.
-         *
-         *     Returns:
-         *         str: The file path to the server image.
-         *
-         *     Raises:
-         *         HTTPException: If the server image path cannot be found.
-         */
-        get: operations["server_img_return_server_images__server_img__get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9297,12 +9281,127 @@ export interface components {
             outgoing?: components["schemas"]["FollowRelationshipRead"] | null;
         };
         /**
-         * ServerSettingsEdit
-         * @description Edit schema for server settings updates.
-         *
-         *     Extends ServerSettings with signup requirement fields.
+         * ServerSettingsAdminRead
+         * @description Complete server settings response for admins; the tile API key is never returned.
          *
          *     Attributes:
+         *         id: Unique identifier (always 1, singleton pattern).
+         *         login_photo_set: Whether a custom login photo is configured.
+         *         tileserver_api_key_set: Whether a tile API key is stored.
+         *         signup_require_admin_approval: Require admin approval for new sign-ups.
+         *         signup_require_email_verification: Require email verification for new sign-ups.
+         */
+        ServerSettingsAdminRead: {
+            /** @description Currency (euro, dollar, pound) */
+            currency: components["schemas"]["Currency"];
+            /**
+             * Id
+             * @description Unique identifier for server settings (always 1)
+             */
+            id: number;
+            /**
+             * Local Login Enabled
+             * @description Allow local username/password login (true - yes, false - no)
+             */
+            local_login_enabled: boolean;
+            /**
+             * Login Photo Set
+             * @description Is login photo set (true - yes, false - no)
+             */
+            login_photo_set: boolean;
+            /**
+             * Map Background Color
+             * @description Background color for the map (hex format)
+             */
+            map_background_color: string;
+            /**
+             * Num Records Per Page
+             * @description Number of records per page in lists
+             */
+            num_records_per_page: number;
+            /**
+             * Password Length Admin Users
+             * @description Minimum password length for admin users
+             */
+            password_length_admin_users: number;
+            /**
+             * Password Length Regular Users
+             * @description Minimum password length for regular users
+             */
+            password_length_regular_users: number;
+            /** @description Password type policy (strict, length_only) */
+            password_type: components["schemas"]["PasswordType"];
+            /**
+             * Public Shareable Links
+             * @description Allow public shareable links (true - yes, false - no)
+             */
+            public_shareable_links: boolean;
+            /**
+             * Public Shareable Links User Info
+             * @description Allow show user info on public shareable links (true - yes, false - no)
+             */
+            public_shareable_links_user_info: boolean;
+            /**
+             * Signup Enabled
+             * @description Allow user sign-up registration (true - yes, false - no)
+             */
+            signup_enabled: boolean;
+            /**
+             * Signup Require Admin Approval
+             * @description Require admin approval for new sign-ups (true - yes, false - no)
+             */
+            signup_require_admin_approval: boolean;
+            /**
+             * Signup Require Email Verification
+             * @description Require email verification for new sign-ups (true - yes, false - no)
+             */
+            signup_require_email_verification: boolean;
+            /**
+             * Sso Auto Redirect
+             * @description Auto-redirect to SSO if only one IdP (true - yes, false - no)
+             */
+            sso_auto_redirect: boolean;
+            /**
+             * Sso Enabled
+             * @description Enable SSO/IdP login (true - yes, false - no)
+             */
+            sso_enabled: boolean;
+            /**
+             * Tileserver Api Key Set
+             * @description Is a tile server API key stored (true - yes, false - no)
+             */
+            tileserver_api_key_set: boolean;
+            /**
+             * Tileserver Attribution
+             * @description Attribution string for the map tileserver
+             */
+            tileserver_attribution: string;
+            /**
+             * Tileserver Regenerate Thumbnails On Change
+             * @description Delete and regenerate all activity thumbnails when tile server settings change
+             */
+            tileserver_regenerate_thumbnails_on_change: boolean;
+            /**
+             * Tileserver Url
+             * @description URL template for the map tileserver
+             */
+            tileserver_url: string;
+            /** @description Units (metric, imperial) */
+            units: components["schemas"]["Units"];
+        };
+        /**
+         * ServerSettingsEdit
+         * @description Request body for editing the server settings.
+         *
+         *     A full replacement: every setting except the tile API key is required. The row
+         *     id and the login-photo flag are not here: the id is fixed (singleton) and the
+         *     flag is set only by the login-photo upload and delete routes, so a stale form
+         *     can never reset it.
+         *
+         *     Attributes:
+         *         tileserver_api_key: Plain-text API key for the tile server; stored encrypted
+         *             and never returned. Omit it to keep the stored key; send null or an
+         *             empty string to remove it.
          *         signup_require_admin_approval: Require admin approval for new sign-ups
          *             (true - yes, false - no).
          *         signup_require_email_verification: Require email verification for new
@@ -9312,20 +9411,10 @@ export interface components {
             /** @description Currency (euro, dollar, pound) */
             currency: components["schemas"]["Currency"];
             /**
-             * Id
-             * @description Unique identifier for server settings (always 1)
-             */
-            id: number;
-            /**
              * Local Login Enabled
              * @description Allow local username/password login (true - yes, false - no)
              */
             local_login_enabled: boolean;
-            /**
-             * Login Photo Set
-             * @description Is login photo set (true - yes, false - no)
-             */
-            login_photo_set: boolean;
             /**
              * Map Background Color
              * @description Background color for the map (hex format)
@@ -9334,25 +9423,19 @@ export interface components {
             /**
              * Num Records Per Page
              * @description Number of records per page in lists
-             * @default 25
              */
             num_records_per_page: number;
             /**
              * Password Length Admin Users
              * @description Minimum password length for admin users
-             * @default 12
              */
             password_length_admin_users: number;
             /**
              * Password Length Regular Users
              * @description Minimum password length for regular users
-             * @default 8
              */
             password_length_regular_users: number;
-            /**
-             * @description Password type policy (strict, length_only)
-             * @default strict
-             */
+            /** @description Password type policy (strict, length_only) */
             password_type: components["schemas"]["PasswordType"];
             /**
              * Public Shareable Links
@@ -9391,7 +9474,7 @@ export interface components {
             sso_enabled: boolean;
             /**
              * Tileserver Api Key
-             * @description API key encrypted for the tile server
+             * @description API key for the tile server (write-only); omit to keep, null or empty to remove
              */
             tileserver_api_key?: string | null;
             /**
@@ -9402,7 +9485,6 @@ export interface components {
             /**
              * Tileserver Regenerate Thumbnails On Change
              * @description Delete and regenerate all activity thumbnails when tile server settings change
-             * @default false
              */
             tileserver_regenerate_thumbnails_on_change: boolean;
             /**
@@ -9410,126 +9492,7 @@ export interface components {
              * @description URL template for the map tileserver
              */
             tileserver_url: string;
-            /**
-             * @description Units (metric, imperial)
-             * @default metric
-             */
-            units: components["schemas"]["Units"];
-        };
-        /**
-         * ServerSettingsRead
-         * @description Complete server settings response schema for API responses.
-         *
-         *     Read-only view of all server settings including administrative
-         *     signup configuration. Used for authenticated endpoints returning
-         *     complete server configuration.
-         */
-        ServerSettingsRead: {
-            /** @description Currency (euro, dollar, pound) */
-            currency: components["schemas"]["Currency"];
-            /**
-             * Id
-             * @description Unique identifier for server settings (always 1)
-             */
-            id: number;
-            /**
-             * Local Login Enabled
-             * @description Allow local username/password login (true - yes, false - no)
-             */
-            local_login_enabled: boolean;
-            /**
-             * Login Photo Set
-             * @description Is login photo set (true - yes, false - no)
-             */
-            login_photo_set: boolean;
-            /**
-             * Map Background Color
-             * @description Background color for the map (hex format)
-             */
-            map_background_color: string;
-            /**
-             * Num Records Per Page
-             * @description Number of records per page in lists
-             * @default 25
-             */
-            num_records_per_page: number;
-            /**
-             * Password Length Admin Users
-             * @description Minimum password length for admin users
-             * @default 12
-             */
-            password_length_admin_users: number;
-            /**
-             * Password Length Regular Users
-             * @description Minimum password length for regular users
-             * @default 8
-             */
-            password_length_regular_users: number;
-            /**
-             * @description Password type policy (strict, length_only)
-             * @default strict
-             */
-            password_type: components["schemas"]["PasswordType"];
-            /**
-             * Public Shareable Links
-             * @description Allow public shareable links (true - yes, false - no)
-             */
-            public_shareable_links: boolean;
-            /**
-             * Public Shareable Links User Info
-             * @description Allow show user info on public shareable links (true - yes, false - no)
-             */
-            public_shareable_links_user_info: boolean;
-            /**
-             * Signup Enabled
-             * @description Allow user sign-up registration (true - yes, false - no)
-             */
-            signup_enabled: boolean;
-            /**
-             * Signup Require Admin Approval
-             * @description Require admin approval for new sign-ups (true - yes, false - no)
-             */
-            signup_require_admin_approval: boolean;
-            /**
-             * Signup Require Email Verification
-             * @description Require email verification for new sign-ups (true - yes, false - no)
-             */
-            signup_require_email_verification: boolean;
-            /**
-             * Sso Auto Redirect
-             * @description Auto-redirect to SSO if only one IdP (true - yes, false - no)
-             */
-            sso_auto_redirect: boolean;
-            /**
-             * Sso Enabled
-             * @description Enable SSO/IdP login (true - yes, false - no)
-             */
-            sso_enabled: boolean;
-            /**
-             * Tileserver Api Key
-             * @description API key encrypted for the tile server
-             */
-            tileserver_api_key?: string | null;
-            /**
-             * Tileserver Attribution
-             * @description Attribution string for the map tileserver
-             */
-            tileserver_attribution: string;
-            /**
-             * Tileserver Regenerate Thumbnails On Change
-             * @description Delete and regenerate all activity thumbnails when tile server settings change
-             * @default false
-             */
-            tileserver_regenerate_thumbnails_on_change: boolean;
-            /**
-             * Tileserver Url
-             * @description URL template for the map tileserver
-             */
-            tileserver_url: string;
-            /**
-             * @description Units (metric, imperial)
-             * @default metric
-             */
+            /** @description Units (metric, imperial) */
             units: components["schemas"]["Units"];
         };
         /**
@@ -9544,6 +9507,7 @@ export interface components {
          *     excludes admin-level configuration fields.
          *
          *     Attributes:
+         *         login_photo_set: Whether a custom login photo is configured.
          *         allowed_redirect_schemes: Custom URI schemes (ALLOWED_REDIRECT_SCHEMES) that
          *             SSO redirects may target, so the frontend validates the same allow-list
          *             as the backend.
@@ -9551,9 +9515,9 @@ export interface components {
         ServerSettingsReadPublic: {
             /**
              * Allowed Redirect Schemes
-             * @description Return the configured custom redirect schemes, sorted.
+             * @description Custom URI schemes SSO redirects may target
              */
-            readonly allowed_redirect_schemes: string[];
+            allowed_redirect_schemes: string[];
             /** @description Currency (euro, dollar, pound) */
             currency: components["schemas"]["Currency"];
             /**
@@ -9574,25 +9538,19 @@ export interface components {
             /**
              * Num Records Per Page
              * @description Number of records per page in lists
-             * @default 25
              */
             num_records_per_page: number;
             /**
              * Password Length Admin Users
              * @description Minimum password length for admin users
-             * @default 12
              */
             password_length_admin_users: number;
             /**
              * Password Length Regular Users
              * @description Minimum password length for regular users
-             * @default 8
              */
             password_length_regular_users: number;
-            /**
-             * @description Password type policy (strict, length_only)
-             * @default strict
-             */
+            /** @description Password type policy (strict, length_only) */
             password_type: components["schemas"]["PasswordType"];
             /**
              * Public Shareable Links
@@ -9627,7 +9585,6 @@ export interface components {
             /**
              * Tileserver Regenerate Thumbnails On Change
              * @description Delete and regenerate all activity thumbnails when tile server settings change
-             * @default false
              */
             tileserver_regenerate_thumbnails_on_change: boolean;
             /**
@@ -9635,10 +9592,7 @@ export interface components {
              * @description URL template for the map tileserver
              */
             tileserver_url: string;
-            /**
-             * @description Units (metric, imperial)
-             * @default metric
-             */
+            /** @description Units (metric, imperial) */
             units: components["schemas"]["Units"];
         };
         /**
@@ -17554,6 +17508,43 @@ export interface operations {
             };
         };
     };
+    read_login_photo_api_v1_public_server_settings_login_photo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "image/*": unknown;
+                };
+            };
+            /** @description Not modified */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     list_tile_maps_templates_api_v1_public_server_settings_tile_maps_templates_get: {
         parameters: {
             query?: never;
@@ -17638,7 +17629,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ServerSettingsRead"];
+                    "application/json": components["schemas"]["ServerSettingsAdminRead"];
                 };
             };
             /** @description Unexpected error */
@@ -17671,7 +17662,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ServerSettingsRead"];
+                    "application/json": components["schemas"]["ServerSettingsAdminRead"];
                 };
             };
             /** @description Validation Error */
@@ -17741,35 +17732,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
-                };
-            };
-            /** @description Unexpected error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
-    list_tile_maps_templates_api_v1_server_settings_tile_maps_templates_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TileMapsTemplate"][];
                 };
             };
             /** @description Unexpected error */
@@ -19012,44 +18974,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
-                };
-            };
-            /** @description Unexpected error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
-    server_img_return_server_images__server_img__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                server_img: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
                 };
             };
             /** @description Unexpected error */
