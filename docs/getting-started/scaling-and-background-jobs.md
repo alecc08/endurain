@@ -110,8 +110,8 @@ With the `custom` profile, nothing checks that the live-update channel is shared
 | `JOBS_BATCH_SIZE` | `10` | Jobs claimed (and outbox rows relayed) per pass. |
 | `JOBS_POLL_INTERVAL_SECONDS` | `2.0` | Idle wait between empty polls. |
 | `JOBS_RETENTION_DAYS` | `90` | Pruning age for completed job bookkeeping. Dead-lettered and in-flight rows are kept. `0` disables pruning. |
-| `EVENT_LOG_ENABLED` | `true` | Record each event's lifecycle in the `event_log` table for diagnostics. |
-| `EVENT_LOG_RETENTION_DAYS` | `90` | Pruning age for `event_log`. `0` disables pruning. |
+| `EVENT_LOG_ENABLED` | `true` | Record each event's lifecycle in the `jasil_event_log` table for diagnostics. |
+| `EVENT_LOG_RETENTION_DAYS` | `90` | Pruning age for `jasil_event_log`. `0` disables pruning. |
 | `APP_ROLE` | `api` | Container role: `api` serves HTTP, `worker` drains the job queue. Requires `JOBS_ENABLED=true`. |
 
 ## Startup validation

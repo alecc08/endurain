@@ -204,12 +204,23 @@ class TestGeocodingSettings:
 
         result = build_jasil_settings(settings).geocoding
 
-        assert result.provider == "photon"
+        assert result.uri == "photon://photon.example.com"
         assert result.rate_limit == 2.5
-        assert result.nominatim_host == "nominatim.example.org"
-        assert result.nominatim_use_https is False
-        assert result.photon_host == "photon.example.com"
-        assert result.photon_use_https is True
+
+    def test_cleartext_nominatim_uses_the_http_scheme(self):
+        settings = core_config.Settings(
+            _env_file=None,
+            REVERSE_GEO_PROVIDER="nominatim",
+            NOMINATIM_API_HOST="nominatim.example.org",
+            NOMINATIM_API_USE_HTTPS=False,
+        )
+
+        assert build_jasil_settings(settings).geocoding.uri == "nominatim+http://nominatim.example.org"
+
+    def test_geocode_provider_uses_the_geocode_scheme(self):
+        settings = core_config.Settings(_env_file=None, REVERSE_GEO_PROVIDER="geocode")
+
+        assert build_jasil_settings(settings).geocoding.uri == "geocode://"
 
     def test_placeholder_api_key_becomes_unset(self):
         # 'changeme' is the shipped placeholder; JASIL disables the capability

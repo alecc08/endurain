@@ -50,6 +50,8 @@ def build_jasil_settings(settings: core_config.Settings) -> jasil_settings.Jasil
             enabled=settings.EVENT_LOG_ENABLED,
             retention_days=settings.EVENT_LOG_RETENTION_DAYS,
         ),
+        # Endurain wrote objects in the flat ``{data_dir}/{area}/{key}`` layout.
+        storage=jasil_settings.StorageSettings(local_legacy_layout=True),
         geocoding=_build_geocoding_settings(settings),
         mail=_build_mail_settings(settings),
         network=jasil_settings.NetworkSettings(ssrf_allowed_hosts=tuple(settings.SSRF_ALLOWED_HOSTS)),
@@ -87,6 +89,28 @@ def _build_job_settings(settings: core_config.Settings) -> jasil_settings.JobSet
     )
 
 
+def _geocoding_uri(settings: core_config.Settings) -> str:
+    """Build the ``GeocodingSettings.uri`` for the configured provider.
+
+    Args:
+        settings: The application settings.
+
+    Returns:
+        ``nominatim://``/``photon://`` (``+http`` when cleartext) or ``geocode://``;
+        an unknown provider is passed through so JASIL logs and disables it.
+    """
+    provider = settings.REVERSE_GEO_PROVIDER
+    if provider == "nominatim":
+        scheme = "nominatim" if settings.NOMINATIM_API_USE_HTTPS else "nominatim+http"
+        return f"{scheme}://{settings.NOMINATIM_API_HOST}"
+    if provider == "photon":
+        scheme = "photon" if settings.PHOTON_API_USE_HTTPS else "photon+http"
+        return f"{scheme}://{settings.PHOTON_API_HOST}"
+    if provider == "geocode":
+        return "geocode://"
+    return f"{provider}://"
+
+
 def _build_geocoding_settings(settings: core_config.Settings) -> jasil_settings.GeocodingSettings:
     """Map the reverse-geocoding variables onto ``GeocodingSettings``.
 
@@ -95,12 +119,8 @@ def _build_geocoding_settings(settings: core_config.Settings) -> jasil_settings.
     """
     api_key = settings.GEOCODES_MAPS_API
     return jasil_settings.GeocodingSettings(
-        provider=settings.REVERSE_GEO_PROVIDER,
+        uri=_geocoding_uri(settings),
         rate_limit=settings.REVERSE_GEO_RATE_LIMIT,
         api_key=None if api_key == "changeme" else api_key,
-        nominatim_host=settings.NOMINATIM_API_HOST,
-        nominatim_use_https=settings.NOMINATIM_API_USE_HTTPS,
-        photon_host=settings.PHOTON_API_HOST,
-        photon_use_https=settings.PHOTON_API_USE_HTTPS,
         user_agent=f"Endurain/{core_config.API_VERSION} (ReverseGeocoding)",
     )
