@@ -247,8 +247,8 @@ class Cluster:
         """
         return self.wait_for(
             lambda: (
-                self.scalar("SELECT count(*) FROM processing_jobs") == expected
-                and self.scalar("SELECT count(*) FROM processing_jobs WHERE status <> 'completed'") == 0
+                self.scalar("SELECT count(*) FROM jasil_processing_jobs") == expected
+                and self.scalar("SELECT count(*) FROM jasil_processing_jobs WHERE status <> 'completed'") == 0
             ),
             timeout,
         )
