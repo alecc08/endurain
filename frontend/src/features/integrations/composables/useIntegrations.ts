@@ -59,8 +59,13 @@ const GARMIN_LINK_POLL_MS = 1_500
  * accepted; {@link useGarminLinkStatusQuery} then follows it to its outcome.
  */
 export function useLinkGarminMutation() {
+  const client = useQueryClient()
   return useMutation<GarminLinkStatus, Error, GarminLoginInput>({
     mutationFn: (input) => linkGarmin(input),
+    // Replace the previous attempt's outcome (and error) before the dialog starts following.
+    onSuccess: (status) => {
+      client.setQueryData(queryKeys.integrations.garminLinkStatus(), status)
+    },
   })
 }
 
@@ -90,7 +95,6 @@ export function useGarminLinkStatusQuery(enabled: Ref<boolean>) {
       return status === 'completed' || status === 'failed' ? false : GARMIN_LINK_POLL_MS
     },
     refetchIntervalInBackground: true,
-    // A fresh attempt must not start from the previous attempt's outcome.
     gcTime: 0,
   })
 }
