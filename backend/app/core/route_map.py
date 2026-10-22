@@ -78,7 +78,7 @@ def normalise_tile_url(url: str) -> str:
     # Escape any remaining unknown {placeholders} that are not
     # the three staticmap knows about ({z}, {x}, {y})
     url = re.sub(
-        r"\{(?!z\}|x\}|y\})([^}]+)\}",
+        r"\{(?!z\}|x\}|y\})([^{}]+)\}",
         lambda m: "{{" + m.group(1) + "}}",
         url,
     )
