@@ -1,17 +1,18 @@
+"""Garmin Connect activity sync: fetch the window, download each file and hand it to ingestion."""
+
 import os
 import tempfile
 from datetime import datetime
 
 import garminconnect
-from sqlalchemy.orm import Session
 
 import core.file_uploads as file_uploads
 import core.logger as core_logger
 import modules.activities.activity.integration_service as activity_integration
 import modules.activities.activity.schema as activity_schema
 import modules.activities.activity_ingestion.integration_service as activity_ingestion_integration
-import modules.garmin.gear_utils as garmin_gear_utils
-import modules.garmin.utils as garmin_utils
+import modules.garmin.gear_service as garmin_gear_service
+import modules.garmin.service as garmin_service
 from core.database import SessionLocal
 
 logger = core_logger.get_logger(__name__)
@@ -58,8 +59,9 @@ def _download_and_ingest_activity(
             )
         except Exception as err:
             logger.warning(
-                f"User {user_id}: Garmin ZIP for activity {activity_id} failed validation: {type(err).__name__}",
+                "Garmin ZIP for activity failed validation",
                 exc_info=err,
+                extra=core_logger.context(user_id=user_id, activity_id=activity_id, error_type=type(err).__name__),
             )
             return stored
 
@@ -73,8 +75,9 @@ def _download_and_ingest_activity(
             )
         except Exception as err:
             logger.warning(
-                f"User {user_id}: Garmin ZIP extraction failed for activity {activity_id}: {type(err).__name__}",
+                "Garmin ZIP extraction failed for activity",
                 exc_info=err,
+                extra=core_logger.context(user_id=user_id, activity_id=activity_id, error_type=type(err).__name__),
             )
             return stored
 
@@ -88,7 +91,7 @@ def _download_and_ingest_activity(
                         # Resolved here rather than inside ingestion: which local gear
                         # a Garmin UUID maps to (and whether gear sync is even on) is
                         # this module's knowledge, not the pipeline's.
-                        gear_id=garmin_gear_utils.resolve_synced_gear_id(user_id, activity_gear, db),
+                        gear_id=garmin_gear_service.resolve_synced_gear_id(user_id, activity_gear, db),
                         provider_gear_id=activity_gear[0]["uuid"] if activity_gear else None,
                         activity_name=activity_name,
                     ),
@@ -97,13 +100,14 @@ def _download_and_ingest_activity(
                 stored.extend(parsed_result)
             else:
                 logger.warning(
-                    f"User {user_id}: Failed to parse Garmin activity {activity_id} file {full_file_path.name}"
+                    "Failed to parse Garmin activity file",
+                    extra=core_logger.context(user_id=user_id, activity_id=activity_id, file_name=full_file_path.name),
                 )
     return stored
 
 
 def fetch_and_process_activities_by_dates(
-    garminconnect_client: garminconnect.Garmin,
+    session: garmin_service.GarminSession,
     start_date: datetime,
     end_date: datetime,
     user_id: int,
@@ -115,7 +119,7 @@ def fetch_and_process_activities_by_dates(
     logged and skipped, so it does not stop the rest of the window.
 
     Args:
-        garminconnect_client: A client authenticated as the user.
+        session: The user's authenticated Garmin Connect session.
         start_date: Start of the window.
         end_date: End of the window.
         user_id: The user the activities belong to.
@@ -123,30 +127,27 @@ def fetch_and_process_activities_by_dates(
     Returns:
         The stored activities, or ``None`` when there were none.
     """
+    garminconnect_client = session.client
     try:
         garmin_activities = garminconnect_client.get_activities_by_date(
             str(start_date.date()),
             str(end_date.date()),
         )
     except garminconnect.GarminConnectAuthenticationError as err:
-        logger.error(
-            f"Garmin Connect token expired for user {user_id}. Unlinking account. User must re-link: {err}",
-            exc_info=err,
-        )
-        with SessionLocal() as db:
-            garmin_utils.unlink_expired_account(user_id, db)
+        garmin_service.handle_rejected_token(user_id, session, err)
         return None
     except Exception as err:
         logger.error(
-            f"Error fetching activities for user {user_id} between {start_date.date()} and {end_date.date()}: {err}",
+            "Error fetching activities for user",
             exc_info=err,
+            extra=core_logger.context(user_id=user_id, start_date=start_date.date(), end_date=end_date.date()),
         )
         return None
 
     if garmin_activities is None:
         logger.info(
-            f"User {user_id}: No new Garmin Connect activities found between {start_date.date()} and {end_date.date()}",
-            extra=core_logger.context(console=True),
+            "No new Garmin Connect activities found",
+            extra=core_logger.context(user_id=user_id, start_date=start_date.date(), end_date=end_date.date()),
         )
         return None
 
@@ -157,75 +158,71 @@ def fetch_and_process_activities_by_dates(
         with SessionLocal() as db:
             already_stored = activity_integration.get_activity_by_garminconnect_id(activity_id, user_id, db)
         if already_stored:
-            logger.info(f"User {user_id}: Activity {activity_id} already stored in the database")
+            logger.info(
+                "Activity already stored in the database",
+                extra=core_logger.context(user_id=user_id, activity_id=activity_id),
+            )
             continue
 
-        logger.info(f"User {user_id}: Processing activity {activity_id}")
+        logger.info(
+            "Processing activity",
+            extra=core_logger.context(user_id=user_id, activity_id=activity_id),
+        )
         try:
             parsed_activities.extend(_download_and_ingest_activity(garminconnect_client, activity, user_id))
+        except garminconnect.GarminConnectAuthenticationError as err:
+            garmin_service.handle_rejected_token(user_id, session, err)
+            break
         except Exception as err:
             logger.error(
-                f"User {user_id}: Error processing Garmin Connect activity {activity_id}: {err}",
+                "Error processing Garmin Connect activity",
                 exc_info=err,
+                extra=core_logger.context(user_id=user_id, activity_id=activity_id),
             )
 
     return parsed_activities if parsed_activities else None
 
 
-def get_user_garminconnect_client(user_id: int, db: Session):
-    try:
-        # Get the user integrations by user ID
-        user_integrations = garmin_utils.fetch_user_integrations_and_validate_token(user_id, db)
-
-        if user_integrations is None:
-            logger.info(f"User {user_id}: Garmin Connect not linked")
-            return None
-
-        # Create a Garmin Connect client with the user's access token
-        garminconnect_client = garmin_utils.login_garminconnect_using_tokens(
-            user_integrations.garminconnect_token,
-        )
-
-        # return the Garmin Connect client
-        return garminconnect_client
-    except Exception as err:
-        # Log specific errors during getting the Garmin Connect client
-        logger.error(f"Error in get_user_garminconnect_client: {err}", exc_info=err)
-
-        # Return None if the client cannot be created
-        return None
-
-
 def get_user_garminconnect_activities_by_dates(
+    user_id: int,
     start_date: datetime,
     end_date: datetime,
-    user_id: int,
 ) -> list[activity_schema.ActivityRead] | None:
     """Fetch and store one user's Garmin Connect activities recorded in a window.
 
     Args:
+        user_id: The user to sync.
         start_date: Start of the window.
         end_date: End of the window.
-        user_id: The user to sync.
 
     Returns:
         The stored activities, or ``None`` when Garmin Connect is not linked or
         nothing new came back.
     """
+    session = None
     try:
         with SessionLocal() as db:
-            garminconnect_client = get_user_garminconnect_client(user_id, db)
+            session = garmin_service.get_user_garminconnect_session(user_id, db)
 
-        if garminconnect_client is None:
+        if session is None:
             return None
 
         logger.info(
-            f"User {user_id}: Started Garmin Connect activities processing for date range "
-            f"{start_date.date()} to {end_date.date()}"
+            "Started Garmin Connect activities processing for date range to",
+            extra=core_logger.context(user_id=user_id, start_date=start_date.date(), end_date=end_date.date()),
         )
-        processed = fetch_and_process_activities_by_dates(garminconnect_client, start_date, end_date, user_id)
-        logger.info(f"User {user_id}: {len(processed) if processed else 0} Garmin Connect activities processed")
+        processed = fetch_and_process_activities_by_dates(session, start_date, end_date, user_id)
+        logger.info(
+            "Garmin Connect activities processed",
+            extra=core_logger.context(user_id=user_id, count=len(processed) if processed else 0),
+        )
         return processed
     except Exception as err:
-        logger.error(f"Error in get_user_garminconnect_activities_by_dates: {err}", exc_info=err)
+        logger.error(
+            "Error in get_user_garminconnect_activities_by_dates",
+            exc_info=err,
+        )
         return None
+    finally:
+        if session is not None:
+            garmin_service.save_refreshed_token(user_id, session)

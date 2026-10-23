@@ -958,6 +958,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /**
          * Garminconnect Retrieve Activities Days
          * @description Queue a Garmin Connect sync of an explicit date range.
@@ -966,9 +968,7 @@ export interface paths {
          *     for the outcome. The range is fetched by a background job, never on this
          *     request or an API worker thread.
          */
-        get: operations["garminconnect_retrieve_activities_days_api_v1_garminconnect_activities_get"];
-        put?: never;
-        post?: never;
+        post: operations["garminconnect_retrieve_activities_days_api_v1_garminconnect_activities_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -982,10 +982,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Garminconnect Retrieve Gear */
-        get: operations["garminconnect_retrieve_gear_api_v1_garminconnect_gear_get"];
+        get?: never;
         put?: never;
-        post?: never;
+        /**
+         * Garminconnect Retrieve Gear
+         * @description Queue a sync of the user's Garmin Connect gear; a background job runs it.
+         *
+         *     Poll ``GET /garminconnect/sync/gear`` for the outcome. A second request while one is
+         *     pending is answered 409.
+         */
+        post: operations["garminconnect_retrieve_gear_api_v1_garminconnect_gear_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -999,10 +1005,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Garminconnect Retrieve Health Days */
-        get: operations["garminconnect_retrieve_health_days_api_v1_garminconnect_health_get"];
+        get?: never;
         put?: never;
-        post?: never;
+        /**
+         * Garminconnect Retrieve Health Days
+         * @description Queue a sync of the user's Garmin Connect health data for a date range.
+         *
+         *     The range must not exceed 31 days; a background job runs it. Poll
+         *     ``GET /garminconnect/sync/health`` for the outcome. A second request while one is pending is
+         *     answered 409.
+         */
+        post: operations["garminconnect_retrieve_health_days_api_v1_garminconnect_health_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1027,7 +1040,11 @@ export interface paths {
          *     reports ``completed`` or ``failed``. A second request while one is running is answered 409.
          */
         post: operations["garminconnect_link_api_v1_garminconnect_link_post"];
-        delete?: never;
+        /**
+         * Garminconnect Unlink
+         * @description Unlink the user's Garmin Connect account.
+         */
+        delete: operations["garminconnect_unlink_api_v1_garminconnect_link_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1062,7 +1079,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Garminconnect Mfa Code */
+        /**
+         * Garminconnect Mfa Code
+         * @description Hand the MFA code to the Garmin Connect login waiting for it.
+         */
         post: operations["garminconnect_mfa_code_api_v1_garminconnect_mfa_post"];
         delete?: never;
         options?: never;
@@ -1070,18 +1090,21 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/garminconnect/unlink": {
+    "/api/v1/garminconnect/sync/{kind}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Garminconnect Sync Status
+         * @description Report where the authenticated user's queued gear or health sync is.
+         */
+        get: operations["garminconnect_sync_status_api_v1_garminconnect_sync__kind__get"];
         put?: never;
         post?: never;
-        /** Garminconnect Unlink */
-        delete: operations["garminconnect_unlink_api_v1_garminconnect_unlink_delete"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5910,6 +5933,14 @@ export interface components {
          */
         FollowStatus: "pending" | "accepted";
         /**
+         * GarminDetail
+         * @description A human-readable outcome of a Garmin Connect request.
+         */
+        GarminDetail: {
+            /** Detail */
+            detail: string;
+        };
+        /**
          * GarminLinkStatus
          * @description Where a Garmin Connect link attempt is.
          *
@@ -5922,17 +5953,35 @@ export interface components {
             reason?: components["schemas"]["LinkFailure"] | null;
             status: components["schemas"]["LinkStatus"];
         };
-        /** GarminLogin */
+        /**
+         * GarminLogin
+         * @description Credentials a user submits to link Garmin Connect.
+         */
         GarminLogin: {
             /**
              * Is Cn
              * @default false
              */
             is_cn: boolean;
-            /** Password */
+            /**
+             * Password
+             * Format: password
+             */
             password: string;
             /** Username */
             username: string;
+        };
+        /**
+         * GarminSyncStatus
+         * @description Where a queued Garmin Connect gear or health sync is.
+         *
+         *     Attributes:
+         *         kind: What the sync pulls.
+         *         status: ``queued`` until a worker picks it up, ``running``, then ``completed`` or ``failed``.
+         */
+        GarminSyncStatus: {
+            kind: components["schemas"]["SyncKind"];
+            status: components["schemas"]["SyncStatus"];
         };
         /**
          * GearComponentCreate
@@ -10163,6 +10212,18 @@ export interface components {
             client_secret: string | null;
         };
         /**
+         * SyncKind
+         * @description What a queued Garmin Connect sync pulls.
+         * @enum {string}
+         */
+        SyncKind: "gear" | "health";
+        /**
+         * SyncStatus
+         * @description Where a queued Garmin Connect sync is.
+         * @enum {string}
+         */
+        SyncStatus: "queued" | "running" | "completed" | "failed";
+        /**
          * TileMapsTemplate
          * @description Schema representing available tile map templates.
          *
@@ -12093,7 +12154,10 @@ export interface components {
              */
             mfa_code: string;
         };
-        /** MFARequest */
+        /**
+         * MFARequest
+         * @description The MFA code a user submits to finish a link attempt.
+         */
         modules__garmin__schema__MFARequest: {
             /** Mfa Code */
             mfa_code: string;
@@ -13823,7 +13887,7 @@ export interface operations {
             };
         };
     };
-    garminconnect_retrieve_activities_days_api_v1_garminconnect_activities_get: {
+    garminconnect_retrieve_activities_days_api_v1_garminconnect_activities_post: {
         parameters: {
             query: {
                 start_date: string;
@@ -13864,7 +13928,7 @@ export interface operations {
             };
         };
     };
-    garminconnect_retrieve_gear_api_v1_garminconnect_gear_get: {
+    garminconnect_retrieve_gear_api_v1_garminconnect_gear_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13879,7 +13943,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["GarminSyncStatus"];
                 };
             };
             /** @description Unexpected error */
@@ -13893,7 +13957,7 @@ export interface operations {
             };
         };
     };
-    garminconnect_retrieve_health_days_api_v1_garminconnect_health_get: {
+    garminconnect_retrieve_health_days_api_v1_garminconnect_health_post: {
         parameters: {
             query: {
                 start_date: string;
@@ -13911,7 +13975,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["GarminSyncStatus"];
                 };
             };
             /** @description Validation Error */
@@ -13976,6 +14040,35 @@ export interface operations {
             };
         };
     };
+    garminconnect_unlink_api_v1_garminconnect_link_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GarminDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     garminconnect_link_status_api_v1_garminconnect_link_status_get: {
         parameters: {
             query?: never;
@@ -14024,7 +14117,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["GarminDetail"];
                 };
             };
             /** @description Validation Error */
@@ -14047,11 +14140,13 @@ export interface operations {
             };
         };
     };
-    garminconnect_unlink_api_v1_garminconnect_unlink_delete: {
+    garminconnect_sync_status_api_v1_garminconnect_sync__kind__get: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                kind: components["schemas"]["SyncKind"];
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -14062,7 +14157,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["GarminSyncStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
                 };
             };
             /** @description Unexpected error */

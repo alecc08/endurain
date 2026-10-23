@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
-import modules.garmin.activity_utils as activity_utils
+import modules.garmin.activity_service as activity_utils
+import modules.garmin.service as garmin_service
 
 
 def _make_garminconnect_client(activity_id: int = 12345) -> Mock:
@@ -25,7 +26,7 @@ def _make_garminconnect_client(activity_id: int = 12345) -> Mock:
 
 def _call(client: Mock, user_id: int = 1) -> list | None:
     return activity_utils.fetch_and_process_activities_by_dates(
-        garminconnect_client=client,
+        session=garmin_service.GarminSession(client, {"di_token": "enc"}),
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 1, 2, tzinfo=UTC),
         user_id=user_id,
@@ -56,7 +57,7 @@ def _patch_common(monkeypatch):
         "get_activity_by_garminconnect_id",
         Mock(return_value=None),
     )
-    monkeypatch.setattr(activity_utils.garmin_gear_utils, "resolve_synced_gear_id", Mock(return_value=None))
+    monkeypatch.setattr(activity_utils.garmin_gear_service, "resolve_synced_gear_id", Mock(return_value=None))
     monkeypatch.setattr(
         activity_utils.file_uploads,
         "save_validated_bytes_sync",
@@ -158,9 +159,9 @@ class TestExtractionFailureLogging:
 
         assert _call(client) is None
 
-        message = activity_utils.logger.warning.call_args.args[0]
-        assert "extraction failed" in message
-        assert "ValueError" in message
+        call = activity_utils.logger.warning.call_args
+        assert "extraction failed" in call.args[0]
+        assert call.kwargs["extra"]["error_type"] == "ValueError"
 
 
 class TestWorkDirectoryIsPrivate:
@@ -184,3 +185,24 @@ class TestWorkDirectoryIsPrivate:
 
         assert not Path(seen["upload_dir"]).exists()
         assert seen["dest_dir"].startswith(seen["upload_dir"])
+
+
+def test_an_auth_rejection_while_downloading_unlinks_the_account_and_stops_the_window():
+    import garminconnect
+
+    session = garmin_service.GarminSession(Mock(), {"di_token": "enc"})
+    session.client.get_activities_by_date.return_value = [{"activityId": 1}, {"activityId": 2}]
+    with (
+        patch.object(activity_utils, "SessionLocal"),
+        patch.object(activity_utils.activity_integration, "get_activity_by_garminconnect_id", return_value=None),
+        patch.object(
+            activity_utils,
+            "_download_and_ingest_activity",
+            side_effect=garminconnect.GarminConnectAuthenticationError("401"),
+        ) as download,
+        patch.object(garmin_service, "handle_rejected_token") as unlink,
+    ):
+        activity_utils.fetch_and_process_activities_by_dates(session, datetime(2026, 1, 1), datetime(2026, 1, 2), 1)
+
+    unlink.assert_called_once()
+    download.assert_called_once()
