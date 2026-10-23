@@ -398,8 +398,17 @@ export const queryKeys = {
     detail: () => ['server-settings', 'detail'] as const,
     /** The static catalogue of selectable tile-server presets. */
     tileTemplates: () => ['server-settings', 'tile-templates'] as const,
-    /** Whether outgoing email is usable (SMTP settings valid). */
+    /** Whether outgoing email is usable (mail settings valid). */
     email: () => ['server-settings', 'email'] as const,
+    /** The editable mail server settings. */
+    mail: () => ['server-settings', 'mail'] as const,
+    /** Whether the server-log viewer is available. */
+    logsStatus: () => ['server-settings', 'logs-status'] as const,
+    /** Broad prefix of every accumulated server-log tail. */
+    logsAll: () => ['server-settings', 'logs'] as const,
+    /** The accumulated server-log tail for one set of filters. */
+    logs: (level: string | null, search: string) =>
+      ['server-settings', 'logs', level, search] as const,
   },
 
   /**

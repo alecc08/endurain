@@ -4,7 +4,7 @@ Tests for server_settings.crud module.
 This module tests the persistence of the singleton server settings row.
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -22,6 +22,7 @@ def _settings_row(**overrides):
         public_shareable_links=False,
         public_shareable_links_user_info=False,
         login_photo_set=False,
+        version=1,
         currency="euro",
         num_records_per_page=25,
         signup_enabled=False,
@@ -37,7 +38,18 @@ def _settings_row(**overrides):
         password_type="strict",
         password_length_regular_users=8,
         password_length_admin_users=12,
+        geocoding_service="nominatim",
+        geocoding_host=None,
+        geocoding_use_https=True,
+        geocoding_rate_limit=1.0,
+        session_idle_timeout_enabled=False,
+        session_idle_timeout_hours=1,
+        session_absolute_timeout_hours=24,
+        access_token_expire_minutes=15,
+        refresh_token_expire_days=7,
+        read_notification_retention_days=90,
         tileserver_api_key=None,
+        geocoding_api_key=None,
     )
     values.update(overrides)
     row = MagicMock(spec=server_settings_models.ServerSettings)
@@ -74,6 +86,16 @@ def _edit(**overrides):
         tileserver_regenerate_thumbnails_on_change=False,
         password_length_regular_users=8,
         password_length_admin_users=12,
+        geocoding_service="nominatim",
+        geocoding_host=None,
+        geocoding_use_https=True,
+        geocoding_rate_limit=1.0,
+        session_idle_timeout_enabled=False,
+        session_idle_timeout_hours=1,
+        session_absolute_timeout_hours=24,
+        access_token_expire_minutes=15,
+        refresh_token_expire_days=7,
+        read_notification_retention_days=90,
     )
     values.update(overrides)
     return server_settings_schema.ServerSettingsEdit(**values)
@@ -140,13 +162,15 @@ class TestSetLoginPhoto:
     """Test suite for set_login_photo function."""
 
     def test_set_login_photo_stages_the_flag(self, mock_db):
-        """Test the flag is flushed, not committed."""
+        """Test the flag is flushed, not committed, and marked modified so the version moves."""
         row = _settings_row()
         _mock_row(mock_db, row)
 
-        server_settings_crud.set_login_photo(True, mock_db)
+        with patch.object(server_settings_crud, "flag_modified") as flag_modified:
+            server_settings_crud.set_login_photo(True, mock_db)
 
         assert row.login_photo_set is True
+        flag_modified.assert_called_once_with(row, "login_photo_set")
         mock_db.flush.assert_called_once()
         mock_db.commit.assert_not_called()
 
@@ -156,3 +180,89 @@ class TestSetLoginPhoto:
 
         with pytest.raises(core_exceptions.ServiceUnavailableError):
             server_settings_crud.set_login_photo(True, mock_db)
+
+
+def _mail_row(**overrides):
+    values = dict(
+        id=1,
+        version=1,
+        host="mail.example.com",
+        port=587,
+        security="starttls",
+        username=None,
+        password=None,
+        from_address=None,
+    )
+    values.update(overrides)
+    row = MagicMock(spec=server_settings_models.MailSettings)
+    for key, value in values.items():
+        setattr(row, key, value)
+    return row
+
+
+def _mail_edit(**overrides):
+    values = dict(host="smtp.example.org", port=465, security="ssl", username=None, from_address=None)
+    values.update(overrides)
+    return server_settings_schema.MailSettingsEdit(**values)
+
+
+class TestGetMailSettings:
+    def test_returns_the_stored_row_as_the_read_schema(self, mock_db):
+        _mock_row(mock_db, _mail_row())
+
+        result = server_settings_crud.get_mail_settings(mock_db)
+
+        assert isinstance(result, server_settings_schema.MailSettingsRead)
+        assert result.host == "mail.example.com"
+
+    def test_returns_none_when_missing(self, mock_db):
+        _mock_row(mock_db, None)
+
+        assert server_settings_crud.get_mail_settings(mock_db) is None
+
+    def test_for_update_locks_the_row(self, mock_db):
+        _mock_row(mock_db, _mail_row())
+
+        server_settings_crud.get_mail_settings(mock_db, for_update=True)
+
+        assert mock_db.execute.call_args.args[0]._for_update_arg is not None
+
+    def test_a_plain_read_does_not_lock(self, mock_db):
+        _mock_row(mock_db, _mail_row())
+
+        server_settings_crud.get_mail_settings(mock_db)
+
+        assert mock_db.execute.call_args.args[0]._for_update_arg is None
+
+
+class TestEditMailSettings:
+    def test_stages_without_committing_and_locks(self, mock_db):
+        row = _mail_row()
+        _mock_row(mock_db, row)
+
+        result = server_settings_crud.edit_mail_settings(_mail_edit(), mock_db)
+
+        assert row.host == "smtp.example.org"
+        assert row.port == 465
+        mock_db.flush.assert_called_once()
+        mock_db.commit.assert_not_called()
+        mock_db.refresh.assert_called_once_with(row)
+        assert mock_db.execute.call_args.args[0]._for_update_arg is not None
+        assert isinstance(result, server_settings_schema.MailSettingsRead)
+
+    def test_writes_only_the_fields_that_were_set(self, mock_db):
+        row = _mail_row(password="enc")
+        _mock_row(mock_db, row)
+        payload = server_settings_schema.MailSettingsEdit.model_construct(_fields_set={"port"}, port=25)
+
+        server_settings_crud.edit_mail_settings(payload, mock_db)
+
+        assert row.port == 25
+        assert row.password == "enc"
+        assert row.host == "mail.example.com"
+
+    def test_missing_row_raises_service_unavailable(self, mock_db):
+        _mock_row(mock_db, None)
+
+        with pytest.raises(core_exceptions.ServiceUnavailableError):
+            server_settings_crud.edit_mail_settings(_mail_edit(), mock_db)

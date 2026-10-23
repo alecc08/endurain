@@ -11,8 +11,11 @@ from pydantic import (
     StrictInt,
     StrictStr,
     field_validator,
+    model_validator,
 )
 
+import core.geocoding as core_geocoding
+import core.mail as core_mail
 import core.sanitization as core_sanitization
 
 
@@ -214,7 +217,113 @@ class ServerSettingsBase(BaseModel):
         return core_sanitization.sanitize_attribution(value) or ""
 
 
-class ServerSettingsEdit(ServerSettingsBase):
+#: Bare ``host[:port]`` authority: a hostname, IPv4 address or bracketed IPv6 literal, no scheme or path.
+_GEOCODING_HOST_PATTERN = re.compile(r"^([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:.]+\])(:[0-9]{1,5})?$")
+
+
+class ServerSettingsGeocoding(BaseModel):
+    """The reverse-geocoding fields, kept off the public settings model.
+
+    A separate mixin rather than part of :class:`ServerSettingsBase`, which the public
+    settings inherit: the geocoding host of a self-hosted instance is not for anonymous visitors.
+
+    Attributes:
+        geocoding_service: The reverse-geocoding service.
+        geocoding_host: Host (and optional port) of the service; empty for the service's default host.
+        geocoding_use_https: Address the host over HTTPS.
+        geocoding_rate_limit: Maximum requests per second (0 disables throttling).
+    """
+
+    geocoding_service: core_geocoding.GeocodingService = Field(
+        ..., description="Reverse-geocoding service (nominatim, photon, geocode)"
+    )
+    geocoding_host: StrictStr | None = Field(
+        ...,
+        max_length=253,
+        description="Host of the geocoding service, e.g. nominatim.example.org:8080 (empty - the service's default)",
+    )
+    geocoding_use_https: StrictBool = Field(
+        ..., description="Address the geocoding host over HTTPS (true - yes, false - no)"
+    )
+    geocoding_rate_limit: float = Field(
+        ..., ge=0, le=100, description="Maximum geocoding requests per second (0 disables throttling)"
+    )
+
+    @field_validator("geocoding_host", mode="after")
+    @classmethod
+    def validate_geocoding_host(cls, value: str | None) -> str | None:
+        """Normalise the geocoding host and refuse anything but ``host[:port]``.
+
+        Args:
+            value: The submitted host.
+
+        Returns:
+            The lower-cased host, or None when blank.
+
+        Raises:
+            ValueError: If the value carries a scheme, path or other characters.
+        """
+        value = (value or "").strip().lower()
+        if not value:
+            return None
+        if not _GEOCODING_HOST_PATTERN.fullmatch(value):
+            raise ValueError("Geocoding host must be a hostname or IP address with an optional port")
+        return value
+
+
+class ServerSettingsSessionPolicy(BaseModel):
+    """The session and token policy fields, kept off the public settings model.
+
+    Attributes:
+        session_idle_timeout_enabled: Enforce the idle and absolute session timeouts.
+        session_idle_timeout_hours: Hours of inactivity that end a session (1-8760).
+        session_absolute_timeout_hours: Hours after which a session ends (1-8760, not below the idle timeout).
+        access_token_expire_minutes: Access token lifetime in minutes (1-1440).
+        refresh_token_expire_days: Refresh token lifetime in days (1-365).
+    """
+
+    session_idle_timeout_enabled: StrictBool = Field(
+        ..., description="Enforce session idle and absolute timeouts (true - yes, false - no)"
+    )
+    session_idle_timeout_hours: StrictInt = Field(
+        ..., ge=1, le=8760, description="Hours of inactivity after which a session ends"
+    )
+    session_absolute_timeout_hours: StrictInt = Field(
+        ..., ge=1, le=8760, description="Hours after which a session ends whatever its activity"
+    )
+    access_token_expire_minutes: StrictInt = Field(..., ge=1, le=1440, description="Access token lifetime in minutes")
+    refresh_token_expire_days: StrictInt = Field(..., ge=1, le=365, description="Refresh token lifetime in days")
+
+    @model_validator(mode="after")
+    def validate_absolute_timeout(self) -> "ServerSettingsSessionPolicy":
+        """Refuse an absolute timeout shorter than the idle timeout.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: If the absolute timeout is below the idle timeout.
+        """
+        if self.session_absolute_timeout_hours < self.session_idle_timeout_hours:
+            raise ValueError("The absolute session timeout cannot be shorter than the idle timeout")
+        return self
+
+
+class ServerSettingsRetention(BaseModel):
+    """The data retention fields, kept off the public settings model.
+
+    Attributes:
+        read_notification_retention_days: Days after which read notifications are purged (0 disables pruning).
+    """
+
+    read_notification_retention_days: StrictInt = Field(
+        ..., ge=0, le=3650, description="Days after which read notifications are purged (0 - never)"
+    )
+
+
+class ServerSettingsEdit(
+    ServerSettingsBase, ServerSettingsGeocoding, ServerSettingsSessionPolicy, ServerSettingsRetention
+):
     """Request body for editing the server settings.
 
     A full replacement: every setting except the tile API key is required. The row
@@ -230,6 +339,8 @@ class ServerSettingsEdit(ServerSettingsBase):
             (true - yes, false - no).
         signup_require_email_verification: Require email verification for new
             sign-ups (true - yes, false - no).
+        geocoding_api_key: Plain-text API key for the geocoding service; same
+            write-only semantics as ``tileserver_api_key``.
     """
 
     # Capped so the Fernet token (about 1.37x the plain length) fits the 512-char column.
@@ -237,6 +348,11 @@ class ServerSettingsEdit(ServerSettingsBase):
         default=None,
         max_length=256,
         description="API key for the tile server (write-only); omit to keep, null or empty to remove",
+    )
+    geocoding_api_key: StrictStr | None = Field(
+        default=None,
+        max_length=256,
+        description="API key for the geocoding service (write-only); omit to keep, null or empty to remove",
     )
     signup_require_admin_approval: StrictBool = Field(
         ...,
@@ -257,6 +373,7 @@ class ServerSettingsRead(ServerSettingsEdit):
     Attributes:
         id: Unique identifier (always 1, singleton pattern).
         login_photo_set: Whether a custom login photo is configured.
+        version: Optimistic-concurrency counter, also sent as the ``ETag``.
     """
 
     # Wider than the edit cap: the stored value is the Fernet token, which this model also reads.
@@ -265,25 +382,42 @@ class ServerSettingsRead(ServerSettingsEdit):
         max_length=512,
         description="API key for the tile server",
     )
+    geocoding_api_key: StrictStr | None = Field(
+        default=None,
+        max_length=512,
+        description="API key for the geocoding service",
+    )
     id: StrictInt = Field(..., description="Unique identifier for server settings (always 1)")
     login_photo_set: StrictBool = Field(..., description="Is login photo set (true - yes, false - no)")
+    version: StrictInt = Field(default=1, ge=1, description="Optimistic-concurrency counter")
 
 
-class ServerSettingsAdminRead(ServerSettingsBase):
-    """Complete server settings response for admins; the tile API key is never returned.
+class ServerSettingsAdminRead(
+    ServerSettingsBase, ServerSettingsGeocoding, ServerSettingsSessionPolicy, ServerSettingsRetention
+):
+    """Complete server settings response for admins; API keys are never returned.
 
     Attributes:
         id: Unique identifier (always 1, singleton pattern).
         login_photo_set: Whether a custom login photo is configured.
+        version: Optimistic-concurrency counter, also sent as the ``ETag``.
         tileserver_api_key_set: Whether a tile API key is stored.
+        geocoding_api_key_set: Whether a geocoding API key is stored.
+        env_managed: Field name to the environment variable that sets it; those
+            fields cannot be edited while the variable is set.
         signup_require_admin_approval: Require admin approval for new sign-ups.
         signup_require_email_verification: Require email verification for new sign-ups.
     """
 
     id: StrictInt = Field(..., description="Unique identifier for server settings (always 1)")
     login_photo_set: StrictBool = Field(..., description="Is login photo set (true - yes, false - no)")
+    version: StrictInt = Field(..., ge=1, description="Optimistic-concurrency counter")
     tileserver_api_key_set: StrictBool = Field(
         ..., description="Is a tile server API key stored (true - yes, false - no)"
+    )
+    geocoding_api_key_set: StrictBool = Field(..., description="Is a geocoding API key stored (true - yes, false - no)")
+    env_managed: dict[str, str] = Field(
+        ..., description="Field name to the environment variable that sets it (not editable while set)"
     )
     signup_require_admin_approval: StrictBool = Field(
         ...,
@@ -361,11 +495,105 @@ class TileMapsTemplate(BaseModel):
     )
 
 
+class MailSettingsEdit(BaseModel):
+    """Request body for editing the mail server settings.
+
+    A full replacement except for the password.
+
+    Attributes:
+        host: Mail server hostname; empty or null disables mail.
+        port: Mail server port.
+        security: Connection security.
+        username: Authentication username.
+        from_address: Sender address; the username is used when empty.
+        password: Plain-text password; stored encrypted and never returned. Omit it
+            to keep the stored password; send null or an empty string to remove it.
+    """
+
+    host: StrictStr | None = Field(..., max_length=253, description="Mail server hostname (empty - mail disabled)")
+    port: StrictInt = Field(..., ge=1, le=65535, description="Mail server port")
+    security: core_mail.MailSecurity = Field(..., description="Connection security (starttls, ssl, none)")
+    username: StrictStr | None = Field(..., max_length=320, description="Mail server authentication username")
+    from_address: StrictStr | None = Field(
+        ..., max_length=320, description="Sender address (empty - the username is used)"
+    )
+    # Capped so the Fernet token (about 1.37x the plain length) fits the 512-char column.
+    password: StrictStr | None = Field(
+        default=None,
+        max_length=256,
+        description="Mail server password (write-only); omit to keep, null or empty to remove",
+    )
+
+    model_config = ConfigDict(extra="forbid", use_enum_values=True)
+
+    @field_validator("host", "username", "from_address", mode="after")
+    @classmethod
+    def _empty_to_none(cls, value: str | None) -> str | None:
+        """Treat a blank string as unset.
+
+        Args:
+            value: The submitted value.
+
+        Returns:
+            The stripped value, or None when it is blank.
+        """
+        return (value.strip() or None) if value is not None else None
+
+
+class MailSettingsRead(MailSettingsEdit):
+    """The mail settings row as stored, for in-process use only.
+
+    Never a response model: the password is the stored (encrypted) value.
+
+    Attributes:
+        id: Unique identifier (always 1, singleton pattern).
+        version: Optimistic-concurrency counter, also sent as the ``ETag``.
+    """
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid", use_enum_values=True)
+
+    # Wider than the edit cap: the stored value is the Fernet token, which this model also reads.
+    password: StrictStr | None = Field(default=None, max_length=512, description="Mail server password")
+    id: StrictInt = Field(..., description="Unique identifier for mail settings (always 1)")
+    version: StrictInt = Field(default=1, ge=1, description="Optimistic-concurrency counter")
+
+
+class MailSettingsAdminRead(BaseModel):
+    """Mail server settings response for admins; the password is never returned.
+
+    Attributes:
+        id: Unique identifier (always 1, singleton pattern).
+        version: Optimistic-concurrency counter, also sent as the ``ETag``.
+        host: Mail server hostname, or null when mail is disabled.
+        port: Mail server port.
+        security: Connection security.
+        username: Authentication username.
+        from_address: Sender address, or null when the username is used.
+        password_set: Whether a password is stored.
+        env_managed: Field name to the environment variable that sets it; those
+            fields cannot be edited while the variable is set.
+    """
+
+    id: StrictInt
+    version: StrictInt = Field(..., ge=1, description="Optimistic-concurrency counter")
+    host: StrictStr | None
+    port: StrictInt
+    security: core_mail.MailSecurity
+    username: StrictStr | None
+    from_address: StrictStr | None
+    password_set: StrictBool = Field(..., description="Is a mail server password stored (true - yes, false - no)")
+    env_managed: dict[str, str] = Field(
+        ..., description="Field name to the environment variable that sets it (not editable while set)"
+    )
+
+    model_config = ConfigDict(use_enum_values=True)
+
+
 class EmailStatus(BaseModel):
     """Whether outgoing email is usable, and why not when it is not.
 
     Attributes:
-        configured: True when the SMTP settings are valid and email can be sent.
+        configured: True when the mail settings are valid and email can be sent.
         problems: Reasons email is disabled. Names settings, never their values.
     """
 

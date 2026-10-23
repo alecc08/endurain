@@ -319,6 +319,16 @@ class TestServerSettingsEdit:
             tileserver_regenerate_thumbnails_on_change=False,
             password_length_regular_users=8,
             password_length_admin_users=12,
+            geocoding_service="nominatim",
+            geocoding_host=None,
+            geocoding_use_https=True,
+            geocoding_rate_limit=1.0,
+            session_idle_timeout_enabled=False,
+            session_idle_timeout_hours=1,
+            session_absolute_timeout_hours=24,
+            access_token_expire_minutes=15,
+            refresh_token_expire_days=7,
+            read_notification_retention_days=90,
         )
         values.update(overrides)
         return values
@@ -384,3 +394,109 @@ class TestTileMapsTemplate:
                 requires_api_key_backend=False,
             )
         assert "map_background_color" in str(exc_info.value)
+
+
+class TestGeocodingFields:
+    @pytest.mark.parametrize(
+        ("host", "expected"),
+        [
+            (None, None),
+            ("", None),
+            ("  ", None),
+            ("Nominatim.Example.org", "nominatim.example.org"),
+            ("nominatim.example.org:8080", "nominatim.example.org:8080"),
+            ("10.0.0.5:2322", "10.0.0.5:2322"),
+            ("[::1]:8080", "[::1]:8080"),
+        ],
+    )
+    def test_host_is_normalised(self, host, expected):
+        values = TestServerSettingsEdit._values(geocoding_host=host)
+
+        assert server_settings_schema.ServerSettingsEdit(**values).geocoding_host == expected
+
+    @pytest.mark.parametrize("host", ["https://example.org", "example.org/path", "exa mple.org", "a@b.org", "-bad.org"])
+    def test_host_with_a_scheme_path_or_junk_is_rejected(self, host):
+        values = TestServerSettingsEdit._values(geocoding_host=host)
+
+        with pytest.raises(ValidationError):
+            server_settings_schema.ServerSettingsEdit(**values)
+
+    @pytest.mark.parametrize(("field", "value"), [("geocoding_service", "bing"), ("geocoding_rate_limit", -1)])
+    def test_invalid_values_are_rejected(self, field, value):
+        with pytest.raises(ValidationError):
+            server_settings_schema.ServerSettingsEdit(**TestServerSettingsEdit._values(**{field: value}))
+
+    def test_rate_limit_zero_is_allowed_and_101_is_not(self):
+        server_settings_schema.ServerSettingsEdit(**TestServerSettingsEdit._values(geocoding_rate_limit=0))
+        with pytest.raises(ValidationError):
+            server_settings_schema.ServerSettingsEdit(**TestServerSettingsEdit._values(geocoding_rate_limit=101))
+
+    def test_the_api_key_is_capped_for_the_encrypted_column(self):
+        with pytest.raises(ValidationError):
+            server_settings_schema.ServerSettingsEdit(**TestServerSettingsEdit._values(geocoding_api_key="k" * 257))
+
+    def test_the_public_settings_do_not_carry_geocoding(self):
+        assert not any(
+            name.startswith("geocoding") for name in server_settings_schema.ServerSettingsReadPublic.model_fields
+        )
+
+
+class TestSessionPolicyFields:
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("session_idle_timeout_hours", 0),
+            ("session_idle_timeout_hours", 8761),
+            ("session_absolute_timeout_hours", 8761),
+            ("access_token_expire_minutes", 0),
+            ("access_token_expire_minutes", 1441),
+            ("refresh_token_expire_days", 0),
+            ("refresh_token_expire_days", 366),
+        ],
+    )
+    def test_out_of_range_values_are_rejected(self, field, value):
+        with pytest.raises(ValidationError):
+            server_settings_schema.ServerSettingsEdit(**TestServerSettingsEdit._values(**{field: value}))
+
+    def test_the_bounds_themselves_are_accepted(self):
+        server_settings_schema.ServerSettingsEdit(
+            **TestServerSettingsEdit._values(
+                session_idle_timeout_hours=1,
+                session_absolute_timeout_hours=8760,
+                access_token_expire_minutes=1440,
+                refresh_token_expire_days=365,
+            )
+        )
+
+    def test_absolute_timeout_shorter_than_idle_is_rejected(self):
+        with pytest.raises(ValidationError, match="absolute"):
+            server_settings_schema.ServerSettingsEdit(
+                **TestServerSettingsEdit._values(session_idle_timeout_hours=10, session_absolute_timeout_hours=5)
+            )
+
+    def test_equal_timeouts_are_accepted(self):
+        server_settings_schema.ServerSettingsEdit(
+            **TestServerSettingsEdit._values(session_idle_timeout_hours=5, session_absolute_timeout_hours=5)
+        )
+
+    def test_the_public_settings_do_not_carry_the_session_policy(self):
+        public = server_settings_schema.ServerSettingsReadPublic.model_fields
+        assert not {"access_token_expire_minutes", "session_idle_timeout_enabled"} & set(public)
+
+
+class TestRetentionField:
+    @pytest.mark.parametrize("value", [-1, 3651])
+    def test_out_of_range_values_are_rejected(self, value):
+        with pytest.raises(ValidationError):
+            server_settings_schema.ServerSettingsEdit(
+                **TestServerSettingsEdit._values(read_notification_retention_days=value)
+            )
+
+    @pytest.mark.parametrize("value", [0, 3650])
+    def test_the_bounds_are_accepted(self, value):
+        server_settings_schema.ServerSettingsEdit(
+            **TestServerSettingsEdit._values(read_notification_retention_days=value)
+        )
+
+    def test_the_public_settings_do_not_carry_it(self):
+        assert "read_notification_retention_days" not in server_settings_schema.ServerSettingsReadPublic.model_fields

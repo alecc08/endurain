@@ -1087,7 +1087,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/gear_components": {
+    "/api/v1/gear-components": {
         parameters: {
             query?: never;
             header?: never;
@@ -1111,7 +1111,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/gear_components/gear_id/{gear_id}": {
+    "/api/v1/gear-components/gears/{gear_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1122,7 +1122,7 @@ export interface paths {
          * Read Gear Components Gear Id
          * @description Retrieve one page of a gear's components with the distance and time each has accumulated.
          */
-        get: operations["read_gear_components_gear_id_api_v1_gear_components_gear_id__gear_id__get"];
+        get: operations["read_gear_components_gear_id_api_v1_gear_components_gears__gear_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1131,7 +1131,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/gear_components/types": {
+    "/api/v1/gear-components/types": {
         parameters: {
             query?: never;
             header?: never;
@@ -1151,7 +1151,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/gear_components/{gear_component_id}": {
+    "/api/v1/gear-components/{gear_component_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1212,7 +1212,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/gears/id/{gear_id}": {
+    "/api/v1/gears/{gear_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1223,23 +1223,7 @@ export interface paths {
          * Read Gear Id
          * @description Retrieve a gear by ID with its total distance, time and components cost.
          */
-        get: operations["read_gear_id_api_v1_gears_id__gear_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gears/{gear_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
+        get: operations["read_gear_id_api_v1_gears__gear_id__get"];
         put?: never;
         post?: never;
         /**
@@ -2338,36 +2322,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/notifications/mark_all_as_read": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Mark All Notifications As Read
-         * @description Mark all of the user's notifications as read.
-         *
-         *     Args:
-         *         request: The incoming request, used by the rate limiter.
-         *         _check_scopes: Dependency that checks if the user has the required
-         *             scopes.
-         *         token_user_id: ID of the user from the access token.
-         *         db: Database session dependency.
-         *
-         *     Returns:
-         *         None.
-         */
-        put: operations["mark_all_notifications_as_read_api_v1_notifications_mark_all_as_read_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/notifications/number": {
         parameters: {
             query?: never;
@@ -2390,6 +2344,36 @@ export interface paths {
          */
         get: operations["read_notifications_number_api_v1_notifications_number_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Mark All Notifications As Read
+         * @description Mark all of the user's notifications as read.
+         *
+         *     Args:
+         *         request: The incoming request, used by the rate limiter.
+         *         _check_scopes: Dependency that checks if the user has the required
+         *             scopes.
+         *         token_user_id: ID of the user from the access token.
+         *         db: Database session dependency.
+         *
+         *     Returns:
+         *         None.
+         */
+        put: operations["mark_all_notifications_as_read_api_v1_notifications_read_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2427,7 +2411,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/notifications/{notification_id}/mark_as_read": {
+    "/api/v1/notifications/{notification_id}/read": {
         parameters: {
             query?: never;
             header?: never;
@@ -2450,7 +2434,7 @@ export interface paths {
          *     Returns:
          *         None.
          */
-        put: operations["mark_notification_as_read_api_v1_notifications__notification_id__mark_as_read_put"];
+        put: operations["mark_notification_as_read_api_v1_notifications__notification_id__read_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3860,7 +3844,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/public/server_settings": {
+    "/api/v1/public/server-settings": {
         parameters: {
             query?: never;
             header?: never;
@@ -3890,7 +3874,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/public/server_settings/login_photo": {
+    "/api/v1/public/server-settings/login-photo": {
         parameters: {
             query?: never;
             header?: never;
@@ -3903,7 +3887,8 @@ export interface paths {
          *
          *     The login screen renders before anyone is signed in, so the photo is public by
          *     design; it is one admin-chosen image, not user data. The response carries an
-         *     ETag, so a client that already holds the photo gets a 304 without the body.
+         *     ETag derived from the settings version, so a client that already holds the photo
+         *     gets a 304 without storage being read.
          *
          *     Args:
          *         request: The HTTP request, for its ``If-None-Match`` header.
@@ -3925,7 +3910,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/public/server_settings/tile_maps_templates": {
+    "/api/v1/public/server-settings/tile-maps-templates": {
         parameters: {
             query?: never;
             header?: never;
@@ -3982,7 +3967,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/server_settings": {
+    "/api/v1/server-settings": {
         parameters: {
             query?: never;
             header?: never;
@@ -3995,6 +3980,10 @@ export interface paths {
          *
          *     Requires admin authentication with server_settings:read scope.
          *
+         *     Args:
+         *         db: Database session.
+         *         response: The response, which carries the ETag.
+         *
          *     Returns:
          *         Current server settings configuration. The tile API key is never returned,
          *         only whether one is stored.
@@ -4005,13 +3994,16 @@ export interface paths {
          * @description Update server settings.
          *
          *     Requires admin authentication with server_settings:write scope. The body replaces
-         *     the whole configuration; only the tile API key may be omitted, which keeps the
-         *     stored one.
+         *     the whole configuration; only the API keys may be omitted, which keeps the stored
+         *     ones. Send ``If-Match`` with the ETag from the read to make the write conditional;
+         *     a stale tag is refused with 412 rather than reverting an admin who saved in between.
          *
          *     Args:
          *         request: The HTTP request object.
          *         server_settings_attributes: Settings to update.
          *         db: Database session.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition, or None.
          *
          *     Returns:
          *         Updated server settings configuration, without the tile API key.
@@ -4024,7 +4016,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/server_settings/email": {
+    "/api/v1/server-settings/email": {
         parameters: {
             query?: never;
             header?: never;
@@ -4036,6 +4028,9 @@ export interface paths {
          * @description Get whether outgoing email is usable.
          *
          *     Requires admin authentication with server_settings:read scope.
+         *
+         *     Args:
+         *         db: Database session.
          *
          *     Returns:
          *         Whether email is configured and, when not, the reasons (setting names only).
@@ -4049,7 +4044,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/server_settings/email/test": {
+    "/api/v1/server-settings/email/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Mail Settings
+         * @description Get the mail server settings.
+         *
+         *     Requires admin authentication with server_settings:read scope.
+         *
+         *     Args:
+         *         db: Database session.
+         *         response: The response, which carries the ETag.
+         *
+         *     Returns:
+         *         The mail settings. The password is never returned, only whether one is stored;
+         *         ``env_managed`` names the fields an environment variable currently sets.
+         */
+        get: operations["read_mail_settings_api_v1_server_settings_email_settings_get"];
+        /**
+         * Edit Mail Settings
+         * @description Update the mail server settings.
+         *
+         *     Requires admin authentication with server_settings:write scope. The body replaces
+         *     the whole configuration; only the password may be omitted, which keeps the stored one.
+         *     Send ``If-Match`` with the ETag from the read to make the write conditional; a stale
+         *     tag is refused with 412.
+         *
+         *     Args:
+         *         request: The HTTP request object.
+         *         mail_settings_attributes: Settings to update.
+         *         db: Database session.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition, or None.
+         *
+         *     Returns:
+         *         Updated mail settings, without the password.
+         *
+         *     Raises:
+         *         InvalidInputError: 400 if the configuration is not usable.
+         *         ConflictError: 409 if a field is set by an environment variable.
+         *         PreconditionFailedError: 412 if the settings changed since the client read them.
+         */
+        put: operations["edit_mail_settings_api_v1_server_settings_email_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/server-settings/email/test": {
         parameters: {
             query?: never;
             header?: never;
@@ -4085,7 +4134,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/server_settings/upload/login": {
+    "/api/v1/server-settings/login-photo": {
         parameters: {
             query?: never;
             header?: never;
@@ -4109,7 +4158,7 @@ export interface paths {
          *     Returns:
          *         A confirmation message.
          */
-        post: operations["upload_login_photo_api_v1_server_settings_upload_login_post"];
+        post: operations["upload_login_photo_api_v1_server_settings_login_photo_post"];
         /**
          * Delete Login Photo
          * @description Delete custom login page photo.
@@ -4121,7 +4170,111 @@ export interface paths {
          *         storage: The platform storage provider.
          *         db: Database session.
          */
-        delete: operations["delete_login_photo_api_v1_server_settings_upload_login_delete"];
+        delete: operations["delete_login_photo_api_v1_server_settings_login_photo_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/server-settings/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Logs
+         * @description Read records from the end of the server log.
+         *
+         *     Requires admin authentication with server_settings:logs scope. Without ``after``
+         *     the newest matching records are returned; pass the returned ``cursor`` as
+         *     ``after`` to receive only what was written since.
+         *
+         *     Args:
+         *         limit: Most records to return.
+         *         level: Lowest severity to include.
+         *         search: Case-insensitive text a record must contain.
+         *         after: Cursor from an earlier page.
+         *
+         *     Returns:
+         *         The matching records, oldest first, and the cursor for the next call.
+         *
+         *     Raises:
+         *         NotFoundError: 404 if the log viewer is not available on this deployment.
+         */
+        get: operations["read_logs_api_v1_server_settings_logs_get"];
+        put?: never;
+        post?: never;
+        /**
+         * Clear Logs
+         * @description Empty the server log and delete its rotated backups.
+         *
+         *     Requires admin authentication with server_settings:logs_clear scope. The action is
+         *     recorded as the first line of the new log.
+         *
+         *     Args:
+         *         request: The HTTP request object.
+         *         token_user_id: The requesting admin's user ID, from the access token.
+         *
+         *     Raises:
+         *         NotFoundError: 404 if the log viewer is not available on this deployment.
+         */
+        delete: operations["clear_logs_api_v1_server_settings_logs_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/server-settings/logs/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Logs
+         * @description Download the current log file.
+         *
+         *     Requires admin authentication with server_settings:logs scope. Rotated backups
+         *     are not included.
+         *
+         *     Returns:
+         *         The log file as plain text.
+         *
+         *     Raises:
+         *         NotFoundError: 404 if the log viewer is not available or no log has been written.
+         */
+        get: operations["download_logs_api_v1_server_settings_logs_download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/server-settings/logs/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Logs Status
+         * @description Get whether the log viewer is available.
+         *
+         *     Requires admin authentication with server_settings:logs scope.
+         *
+         *     Returns:
+         *         Whether the log can be read through the API on this deployment.
+         */
+        get: operations["read_logs_status_api_v1_server_settings_logs_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4886,6 +5039,17 @@ export interface components {
             visibility?: number | null;
         };
         /**
+         * ActivitiesBulkEditRead
+         * @description Result of a bulk edit across a user's activities.
+         *
+         *     Attributes:
+         *         updated: Number of activities the edit changed.
+         */
+        ActivitiesBulkEditRead: {
+            /** Updated */
+            updated: number;
+        };
+        /**
          * ActivityEdit
          * @description Schema for partial (PATCH) updates to an activity.
          *
@@ -5548,8 +5712,8 @@ export interface components {
             /** Username */
             username: string;
         };
-        /** Body_upload_login_photo_api_v1_server_settings_upload_login_post */
-        Body_upload_login_photo_api_v1_server_settings_upload_login_post: {
+        /** Body_upload_login_photo_api_v1_server_settings_login_photo_post */
+        Body_upload_login_photo_api_v1_server_settings_login_photo_post: {
             /** File */
             file: string;
         };
@@ -5663,7 +5827,7 @@ export interface components {
          * @description Whether outgoing email is usable, and why not when it is not.
          *
          *     Attributes:
-         *         configured: True when the SMTP settings are valid and email can be sent.
+         *         configured: True when the mail settings are valid and email can be sent.
          *         problems: Reasons email is disabled. Names settings, never their values.
          */
         EmailStatus: {
@@ -6274,6 +6438,17 @@ export interface components {
          * @enum {string}
          */
         Gender: "male" | "female" | "unspecified";
+        /**
+         * GeocodingService
+         * @description The reverse-geocoding service in use.
+         *
+         *     Attributes:
+         *         NOMINATIM: A Nominatim instance, the public one by default.
+         *         PHOTON: A Photon instance, the public one by default.
+         *         GEOCODE: geocode.maps.co, a fixed host that needs an API key.
+         * @enum {string}
+         */
+        GeocodingService: "nominatim" | "photon" | "geocode";
         /**
          * GoalType
          * @description Types of measurable user goals.
@@ -8601,6 +8776,60 @@ export interface components {
          */
         LinkStatus: "pending" | "mfa_required" | "completed" | "failed";
         /**
+         * LogEntry
+         * @description One record of the application log.
+         *
+         *     Attributes:
+         *         timestamp: When the record was written, as the log wrote it, or null if unknown.
+         *         level: Severity of the record.
+         *         logger: Dotted name of the logger that emitted it, or null if unknown.
+         *         message: The log message.
+         *         request_id: ID of the HTTP request that produced it, or null.
+         *         context: Structured fields attached to the record, or null.
+         *         exception: Formatted traceback, or null.
+         */
+        LogEntry: {
+            /** Context */
+            context: {
+                [key: string]: unknown;
+            } | null;
+            /** Exception */
+            exception: string | null;
+            /** Level */
+            level: string;
+            /** Logger */
+            logger: string | null;
+            /** Message */
+            message: string;
+            /** Request Id */
+            request_id: string | null;
+            /** Timestamp */
+            timestamp: string | null;
+        };
+        /**
+         * LogLevel
+         * @description Log levels an admin can filter by, from least to most severe.
+         * @enum {string}
+         */
+        LogLevel: "DEBUG" | "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+        /**
+         * LogPage
+         * @description A slice of the application log.
+         *
+         *     Attributes:
+         *         entries: Matching records, oldest first.
+         *         cursor: Position to pass as ``after`` to receive only records written after this slice.
+         */
+        LogPage: {
+            /**
+             * Cursor
+             * @description Pass as `after` to read only newer records
+             */
+            cursor: number;
+            /** Entries */
+            entries: components["schemas"]["LogEntry"][];
+        };
+        /**
          * LogoutResponse
          * @description Response payload returned by the logout endpoint.
          *
@@ -8610,6 +8839,17 @@ export interface components {
         LogoutResponse: {
             /** Message */
             message: string;
+        };
+        /**
+         * LogsStatus
+         * @description Whether the log viewer is available on this deployment.
+         *
+         *     Attributes:
+         *         enabled: True when the application log can be read through the API.
+         */
+        LogsStatus: {
+            /** Enabled */
+            enabled: boolean;
         };
         /**
          * MFABackupCodeStatus
@@ -8805,6 +9045,107 @@ export interface components {
              * @description Whether MFA is enabled
              */
             mfa_enabled: boolean;
+        };
+        /**
+         * MailSecurity
+         * @description How the connection to the mail server is secured.
+         *
+         *     Attributes:
+         *         STARTTLS: ``smtp://``, upgraded with STARTTLS (port 587 by default).
+         *         SSL: ``smtps://``, implicit TLS (port 465 typically).
+         *         NONE: ``smtp://`` in cleartext; a private or loopback relay only, without credentials.
+         * @enum {string}
+         */
+        MailSecurity: "starttls" | "ssl" | "none";
+        /**
+         * MailSettingsAdminRead
+         * @description Mail server settings response for admins; the password is never returned.
+         *
+         *     Attributes:
+         *         id: Unique identifier (always 1, singleton pattern).
+         *         version: Optimistic-concurrency counter, also sent as the ``ETag``.
+         *         host: Mail server hostname, or null when mail is disabled.
+         *         port: Mail server port.
+         *         security: Connection security.
+         *         username: Authentication username.
+         *         from_address: Sender address, or null when the username is used.
+         *         password_set: Whether a password is stored.
+         *         env_managed: Field name to the environment variable that sets it; those
+         *             fields cannot be edited while the variable is set.
+         */
+        MailSettingsAdminRead: {
+            /**
+             * Env Managed
+             * @description Field name to the environment variable that sets it (not editable while set)
+             */
+            env_managed: {
+                [key: string]: string;
+            };
+            /** From Address */
+            from_address: string | null;
+            /** Host */
+            host: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Password Set
+             * @description Is a mail server password stored (true - yes, false - no)
+             */
+            password_set: boolean;
+            /** Port */
+            port: number;
+            security: components["schemas"]["MailSecurity"];
+            /** Username */
+            username: string | null;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter
+             */
+            version: number;
+        };
+        /**
+         * MailSettingsEdit
+         * @description Request body for editing the mail server settings.
+         *
+         *     A full replacement except for the password.
+         *
+         *     Attributes:
+         *         host: Mail server hostname; empty or null disables mail.
+         *         port: Mail server port.
+         *         security: Connection security.
+         *         username: Authentication username.
+         *         from_address: Sender address; the username is used when empty.
+         *         password: Plain-text password; stored encrypted and never returned. Omit it
+         *             to keep the stored password; send null or an empty string to remove it.
+         */
+        MailSettingsEdit: {
+            /**
+             * From Address
+             * @description Sender address (empty - the username is used)
+             */
+            from_address: string | null;
+            /**
+             * Host
+             * @description Mail server hostname (empty - mail disabled)
+             */
+            host: string | null;
+            /**
+             * Password
+             * @description Mail server password (write-only); omit to keep, null or empty to remove
+             */
+            password?: string | null;
+            /**
+             * Port
+             * @description Mail server port
+             */
+            port: number;
+            /** @description Connection security (starttls, ssl, none) */
+            security: components["schemas"]["MailSecurity"];
+            /**
+             * Username
+             * @description Mail server authentication username
+             */
+            username: string | null;
         };
         /**
          * MobileSessionResponse
@@ -9282,18 +9623,56 @@ export interface components {
         };
         /**
          * ServerSettingsAdminRead
-         * @description Complete server settings response for admins; the tile API key is never returned.
+         * @description Complete server settings response for admins; API keys are never returned.
          *
          *     Attributes:
          *         id: Unique identifier (always 1, singleton pattern).
          *         login_photo_set: Whether a custom login photo is configured.
+         *         version: Optimistic-concurrency counter, also sent as the ``ETag``.
          *         tileserver_api_key_set: Whether a tile API key is stored.
+         *         geocoding_api_key_set: Whether a geocoding API key is stored.
+         *         env_managed: Field name to the environment variable that sets it; those
+         *             fields cannot be edited while the variable is set.
          *         signup_require_admin_approval: Require admin approval for new sign-ups.
          *         signup_require_email_verification: Require email verification for new sign-ups.
          */
         ServerSettingsAdminRead: {
+            /**
+             * Access Token Expire Minutes
+             * @description Access token lifetime in minutes
+             */
+            access_token_expire_minutes: number;
             /** @description Currency (euro, dollar, pound) */
             currency: components["schemas"]["Currency"];
+            /**
+             * Env Managed
+             * @description Field name to the environment variable that sets it (not editable while set)
+             */
+            env_managed: {
+                [key: string]: string;
+            };
+            /**
+             * Geocoding Api Key Set
+             * @description Is a geocoding API key stored (true - yes, false - no)
+             */
+            geocoding_api_key_set: boolean;
+            /**
+             * Geocoding Host
+             * @description Host of the geocoding service, e.g. nominatim.example.org:8080 (empty - the service's default)
+             */
+            geocoding_host: string | null;
+            /**
+             * Geocoding Rate Limit
+             * @description Maximum geocoding requests per second (0 disables throttling)
+             */
+            geocoding_rate_limit: number;
+            /** @description Reverse-geocoding service (nominatim, photon, geocode) */
+            geocoding_service: components["schemas"]["GeocodingService"];
+            /**
+             * Geocoding Use Https
+             * @description Address the geocoding host over HTTPS (true - yes, false - no)
+             */
+            geocoding_use_https: boolean;
             /**
              * Id
              * @description Unique identifier for server settings (always 1)
@@ -9342,6 +9721,31 @@ export interface components {
              */
             public_shareable_links_user_info: boolean;
             /**
+             * Read Notification Retention Days
+             * @description Days after which read notifications are purged (0 - never)
+             */
+            read_notification_retention_days: number;
+            /**
+             * Refresh Token Expire Days
+             * @description Refresh token lifetime in days
+             */
+            refresh_token_expire_days: number;
+            /**
+             * Session Absolute Timeout Hours
+             * @description Hours after which a session ends whatever its activity
+             */
+            session_absolute_timeout_hours: number;
+            /**
+             * Session Idle Timeout Enabled
+             * @description Enforce session idle and absolute timeouts (true - yes, false - no)
+             */
+            session_idle_timeout_enabled: boolean;
+            /**
+             * Session Idle Timeout Hours
+             * @description Hours of inactivity after which a session ends
+             */
+            session_idle_timeout_hours: number;
+            /**
              * Signup Enabled
              * @description Allow user sign-up registration (true - yes, false - no)
              */
@@ -9388,6 +9792,11 @@ export interface components {
             tileserver_url: string;
             /** @description Units (metric, imperial) */
             units: components["schemas"]["Units"];
+            /**
+             * Version
+             * @description Optimistic-concurrency counter
+             */
+            version: number;
         };
         /**
          * ServerSettingsEdit
@@ -9406,10 +9815,39 @@ export interface components {
          *             (true - yes, false - no).
          *         signup_require_email_verification: Require email verification for new
          *             sign-ups (true - yes, false - no).
+         *         geocoding_api_key: Plain-text API key for the geocoding service; same
+         *             write-only semantics as ``tileserver_api_key``.
          */
         ServerSettingsEdit: {
+            /**
+             * Access Token Expire Minutes
+             * @description Access token lifetime in minutes
+             */
+            access_token_expire_minutes: number;
             /** @description Currency (euro, dollar, pound) */
             currency: components["schemas"]["Currency"];
+            /**
+             * Geocoding Api Key
+             * @description API key for the geocoding service (write-only); omit to keep, null or empty to remove
+             */
+            geocoding_api_key?: string | null;
+            /**
+             * Geocoding Host
+             * @description Host of the geocoding service, e.g. nominatim.example.org:8080 (empty - the service's default)
+             */
+            geocoding_host: string | null;
+            /**
+             * Geocoding Rate Limit
+             * @description Maximum geocoding requests per second (0 disables throttling)
+             */
+            geocoding_rate_limit: number;
+            /** @description Reverse-geocoding service (nominatim, photon, geocode) */
+            geocoding_service: components["schemas"]["GeocodingService"];
+            /**
+             * Geocoding Use Https
+             * @description Address the geocoding host over HTTPS (true - yes, false - no)
+             */
+            geocoding_use_https: boolean;
             /**
              * Local Login Enabled
              * @description Allow local username/password login (true - yes, false - no)
@@ -9447,6 +9885,31 @@ export interface components {
              * @description Allow show user info on public shareable links (true - yes, false - no)
              */
             public_shareable_links_user_info: boolean;
+            /**
+             * Read Notification Retention Days
+             * @description Days after which read notifications are purged (0 - never)
+             */
+            read_notification_retention_days: number;
+            /**
+             * Refresh Token Expire Days
+             * @description Refresh token lifetime in days
+             */
+            refresh_token_expire_days: number;
+            /**
+             * Session Absolute Timeout Hours
+             * @description Hours after which a session ends whatever its activity
+             */
+            session_absolute_timeout_hours: number;
+            /**
+             * Session Idle Timeout Enabled
+             * @description Enforce session idle and absolute timeouts (true - yes, false - no)
+             */
+            session_idle_timeout_enabled: boolean;
+            /**
+             * Session Idle Timeout Hours
+             * @description Hours of inactivity after which a session ends
+             */
+            session_idle_timeout_hours: number;
             /**
              * Signup Enabled
              * @description Allow user sign-up registration (true - yes, false - no)
@@ -11413,20 +11876,6 @@ export interface components {
             username: string;
         };
         /**
-         * VisibilityUpdateRead
-         * @description Result of a bulk visibility change across a user's activities.
-         *
-         *     Attributes:
-         *         detail: Human-readable outcome of the operation.
-         *         updated: Number of activities whose visibility changed.
-         */
-        VisibilityUpdateRead: {
-            /** Detail */
-            detail: string;
-            /** Updated */
-            updated: number;
-        };
-        /**
          * WeekDay
          * @description Days of the week enumeration.
          *
@@ -11834,7 +12283,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VisibilityUpdateRead"];
+                    "application/json": components["schemas"]["ActivitiesBulkEditRead"];
                 };
             };
             /** @description Validation Error */
@@ -13710,7 +14159,7 @@ export interface operations {
             };
         };
     };
-    read_gear_components_gear_id_api_v1_gear_components_gear_id__gear_id__get: {
+    read_gear_components_gear_id_api_v1_gear_components_gears__gear_id__get: {
         parameters: {
             query?: {
                 active?: boolean | null;
@@ -13956,7 +14405,7 @@ export interface operations {
             };
         };
     };
-    read_gear_id_api_v1_gears_id__gear_id__get: {
+    read_gear_id_api_v1_gears__gear_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -15587,33 +16036,6 @@ export interface operations {
             };
         };
     };
-    mark_all_notifications_as_read_api_v1_notifications_mark_all_as_read_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unexpected error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
     read_notifications_number_api_v1_notifications_number_get: {
         parameters: {
             query?: never;
@@ -15631,6 +16053,33 @@ export interface operations {
                 content: {
                     "application/json": number;
                 };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    mark_all_notifications_as_read_api_v1_notifications_read_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unexpected error */
             default: {
@@ -15683,7 +16132,7 @@ export interface operations {
             };
         };
     };
-    mark_notification_as_read_api_v1_notifications__notification_id__mark_as_read_put: {
+    mark_notification_as_read_api_v1_notifications__notification_id__read_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -17646,7 +18095,9 @@ export interface operations {
     edit_server_settings_api_v1_server_settings_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -17714,6 +18165,79 @@ export interface operations {
             };
         };
     };
+    read_mail_settings_api_v1_server_settings_email_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailSettingsAdminRead"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    edit_mail_settings_api_v1_server_settings_email_settings_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailSettingsEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailSettingsAdminRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     send_test_email_api_v1_server_settings_email_test_post: {
         parameters: {
             query?: never;
@@ -17745,7 +18269,7 @@ export interface operations {
             };
         };
     };
-    upload_login_photo_api_v1_server_settings_upload_login_post: {
+    upload_login_photo_api_v1_server_settings_login_photo_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -17754,7 +18278,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_upload_login_photo_api_v1_server_settings_upload_login_post"];
+                "multipart/form-data": components["schemas"]["Body_upload_login_photo_api_v1_server_settings_login_photo_post"];
             };
         };
         responses: {
@@ -17789,7 +18313,7 @@ export interface operations {
             };
         };
     };
-    delete_login_photo_api_v1_server_settings_upload_login_delete: {
+    delete_login_photo_api_v1_server_settings_login_photo_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -17804,6 +18328,138 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    read_logs_api_v1_server_settings_logs_get: {
+        parameters: {
+            query?: {
+                /** @description Most records to return */
+                limit?: number;
+                /** @description Lowest severity to include */
+                level?: components["schemas"]["LogLevel"] | null;
+                /** @description Text a record must contain */
+                search?: string | null;
+                /** @description Cursor from an earlier page, to read only newer records */
+                after?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    clear_logs_api_v1_server_settings_logs_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    download_logs_api_v1_server_settings_logs_download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current log file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": unknown;
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    read_logs_status_api_v1_server_settings_logs_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogsStatus"];
+                };
             };
             /** @description Unexpected error */
             default: {
