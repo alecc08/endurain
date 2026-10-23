@@ -12,10 +12,13 @@ Deployment: Docker multi-stage image (amd64, arm64).
 | Backend code or tests | `.agents/skills/endurain-backend/SKILL.md` |
 | Frontend code or tests | `.agents/skills/endurain-frontend/SKILL.md` |
 | Converting a module to the module structure | `.agents/skills/convert-module/SKILL.md` |
+| Fixing a bug, failing test or CI failure | `.agents/skills/debugging/SKILL.md` |
 | Commit messages and PRs | `.agents/skills/conventional-commits/SKILL.md` |
 | Writing or editing a skill | `.agents/skills/skill-authoring/SKILL.md` |
 | Module rules and file roles | `docs/developer-guide/module-structure.md` |
 | Identity and auth boundary | `docs/developer-guide/auth-boundary.md` |
+| Events, subscribers and reconciliation nets | `docs/developer-guide/events-and-subscribers.md` |
+| Activity ingestion pipeline | `docs/developer-guide/activity-ingestion.md` |
 | Visual design | `docs/developer-guide/brand-and-ux-guidelines.md` |
 | Scaling, jobs, storage settings | `docs/getting-started/scaling-and-background-jobs.md` |
 
@@ -65,6 +68,10 @@ npm run gen:api      # after backend API changes
 - All `UploadFile` handling goes through `backend/app/core/file_uploads.py`; never build filesystem paths from user filenames.
 - No hardcoded secrets; read configuration from environment variables.
 - Ask for clarification when scope is unclear instead of assuming extra deliverables.
+- A change touching more than one module or both stacks starts with a short task list in chat for approval; keep plans in chat or `devdocs/`, never in tracked files.
+- Bug fixes and new behavior start with a failing test.
+- Done means the checks that apply to what changed ran and their output was read; say which ran and which did not (stack checks do not apply to docs, `AGENTS.md` or skill-only changes).
+- Before reporting a larger change done, compare the diff to the request and remove anything not asked for.
 
 ## Fixing problems
 
