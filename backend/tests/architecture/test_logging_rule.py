@@ -63,6 +63,9 @@ _HELPERS_THAT_LOG: dict[str, str] = {
     "garmin/mfa_code_store.py": "Reports a storage outage and a code it could not delete, which have no caller to tell.",
     "garmin/state_store.py": "Reports a state it could not record or a claim it could not release; the attempt itself must still finish.",
     "garmin/token_utils.py": "Reports a token it could not decrypt or a session Garmin rejected; the caller only sees None.",
+    "users/users_profile/utils.py": (
+        "Reports a memory probe or an auto-config it cannot complete and falls back to defaults; the caller only sees the defaults."
+    ),
     "websocket/manager.py": "Owns the connection registry; an eviction and a failed send have no caller to report to.",
     "websocket/ticket_store.py": "Reports a storage outage and an unreadable ticket value it cannot attribute to a request.",
 }

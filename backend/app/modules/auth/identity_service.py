@@ -701,6 +701,31 @@ class IdentityService(Protocol):
         """
         ...
 
+    def start_browser_idp_link(
+        self,
+        link_token: str,
+        idp_id: int,
+        redirect: str | None,
+        request: Request,
+    ) -> str:
+        """Claim a one-time link token and return the identity provider's authorization URL.
+
+        Args:
+            link_token: Plaintext one-time link token from the query string.
+            idp_id: The identity provider to link.
+            redirect: Optional frontend return path or configured custom scheme.
+            request: The incoming request.
+
+        Returns:
+            The identity provider's authorization URL.
+
+        Raises:
+            HTTPException: 400 for a bad redirect target, 401 for an invalid, expired or used
+                link token, 404 when the provider does not exist or is disabled, 409 when it is
+                already linked, 500 when the flow cannot be started.
+        """
+        ...
+
     def get_identity_link_counts_for_users(self, user_ids: list[int]) -> dict[int, int]:
         """Return identity-link count per user ID in a single grouped query.
 
@@ -1392,6 +1417,27 @@ class DefaultIdentityService:
             link_token,
             idp_id,
             client_ip,
+            self._db,
+        )
+
+    def start_browser_idp_link(
+        self,
+        link_token: str,
+        idp_id: int,
+        redirect: str | None,
+        request: Request,
+    ) -> str:
+        """Claim a one-time link token and return the identity provider's authorization URL."""
+        # Imported here: the identity-provider utils import the identity-provider service, which
+        # imports this module.
+        import modules.auth.identity_providers.utils as idp_utils
+
+        return idp_utils.start_browser_link(
+            link_token,
+            idp_id,
+            redirect,
+            request,
+            self.validate_and_claim_browser_link_token,
             self._db,
         )
 

@@ -10,23 +10,13 @@ This module provides FastAPI endpoints for:
 - Profile data export and import
 """
 
-from typing import Annotated, NoReturn
+from typing import Annotated
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    Request,
-    Response,
-    UploadFile,
-    status,
-)
-from fastapi.concurrency import run_in_threadpool
+from fastapi import APIRouter, Depends, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 import core.dependencies as core_dependencies
 import core.file_uploads as core_file_uploads
-import core.logger as core_logger
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
 import modules.auth.identity_providers.link_tokens.schema as idp_link_token_schema
@@ -34,45 +24,19 @@ import modules.auth.identity_providers.links.schema as auth_identity_links_schem
 import modules.auth.identity_service as auth_identity_service
 import modules.auth.mfa.backup_codes.schema as mfa_backup_codes_schema
 import modules.auth.mfa.schema as mfa_schema
-import modules.auth.mfa.setup_store as auth_mfa_setup_store
 import modules.auth.sessions.schema as auth_sessions_schema
 import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
-import modules.users.users_integrations.integration_service as user_integrations_integration
-import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
-import modules.users.users_profile.exceptions as profile_exceptions
-import modules.users.users_profile.export_service as profile_export_service
-import modules.users.users_profile.import_service as profile_import_service
-import modules.users.users_profile.utils as profile_utils
-
-logger = core_logger.get_logger(__name__)
+import modules.users.users_profile.dependencies as profile_dependencies
+import modules.users.users_profile.service as profile_service
 
 # Define the API router
 router = APIRouter()
 
 
-def _raise_mfa_secret_store_unavailable(
-    err: auth_mfa_setup_store.MFASecretStoreUnavailableError,
-) -> NoReturn:
-    """
-    Return a controlled response when MFA setup storage is down.
-
-    Args:
-        err: MFA setup secret storage outage.
-
-    Raises:
-        HTTPException: Always raised with a 503 status.
-    """
-    logger.error("MFA setup secret storage unavailable", exc_info=err)
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="MFA setup temporarily unavailable",
-    ) from err
-
-
 @router.get("", status_code=status.HTTP_200_OK, response_model=users_schema.UsersMe)
-async def read_users_me(
+def read_users_me(
     token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
@@ -80,81 +44,17 @@ async def read_users_me(
     ],
     db: core_dependencies.DbSession,
 ) -> users_schema.UsersMe:
-    """
-    Retrieve authenticated user profile with integrations.
+    """Retrieve authenticated user profile with integrations.
 
     Args:
         token_user_id: User ID from access token.
+        identity_service: Identity service dependency.
         db: Database session.
 
     Returns:
         User object with integration and privacy settings.
-
-    Raises:
-        HTTPException: If user or settings not found.
     """
-    # Get the user from the database
-    user: users_schema.UsersRead | None = users_integration.get_user(token_user_id, db)
-
-    # If the user does not exist raise the exception
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    user_integrations = user_integrations_integration.get_user_integrations(user.id, db)
-
-    if user_integrations is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Could not validate credentials (user integrations not found)",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    user_privacy_settings = users_privacy_settings_integration.get_privacy_settings(user.id, db)
-
-    if user_privacy_settings is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Could not validate credentials (user privacy settings not found)",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Convert UsersRead schema to UsersMe schema for response
-    user_me = users_schema.UsersMe.model_validate(user)
-
-    # Update with integration and privacy settings
-    return user_me.model_copy(
-        update={
-            "is_strava_linked": (1 if user_integrations.strava_token else 0),
-            "is_garminconnect_linked": (1 if user_integrations.garminconnect_token else 0),
-            "default_activity_visibility": (user_privacy_settings.default_activity_visibility),
-            "hide_activity_start_time": (user_privacy_settings.hide_activity_start_time),
-            "hide_activity_location": (user_privacy_settings.hide_activity_location),
-            "hide_activity_map": (user_privacy_settings.hide_activity_map),
-            "hide_activity_hr": user_privacy_settings.hide_activity_hr,
-            "hide_activity_power": (user_privacy_settings.hide_activity_power),
-            "hide_activity_cadence": (user_privacy_settings.hide_activity_cadence),
-            "hide_activity_elevation": (user_privacy_settings.hide_activity_elevation),
-            "hide_activity_speed": (user_privacy_settings.hide_activity_speed),
-            "hide_activity_pace": (user_privacy_settings.hide_activity_pace),
-            "hide_activity_laps": (user_privacy_settings.hide_activity_laps),
-            "hide_activity_workout_sets_steps": (user_privacy_settings.hide_activity_workout_sets_steps),
-            "hide_activity_gear": (user_privacy_settings.hide_activity_gear),
-            # Derived flag for the frontend: distinguishes
-            # SSO-only accounts from accounts with a local
-            # password so step-up modals can hide the password
-            # field. Fetched via the auth boundary
-            # (IdentityService) so the hash never leaves it.
-            "has_local_password": identity_service.has_local_password(token_user_id),
-            # MFA status is auth-owned; resolve it through the
-            # auth boundary (IdentityService) rather than the
-            # users ORM model.
-            "mfa_enabled": identity_service.get_mfa_status(token_user_id).mfa_enabled,
-        }
-    )
+    return profile_service.get_profile(token_user_id, identity_service, db)
 
 
 @router.get(
@@ -162,15 +62,14 @@ async def read_users_me(
     status_code=status.HTTP_200_OK,
     response_model=list[auth_sessions_schema.UsersSessionsRead],
 )
-async def read_sessions_me(
+def read_sessions_me(
     token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
 ) -> list[auth_sessions_schema.UsersSessionsRead]:
-    """
-    Retrieve all sessions for authenticated user.
+    """Retrieve all sessions for authenticated user.
 
     Args:
         token_user_id: User ID from access token.
@@ -188,8 +87,8 @@ async def read_sessions_me(
     response_model=idp_link_token_schema.IdpLinkTokenResponse,
 )
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
-async def generate_link_token(
-    idp_id: int,
+def generate_link_token(
+    idp_id: core_dependencies.PositiveId,
     link_request: idp_link_token_schema.IdpLinkTokenRequest,
     request: Request,
     token_user_id: auth_dependencies.CurrentUserId,
@@ -202,8 +101,7 @@ async def generate_link_token(
         Depends(auth_dependencies.get_step_up_attempts),
     ],
 ) -> idp_link_token_schema.IdpLinkTokenResponse:
-    """
-    Generate a one-time token for linking an identity provider.
+    """Generate a one-time token for linking an identity provider.
 
     This endpoint creates a short-lived (60 seconds), single-use token
     that can be used to securely initiate the OAuth flow for linking
@@ -227,6 +125,7 @@ async def generate_link_token(
         request (Request): The FastAPI request object.
         token_user_id (int): The authenticated user's ID extracted from the access token.
         identity_service: Identity service dependency.
+        step_up_store: Step-up lockout store.
 
     Returns:
         IdpLinkTokenResponse: Contains the one-time token and expiration time.
@@ -252,38 +151,38 @@ async def generate_link_token(
     status_code=status.HTTP_201_CREATED,
     response_model=str,
 )
-async def upload_profile_image(
+@core_rate_limit.limiter.limit(core_rate_limit.UPLOAD)
+def upload_profile_image(
+    request: Request,
     file: UploadFile,
     token_user_id: auth_dependencies.CurrentUserId,
     storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
 ) -> str:
-    """
-    Upload user profile image with security validation.
+    """Upload user profile image with security validation.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         file: Image file to upload.
         token_user_id: User ID from access token.
         storage: The platform storage provider.
         db: Database session.
 
     Returns:
-        Result of save operation.
-
-    Raises:
-        HTTPException: If validation or save fails.
+        The storage key of the saved photo.
     """
-    return await users_integration.upload_user_photo(token_user_id, file, storage, db)
+    return users_integration.upload_user_photo(token_user_id, file, storage, db)
 
 
 @router.put("", status_code=status.HTTP_200_OK, response_model=dict)
-async def edit_user(
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
+def edit_user(
+    request: Request,
     user_attributtes: users_schema.ProfileUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
 ) -> dict:
-    """
-    Edit self-service profile fields for the authenticated user.
+    """Edit self-service profile fields for the authenticated user.
 
     Uses an explicit allow-list (:class:`users_schema.ProfileUpdate`)
     so administrative attributes such as ``access_type``,
@@ -292,6 +191,7 @@ async def edit_user(
     endpoint, even if a malicious client submits them.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         user_attributtes: Allow-listed profile updates.
         token_user_id: User ID from access token.
         db: Database session.
@@ -299,22 +199,23 @@ async def edit_user(
     Returns:
         Success message with user ID.
     """
-    await run_in_threadpool(users_integration.edit_profile, token_user_id, user_attributtes, db)
-    db.commit()
+    profile_service.edit_profile(token_user_id, user_attributtes, db)
 
     return {"message": f"User ID {token_user_id} updated successfully"}
 
 
 @router.put("/privacy", status_code=status.HTTP_200_OK, response_model=dict)
-async def edit_profile_privacy_settings(
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
+def edit_profile_privacy_settings(
+    request: Request,
     user_privacy_settings: users_privacy_settings_schema.UsersPrivacySettingsUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
 ) -> dict:
-    """
-    Edit privacy settings for authenticated user.
+    """Edit privacy settings for authenticated user.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         user_privacy_settings: New privacy settings.
         token_user_id: User ID from access token.
         db: Database session.
@@ -322,16 +223,15 @@ async def edit_profile_privacy_settings(
     Returns:
         Success message.
     """
-    # Edit the user privacy settings in the database
-    users_privacy_settings_integration.edit_privacy_settings(token_user_id, user_privacy_settings, db)
-    db.commit()
+    profile_service.edit_privacy_settings(token_user_id, user_privacy_settings, db)
 
-    # Return success message
     return {"message": f"User ID {token_user_id} privacy settings updated successfully"}
 
 
 @router.put("/password", status_code=status.HTTP_200_OK, response_model=dict)
-async def edit_profile_password(
+@core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
+def edit_profile_password(
+    request: Request,
     user_attributtes: users_schema.UsersEditPassword,
     token_user_id: auth_dependencies.CurrentUserId,
     token_session_id: Annotated[
@@ -347,8 +247,7 @@ async def edit_profile_password(
         Depends(auth_dependencies.get_step_up_attempts),
     ],
 ) -> dict:
-    """
-    Update user password after step-up verification.
+    """Update user password after step-up verification.
 
     Requires the caller to re-prove identity with the current
     password — and an MFA code when MFA is enabled — before the
@@ -362,6 +261,7 @@ async def edit_profile_password(
     evict a suspected attacker without logging the caller out.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         user_attributtes: Schema with current password, new
             password, optional MFA code, and the optional
             ``revoke_other_sessions`` flag.
@@ -393,21 +293,20 @@ async def edit_profile_password(
 
 
 @router.put("/photo", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def delete_profile_photo(
+    request: Request,
     token_user_id: auth_dependencies.CurrentUserId,
     storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
 ) -> None:
-    """
-    Delete authenticated user's profile photo.
+    """Delete authenticated user's profile photo.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         token_user_id: User ID from access token.
         storage: The platform storage provider.
         db: Database session.
-
-    Returns:
-        Success message.
     """
     users_integration.delete_user_photo(token_user_id, storage, db)
 
@@ -417,7 +316,9 @@ def delete_profile_photo(
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
 )
-async def delete_profile_other_sessions(
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
+def delete_profile_other_sessions(
+    request: Request,
     token_user_id: auth_dependencies.CurrentUserId,
     token_session_id: Annotated[
         str,
@@ -428,8 +329,7 @@ async def delete_profile_other_sessions(
         Depends(auth_identity_service.get_identity_service),
     ],
 ) -> None:
-    """
-    Revoke all of the authenticated user's other sessions.
+    """Revoke all of the authenticated user's other sessions.
 
     Signs out every device except the caller's current session
     (identified from the access token), so a user can end all
@@ -438,6 +338,7 @@ async def delete_profile_other_sessions(
     ``revoke_other_sessions`` option.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         token_user_id: User ID from access token.
         token_session_id: The caller's current session, preserved.
         identity_service: Identity service dependency.
@@ -453,18 +354,20 @@ async def delete_profile_other_sessions(
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
 )
-async def delete_profile_session(
-    session_id: str,
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
+def delete_profile_session(
+    request: Request,
+    session_id: profile_dependencies.SessionId,
     token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
 ) -> None:
-    """
-    Delete user session from database.
+    """Delete user session from database.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         session_id: Session identifier to delete.
         token_user_id: User ID from access token.
         identity_service: Identity service dependency.
@@ -479,171 +382,54 @@ async def delete_profile_session(
 
 
 @router.get("/export", status_code=status.HTTP_200_OK, response_class=StreamingResponse)
-async def export_profile_data(
+def export_profile_data(
     token_user_id: auth_dependencies.CurrentUserId,
+    storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
 ) -> StreamingResponse:
-    """
-    Export all profile data as ZIP archive.
+    """Export all profile data as ZIP archive.
 
     Args:
         token_user_id: User ID from access token.
+        storage: The platform storage provider.
         db: Database session.
 
     Returns:
         Streaming response with ZIP archive.
-
-    Raises:
-        HTTPException: If user not found or export fails.
     """
-    # Get the user from the database
-    user = users_integration.get_user(token_user_id, db)
-
-    # If the user does not exist raise the exception
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Prepare user data — strip every server-managed secret /
-    # privileged attribute before it crosses the trust boundary.
-    user_dict = profile_utils.sqlalchemy_obj_to_dict(user)
-    for sensitive_field in (
-        "password",
-        "mfa_secret",
-        "access_type",
-        "active",
-        "mfa_enabled",
-        "email_verified",
-        "pending_admin_approval",
-    ):
-        user_dict.pop(sensitive_field, None)
-
-    # Create export service and generate archive
-    export_service = profile_export_service.ExportService(token_user_id, db)
-
-    headers = {
-        "Content-Disposition": f"attachment; filename=user_{token_user_id}_export.zip",
+    return StreamingResponse(
+        profile_service.export_profile(token_user_id, storage, db),
+        media_type="application/zip",
         # Content-Length is omitted for streaming
-    }
-
-    try:
-        return StreamingResponse(
-            export_service.generate_export_archive(user_dict),
-            media_type="application/zip",
-            headers=headers,
-        )
-    except (
-        profile_exceptions.DatabaseConnectionError,
-        profile_exceptions.FileSystemError,
-        profile_exceptions.ZipCreationError,
-        profile_exceptions.MemoryAllocationError,
-        profile_exceptions.DataCollectionError,
-        profile_exceptions.ExportTimeoutError,
-    ) as err:
-        # Handle specific export errors with appropriate HTTP responses
-        http_exception = profile_exceptions.handle_import_export_exception(err, "profile data export")
-        logger.error(f"Export error for user {token_user_id}: {err}", exc_info=err)
-        raise http_exception from err
-    except Exception as err:
-        # Log the exception
-        logger.error(f"Unexpected error in export_profile_data for user {token_user_id}: {err}", exc_info=err)
-        # Raise an HTTPException with a 500 Internal Server Error status code
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal Server Error",
-        ) from err
+        headers={"Content-Disposition": f"attachment; filename=user_{token_user_id}_export.zip"},
+    )
 
 
 @router.post("/import", status_code=status.HTTP_201_CREATED, response_model=dict)
-async def import_profile_data(
+@core_rate_limit.limiter.limit(core_rate_limit.UPLOAD)
+def import_profile_data(
+    request: Request,
     file: UploadFile,
     token_user_id: auth_dependencies.CurrentUserId,
+    storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
 ) -> dict:
-    """
-    Import profile data from ZIP with security validation.
+    """Import profile data from ZIP with security validation.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         file: ZIP file containing profile data.
         token_user_id: User ID from access token.
+        storage: The platform storage provider.
         db: Database session.
 
     Returns:
         Import results with counts of imported items.
-
-    Raises:
-        HTTPException: If validation or import fails.
     """
     # Comprehensive security validation via the unified pipeline.
-    await core_file_uploads.validate_upload(file, kind=core_file_uploads.UploadKind.ZIP)
+    zip_data = core_file_uploads.read_validated_upload_sync(file, kind=core_file_uploads.UploadKind.ZIP)
 
-    try:
-        # Read the ZIP file data
-        zip_data = await file.read()
-
-        # Create import service and process the data
-        import_service = profile_import_service.ImportService(token_user_id, db)
-        result = await import_service.import_from_zip_data(zip_data)
-
-        logger.info(f"Successfully imported profile data for user {token_user_id}: {result['imported']}")
-
-        return result
-
-    except (
-        profile_exceptions.ImportValidationError,
-        profile_exceptions.FileFormatError,
-        profile_exceptions.FileSizeError,
-        profile_exceptions.ActivityLimitError,
-        profile_exceptions.ZipStructureError,
-        profile_exceptions.JSONParseError,
-        profile_exceptions.SchemaValidationError,
-    ) as err:
-        # Handle import validation and format errors
-        http_exception = profile_exceptions.handle_import_export_exception(err, "profile data import")
-        logger.warning(f"Import validation error for user {token_user_id}: {err}")
-        raise http_exception from err
-    except (
-        profile_exceptions.DataIntegrityError,
-        profile_exceptions.ImportTimeoutError,
-        profile_exceptions.DiskSpaceError,
-    ) as err:
-        # Handle import operation errors
-        http_exception = profile_exceptions.handle_import_export_exception(err, "profile data import")
-        logger.error(f"Import operation error for user {token_user_id}: {err}", exc_info=err)
-        raise http_exception from err
-    except ValueError as err:
-        # Handle remaining validation errors for backward compatibility
-        logger.warning(f"Validation error in import_profile_data for user {token_user_id}: {err}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(err),
-        ) from err
-    except (profile_exceptions.MemoryAllocationError, MemoryError) as err:
-        # Handle memory-related errors
-        http_exception = profile_exceptions.handle_import_export_exception(err, "profile data import")
-        logger.error(f"Memory error for user {token_user_id}: {err}")
-        raise http_exception from err
-    except (
-        profile_exceptions.DatabaseConnectionError,
-        profile_exceptions.FileSystemError,
-        profile_exceptions.ZipCreationError,
-        profile_exceptions.DataCollectionError,
-        profile_exceptions.ExportTimeoutError,
-    ) as err:
-        # Handle specific import/export errors with appropriate HTTP responses
-        http_exception = profile_exceptions.handle_import_export_exception(err, "profile data import")
-        logger.error(f"Import system error for user {token_user_id}: {err}", exc_info=err)
-        raise http_exception from err
-    except Exception as err:
-        # Handle unexpected errors
-        logger.error(f"Unexpected error in import_profile_data for user {token_user_id}: {err}", exc_info=err)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Import failed due to an internal error. Please try again or contact support.",
-        ) from err
+    return profile_service.import_profile(token_user_id, zip_data, storage, db)
 
 
 # MFA logic
@@ -652,15 +438,14 @@ async def import_profile_data(
     status_code=status.HTTP_200_OK,
     response_model=mfa_schema.MFAStatusResponse,
 )
-async def get_mfa_status(
+def get_mfa_status(
     token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
 ) -> mfa_schema.MFAStatusResponse:
-    """
-    Return MFA enabled status for authenticated user.
+    """Return MFA enabled status for authenticated user.
 
     Args:
         token_user_id: User ID from access token.
@@ -677,15 +462,14 @@ async def get_mfa_status(
     status_code=status.HTTP_200_OK,
     response_model=mfa_backup_codes_schema.MFABackupCodeStatus,
 )
-async def get_backup_code_status(
+def get_backup_code_status(
     token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
 ) -> mfa_backup_codes_schema.MFABackupCodeStatus:
-    """
-    Retrieve MFA backup code status for authenticated user.
+    """Retrieve MFA backup code status for authenticated user.
 
     Args:
         token_user_id: User ID from access token.
@@ -702,21 +486,23 @@ async def get_backup_code_status(
     status_code=status.HTTP_201_CREATED,
     response_model=mfa_schema.MFASetupResponse,
 )
-async def setup_mfa(
+@core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
+def setup_mfa(
+    request: Request,
     token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
     mfa_secret_store: Annotated[
-        auth_mfa_setup_store.MFASecretStoreBackend,
-        Depends(auth_mfa_setup_store.get_mfa_secret_store),
+        auth_dependencies.MFASecretStoreBackend,
+        Depends(auth_dependencies.get_mfa_secret_store),
     ],
 ) -> mfa_schema.MFASetupResponse:
-    """
-    Initiate MFA setup for authenticated user.
+    """Initiate MFA setup for authenticated user.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         token_user_id: User ID from access token.
         identity_service: Identity service dependency.
         mfa_secret_store: Temporary secret storage.
@@ -724,18 +510,17 @@ async def setup_mfa(
     Returns:
         MFA setup response with secret and QR code.
     """
-    try:
-        return identity_service.setup_mfa(
-            user_id=token_user_id,
-            mfa_secret_store=mfa_secret_store,
-        )
-    except auth_mfa_setup_store.MFASecretStoreUnavailableError as err:
-        _raise_mfa_secret_store_unavailable(err)
+    return identity_service.setup_mfa(
+        user_id=token_user_id,
+        mfa_secret_store=mfa_secret_store,
+    )
 
 
 @router.put("/mfa/enable", status_code=status.HTTP_200_OK, response_model=dict)
-async def enable_mfa(
-    request: mfa_schema.MFASetupRequest,
+@core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
+def enable_mfa(
+    request: Request,
+    mfa_request: mfa_schema.MFASetupRequest,
     token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
@@ -746,12 +531,11 @@ async def enable_mfa(
         Depends(auth_dependencies.get_step_up_attempts),
     ],
     mfa_secret_store: Annotated[
-        auth_mfa_setup_store.MFASecretStoreBackend,
-        Depends(auth_mfa_setup_store.get_mfa_secret_store),
+        auth_dependencies.MFASecretStoreBackend,
+        Depends(auth_dependencies.get_mfa_secret_store),
     ],
 ) -> dict:
-    """
-    Enable MFA for authenticated user after step-up verification.
+    """Enable MFA for authenticated user after step-up verification.
 
     A stolen access token alone must not be sufficient to enrol a
     new TOTP secret on a victim's account (which would lock the
@@ -766,12 +550,14 @@ async def enable_mfa(
     :func:`modules.auth._internal.services.step_up_service.verify_step_up_credentials`).
 
     Args:
-        request: MFA setup request with TOTP code and (when the
+        request: The incoming request, read by the rate limiter.
+        mfa_request: MFA setup request with TOTP code and (when the
             account has a local password) current password.
         token_user_id: User ID from access token.
         identity_service: Identity service instance for backup code
             generation and step-up verification.
         mfa_secret_store: Temporary secret storage.
+        step_up_store: Step-up lockout store.
 
     Returns:
         Success message and the freshly issued backup codes.
@@ -780,20 +566,19 @@ async def enable_mfa(
         HTTPException: 400 if no setup is in progress or the TOTP
             code is invalid; 401 if step-up verification fails.
     """
-    try:
-        return identity_service.enable_mfa(
-            request=request,
-            user_id=token_user_id,
-            step_up_store=step_up_store,
-            mfa_secret_store=mfa_secret_store,
-        )
-    except auth_mfa_setup_store.MFASecretStoreUnavailableError as err:
-        _raise_mfa_secret_store_unavailable(err)
+    return identity_service.enable_mfa(
+        request=mfa_request,
+        user_id=token_user_id,
+        step_up_store=step_up_store,
+        mfa_secret_store=mfa_secret_store,
+    )
 
 
 @router.put("/mfa/disable", status_code=status.HTTP_200_OK, response_model=dict)
-async def disable_mfa(
-    request: mfa_schema.MFADisableRequest,
+@core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
+def disable_mfa(
+    request: Request,
+    mfa_request: mfa_schema.MFADisableRequest,
     token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
@@ -804,8 +589,7 @@ async def disable_mfa(
         Depends(auth_dependencies.get_step_up_attempts),
     ],
 ) -> dict:
-    """
-    Disable MFA for authenticated user after step-up verification.
+    """Disable MFA for authenticated user after step-up verification.
 
     Disabling MFA materially weakens the account's security
     posture, so a valid access token alone is not sufficient: the
@@ -817,10 +601,12 @@ async def disable_mfa(
     :func:`modules.auth.mfa.service.disable_user_mfa` only clears state.
 
     Args:
-        request: MFA disable request with current password and
+        request: The incoming request, read by the rate limiter.
+        mfa_request: MFA disable request with current password and
             MFA code.
         token_user_id: User ID from access token.
         identity_service: Identity service dependency.
+        step_up_store: Step-up lockout store.
 
     Returns:
         Success message.
@@ -831,26 +617,28 @@ async def disable_mfa(
             enabled.
     """
     return identity_service.disable_mfa(
-        request=request,
+        request=mfa_request,
         user_id=token_user_id,
         step_up_store=step_up_store,
     )
 
 
 @router.post("/mfa/verify", status_code=status.HTTP_200_OK, response_model=dict)
-async def verify_mfa(
-    request: mfa_schema.MFARequest,
+@core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
+def verify_mfa(
+    request: Request,
+    mfa_request: mfa_schema.MFARequest,
     token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
 ) -> dict:
-    """
-    Verify MFA code for authenticated user.
+    """Verify MFA code for authenticated user.
 
     Args:
-        request: MFA request with code to verify.
+        request: The incoming request, read by the rate limiter.
+        mfa_request: MFA request with code to verify.
         token_user_id: User ID from access token.
         identity_service: Identity service instance for backup code verification.
 
@@ -861,7 +649,7 @@ async def verify_mfa(
         HTTPException: If MFA code is invalid.
     """
     return identity_service.verify_mfa(
-        request=request,
+        request=mfa_request,
         user_id=token_user_id,
     )
 
@@ -872,7 +660,7 @@ async def verify_mfa(
     response_model=mfa_backup_codes_schema.MFABackupCodesResponse,
 )
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
-async def generate_mfa_backup_codes(
+def generate_mfa_backup_codes(
     response: Response,
     request: Request,
     step_up: users_schema.StepUpVerification,
@@ -886,8 +674,7 @@ async def generate_mfa_backup_codes(
         Depends(auth_dependencies.get_step_up_attempts),
     ],
 ) -> mfa_backup_codes_schema.MFABackupCodesResponse:
-    """
-    Generate new MFA backup codes for authenticated user.
+    """Generate new MFA backup codes for authenticated user.
 
     Requires step-up verification (current password + MFA code,
     when MFA is enabled). Issuing new backup codes invalidates
@@ -901,6 +688,7 @@ async def generate_mfa_backup_codes(
         step_up: Step-up verification payload.
         token_user_id: User ID from access token.
         identity_service: Identity service for code generation.
+        step_up_store: Step-up lockout store.
 
     Returns:
         Response with generated backup codes and timestamp.
@@ -922,23 +710,24 @@ async def generate_mfa_backup_codes(
     status_code=status.HTTP_200_OK,
     response_model=list[auth_identity_links_schema.UsersIdentityProviderResponse],
 )
-async def get_my_identity_providers(
+def get_my_identity_providers(
     token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
 ) -> list[auth_identity_links_schema.UsersIdentityProviderResponse]:
-    """
-    Retrieve all identity provider links for the authenticated user.
+    """Retrieve all identity provider links for the authenticated user.
+
     This endpoint fetches all external identity provider (IdP) connections associated
     with the current user's account. Each link includes connection metadata and enriched
     details about the identity provider (name, slug, icon, and provider type).
+
     Args:
         token_user_id (int): The authenticated user's ID extracted from the JWT access token.
             Injected automatically via dependency injection.
-        db (Session): Database session for executing queries.
-            Injected automatically via dependency injection.
+        identity_service: Identity service dependency.
+
     Returns:
         list[dict]: A list of dictionaries representing the user's IdP links. Each dictionary contains:
             - id (int): Unique identifier for the user-IdP link
@@ -953,6 +742,7 @@ async def get_my_identity_providers(
             - idp_slug (str): URL-safe identifier for the IdP (if available)
             - idp_icon (str): Icon/logo URL for the IdP (if available)
             - idp_provider_type (str): Type of provider (e.g., "oauth2", "oidc") (if available)
+
     Raises:
         HTTPException: May raise authentication/authorization errors via the dependency injection.
     """
@@ -966,8 +756,8 @@ async def get_my_identity_providers(
     response_model=None,
 )
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
-async def delete_my_identity_provider(
-    idp_id: int,
+def delete_my_identity_provider(
+    idp_id: core_dependencies.PositiveId,
     step_up: users_schema.StepUpVerification,
     request: Request,
     token_user_id: auth_dependencies.CurrentUserId,
@@ -980,8 +770,7 @@ async def delete_my_identity_provider(
         Depends(auth_dependencies.get_step_up_attempts),
     ],
 ) -> None:
-    """
-    Delete (unlink) an identity provider from the authenticated user's account.
+    """Delete (unlink) an identity provider from the authenticated user's account.
 
     This endpoint allows users to remove the association between their
     account and a specific identity provider. It requires step-up
@@ -996,6 +785,7 @@ async def delete_my_identity_provider(
         request (Request): The FastAPI request object.
         token_user_id (int): User ID extracted from the access token.
         identity_service: Identity service dependency.
+        step_up_store: Step-up lockout store.
 
     Returns:
         None: Returns 204 No Content on successful deletion.

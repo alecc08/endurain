@@ -13,6 +13,7 @@ import jasil.providers as platform_providers
 from sqlalchemy.orm import Session
 
 import core.exceptions as core_exceptions
+import core.logger as core_logger
 import core.timezone as core_timezone
 import modules.activities.activity.integration_service as activity_integration
 import modules.health.health_targets.integration_service as health_targets_integration
@@ -29,6 +30,8 @@ import modules.users.users_privacy_settings.integration_service as users_privacy
 
 if TYPE_CHECKING:
     import modules.auth.identity_service as auth_identity_service
+
+logger = core_logger.get_logger(__name__)
 
 
 def get_user(user_id: int, db: Session) -> users_schema.UsersRead | None:
@@ -74,6 +77,7 @@ def require_active_user(user: users_schema.UsersRead) -> None:
         PermissionDeniedError: If the user is not active.
     """
     if not user.active:
+        logger.warning("Refused an inactive user", extra=core_logger.context(user_id=user.id))
         raise core_exceptions.PermissionDeniedError("Inactive user")
 
 
@@ -226,6 +230,7 @@ def _stage_default_data(user_id: int, identity_service: "auth_identity_service.I
     health_targets_integration.create_health_targets(user_id, db)
     users_default_gear_integration.create_default_gear(user_id, db)
     db.commit()
+    logger.info("Default rows created for a new user", extra=core_logger.context(user_id=user_id))
 
     # Created through the auth boundary, which owns that table and its transaction.
     identity_service.initialize_user_mfa(user_id)
@@ -262,6 +267,7 @@ def create_user(
         db.rollback()
         raise
     db.commit()
+    logger.info("User created", extra=core_logger.context(user_id=created.id))
 
     identity_service.set_local_password_hash(created.id, hashed_password)
     _stage_default_data(created.id, identity_service, db)
@@ -323,6 +329,7 @@ def create_signup_user(
         # Abstract message to reduce information leakage.
         raise core_exceptions.ConflictError("Unable to create user.") from err
     db.commit()
+    logger.info("User signed up", extra=core_logger.context(user_id=created.id))
 
     if hashed_password is not None:
         identity_service.set_local_password_hash(created.id, hashed_password)
@@ -408,6 +415,7 @@ def edit_user(
         db.rollback()
         raise
     db.commit()
+    logger.info("User edited by an administrator", extra=core_logger.context(user_id=user_id))
 
     updated.external_auth_count = identity_service.get_identity_link_counts_for_users([updated.id]).get(updated.id, 0)
     updated.mfa_enabled = identity_service.get_mfa_enabled_for_users([updated.id]).get(updated.id, False)
@@ -468,6 +476,7 @@ def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session)
         db.rollback()
         raise
     db.commit()
+    logger.info("User profile edited", extra=core_logger.context(user_id=user_id))
     return updated
 
 
@@ -483,10 +492,12 @@ def approve_user(user_id: int, db: Session) -> None:
         InvalidInputError: If the user's email is not verified.
     """
     if not require_user(user_id, db).email_verified:
+        logger.warning("Refused to approve a user with an unverified email", extra=core_logger.context(user_id=user_id))
         raise core_exceptions.InvalidInputError("User email is not verified")
 
     users_crud.update_user(user_id, {"pending_admin_approval": False, "active": True}, db)
     db.commit()
+    logger.info("User approved", extra=core_logger.context(user_id=user_id))
 
 
 def stage_email_verification(
@@ -531,6 +542,7 @@ def delete_user(user_id: int, storage: platform_providers.StorageProvider, db: S
     activity_integration.delete_all_activities_for_user(user_id, db)
     users_crud.delete_user(user_id, db)
     db.commit()
+    logger.info("User deleted", extra=core_logger.context(user_id=user_id))
 
     users_photo_service.delete_photo_files(user_id, storage)
 

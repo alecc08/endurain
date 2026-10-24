@@ -1,5 +1,6 @@
 """Tests for profile data import service."""
 
+import contextlib
 import json
 import zipfile
 from io import BytesIO
@@ -19,6 +20,14 @@ from modules.users.users_profile.exceptions import (
     JSONParseError,
     MemoryAllocationError,
 )
+
+
+@contextlib.contextmanager
+def _storage_of(service):
+    """Expose a service's storage provider the way the old runtime patch did."""
+    runtime = MagicMock()
+    runtime.get_active_platform.return_value.storage = service.storage
+    yield runtime
 
 
 class TestImportPerformanceConfig:
@@ -47,7 +56,7 @@ class TestImportPerformanceConfig:
 class TestImportServiceInit:
     def test_init_creates_service(self) -> None:
         mock_db = MagicMock(spec=Session)
-        service = profile_import_service.ImportService(user_id=1, db=mock_db)
+        service = profile_import_service.ImportService(user_id=1, storage=MagicMock(), db=mock_db)
         assert service.user_id == 1
         assert service.db is mock_db
 
@@ -56,6 +65,7 @@ class TestImportServiceInit:
         config = profile_import_service.ImportPerformanceConfig(batch_size=10)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
             performance_config=config,
         )
@@ -75,6 +85,7 @@ class TestImportServiceZipValidation:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.max_file_size_mb = 0.001
@@ -86,6 +97,7 @@ class TestImportServiceZipValidation:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.max_file_size_mb = 100
@@ -99,6 +111,7 @@ class TestImportServiceReadZipEntry:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -112,6 +125,7 @@ class TestImportServiceLoadSingleJson:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -126,6 +140,7 @@ class TestImportServiceLoadSingleJson:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -139,6 +154,7 @@ class TestImportServiceLoadSingleJson:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -153,6 +169,7 @@ class TestImportServiceLoadSingleJson:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -167,6 +184,7 @@ class TestImportServiceLoadSingleJson:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -181,6 +199,7 @@ class TestImportServiceGetSplitFiles:
     def test_get_split_files_list_returns_sorted(self) -> None:
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=MagicMock(spec=Session),
         )
         file_list = {
@@ -195,6 +214,7 @@ class TestImportServiceGetSplitFiles:
     def test_get_split_files_list_falls_back_to_single(self) -> None:
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=MagicMock(spec=Session),
         )
         file_list = {"data/activity_laps.json", "data/other.json"}
@@ -204,6 +224,7 @@ class TestImportServiceGetSplitFiles:
     def test_get_split_files_list_empty(self) -> None:
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=MagicMock(spec=Session),
         )
         result = service._get_split_files_list(set(), "data/activity_laps")
@@ -215,6 +236,7 @@ class TestImportServiceGears:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -236,7 +258,7 @@ class TestImportServiceGears:
         assert mapping == {5: 10}
 
     async def test_import_maps_onto_a_gear_with_the_same_nickname(self) -> None:
-        service = profile_import_service.ImportService(user_id=1, db=MagicMock(spec=Session))
+        service = profile_import_service.ImportService(user_id=1, storage=MagicMock(), db=MagicMock(spec=Session))
         existing = MagicMock()
         existing.id = 77
 
@@ -253,7 +275,7 @@ class TestImportServiceGears:
         mock_create.assert_not_called()
 
     async def test_import_drops_provider_ids_that_are_taken(self) -> None:
-        service = profile_import_service.ImportService(user_id=1, db=MagicMock(spec=Session))
+        service = profile_import_service.ImportService(user_id=1, storage=MagicMock(), db=MagicMock(spec=Session))
         created = MagicMock()
         created.id = 10
 
@@ -278,6 +300,7 @@ class TestImportServiceGears:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -288,6 +311,7 @@ class TestImportServiceGears:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -303,6 +327,7 @@ class TestImportServiceGears:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -315,6 +340,7 @@ class TestImportServiceUserData:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         await service.collect_and_import_user_default_gear([], {})
@@ -324,6 +350,7 @@ class TestImportServiceUserData:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         with (
@@ -345,6 +372,7 @@ class TestImportServiceUserData:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         mock_existing = MagicMock()
@@ -366,6 +394,7 @@ class TestImportServiceUserData:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         await service.collect_and_import_user_integrations([])
@@ -375,6 +404,7 @@ class TestImportServiceUserData:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         await service.collect_and_import_user_goals([])
@@ -384,6 +414,7 @@ class TestImportServiceUserData:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         await service.collect_and_import_user_privacy_settings([])
@@ -393,6 +424,7 @@ class TestImportServiceUserData:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -420,6 +452,7 @@ class TestImportServiceUserData:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -441,6 +474,7 @@ class TestImportServiceUserData:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -455,6 +489,7 @@ class TestImportServiceUserData:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -469,6 +504,7 @@ class TestImportServiceUserData:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -484,6 +520,7 @@ class TestImportServiceUserData:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -529,6 +566,7 @@ class TestImportServiceHealth:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -555,6 +593,7 @@ class TestImportServiceHealth:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -581,6 +620,7 @@ class TestImportServiceHealth:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -605,6 +645,7 @@ class TestImportServiceActivities:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -624,6 +665,7 @@ class TestImportServiceActivities:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.max_activities = 1
@@ -657,6 +699,7 @@ class TestImportServiceActivityComponents:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         contributor = MagicMock(key=key, count_key=count_key)
@@ -682,6 +725,7 @@ class TestImportServiceActivityComponents:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         contributor = MagicMock(key="laps", count_key="activity_laps")
@@ -702,6 +746,7 @@ class TestImportServiceActivityComponents:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         contributor = MagicMock(
@@ -735,6 +780,7 @@ class TestImportServiceFromZip:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -778,6 +824,7 @@ class TestImportServiceFromZip:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -795,6 +842,7 @@ class TestImportServiceFromZip:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -836,6 +884,7 @@ class TestImportServiceFiles:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -848,6 +897,7 @@ class TestImportServiceFiles:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -860,6 +910,7 @@ class TestImportServiceFiles:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -874,6 +925,7 @@ class TestImportServiceReadZipEntryDecompressed:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -898,6 +950,7 @@ class TestImportServiceLoadComponentsForBatch:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -910,6 +963,7 @@ class TestImportServiceLoadComponentsForBatch:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -938,6 +992,7 @@ class TestImportServiceLoadComponentsForBatch:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -959,6 +1014,7 @@ class TestImportServiceLoadComponentsForBatch:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -987,6 +1043,7 @@ class TestImportServiceLoadComponentsForBatch:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         zip_data = _make_zip_with_json({"data/laps.json": [{"activity_id": 1}]})
@@ -1012,6 +1069,7 @@ class TestImportServiceActivityComponentsMedia:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -1047,6 +1105,7 @@ class TestImportServiceActivityComponentsMedia:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -1076,6 +1135,7 @@ class TestImportServiceActivityComponentsMedia:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -1104,6 +1164,7 @@ class TestImportServiceActivityComponentsMedia:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -1139,6 +1200,7 @@ class TestImportServiceActivitiesDataBatched:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -1199,6 +1261,7 @@ class TestImportServiceActivitiesDataBatched:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -1256,6 +1319,7 @@ class TestImportServiceAddActivityFiles:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -1288,6 +1352,7 @@ class TestImportServiceAddActivityFiles:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -1316,6 +1381,7 @@ class TestImportServiceAddActivityFiles:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -1350,6 +1416,7 @@ class TestImportServiceAddActivityMediaFromZip:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -1364,7 +1431,7 @@ class TestImportServiceAddActivityMediaFromZip:
         with (
             patch("modules.users.users_profile.import_service.file_uploads.file_validator", mock_validator),
             patch("modules.users.users_profile.import_service.file_uploads.validate_bytes", new_callable=AsyncMock),
-            patch("modules.users.users_profile.import_service.platform_runtime") as runtime,
+            _storage_of(service) as runtime,
             zipfile.ZipFile(BytesIO(zip_data)) as z,
         ):
             await service.add_activity_media_from_zip(
@@ -1383,6 +1450,7 @@ class TestImportServiceAddActivityMediaFromZip:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -1411,6 +1479,7 @@ class TestImportServiceAddActivityMediaFromZip:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -1429,7 +1498,7 @@ class TestImportServiceAddActivityMediaFromZip:
                 new_callable=AsyncMock,
                 side_effect=core_exceptions.InvalidInputError("invalid image"),
             ),
-            patch("modules.users.users_profile.import_service.platform_runtime") as runtime,
+            _storage_of(service) as runtime,
             zipfile.ZipFile(BytesIO(zip_data)) as z,
         ):
             await service.add_activity_media_from_zip(
@@ -1446,6 +1515,7 @@ class TestImportServiceAddActivityMediaFromZip:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -1470,6 +1540,7 @@ class TestImportServiceAddUserImages:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -1484,7 +1555,7 @@ class TestImportServiceAddUserImages:
         with (
             patch("modules.users.users_profile.import_service.file_uploads.file_validator", mock_validator),
             patch("modules.users.users_profile.import_service.file_uploads.validate_bytes", new_callable=AsyncMock),
-            patch("modules.users.users_profile.import_service.platform_runtime") as runtime,
+            _storage_of(service) as runtime,
             zipfile.ZipFile(BytesIO(zip_data)) as z,
         ):
             await service.add_user_images_from_zip(z, {"user_images/old_photo.jpg"})
@@ -1500,6 +1571,7 @@ class TestImportServiceAddUserImages:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False
@@ -1518,7 +1590,7 @@ class TestImportServiceAddUserImages:
                 new_callable=AsyncMock,
                 side_effect=core_exceptions.InvalidInputError("invalid image"),
             ),
-            patch("modules.users.users_profile.import_service.platform_runtime") as runtime,
+            _storage_of(service) as runtime,
             zipfile.ZipFile(BytesIO(zip_data)) as z,
         ):
             await service.add_user_images_from_zip(z, {"user_images/old_photo.jpg"})
@@ -1532,6 +1604,7 @@ class TestImportServiceHealthEmptyBranches:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -1554,6 +1627,7 @@ class TestImportServiceHealthEmptyBranches:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -1581,6 +1655,7 @@ class TestImportServiceHealthEmptyBranches:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
 
@@ -1596,6 +1671,7 @@ class TestImportServiceFromZipExtended:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
             user_id=1,
+            storage=MagicMock(),
             db=mock_db,
         )
         service.performance_config.enable_memory_monitoring = False

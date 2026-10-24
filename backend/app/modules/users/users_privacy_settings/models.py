@@ -1,19 +1,13 @@
 """User privacy settings database models."""
 
-from typing import TYPE_CHECKING
-
 from sqlalchemy import ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
 
-if TYPE_CHECKING:
-    from modules.users.users.models import Users
-
 
 class UsersPrivacySettings(Base):
-    """
-    User privacy settings for activity visibility control.
+    """User privacy settings for activity visibility control.
 
     Attributes:
         id: Primary key.
@@ -33,7 +27,6 @@ class UsersPrivacySettings(Base):
         hide_activity_workout_sets_steps: Hide activity workout
             sets and steps.
         hide_activity_gear: Hide activity gear.
-        user: Relationship to Users model.
     """
 
     __tablename__ = "users_privacy_settings"
@@ -115,6 +108,3 @@ class UsersPrivacySettings(Base):
         nullable=False,
         comment="Hide activity gear",
     )
-
-    # Define a relationship to the Users model
-    users: Mapped["Users"] = relationship(back_populates="users_privacy_settings")

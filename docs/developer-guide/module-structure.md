@@ -738,22 +738,22 @@ the conformance test's allowlist.
 
 ### Pilot status and what the next conversion owns
 
-`activities`, `followers`, `garmin`, `gears`, `health`, `notifications`, `server_settings` and `websocket` are the only modules converted so far. The
+`activities`, `followers`, `garmin`, `gears`, `health`, `notifications`, `server_settings`, `users` and `websocket` are the only modules converted so far. The
 remaining modules are listed in `UNCONVERTED_MODULES` so that
 `TestModuleInventory` keeps them visible rather than silently exempt, and are
 converted one at a time with the `convert-module` skill. The items below need
 changes outside the converted modules, so they are recorded here as accepted
 limitations rather than half-done:
 
-- **Top-level cycles.** `users` ⇄ `activities`: profile export/import consumes
-  activities, and activities consumes `users.integration_service`. The planned fix is the
-  contributor pattern the activity children already use: `users_profile`
-  export/import asks each module for its section instead of importing them.
-  `gears` no longer closes a cycle: it sits below activities (`_MUST_NOT_IMPORT`), states the
-  required usage questions in `gears/contributors.py`, and `module_registry.configure_gear_contributors`
-  installs the activities answers. A `layers` contract (core, identity, followers/gears/health,
-  activities, providers) can then state the module-level direction once. The remaining edge that
-  closes a cycle lives in `users`.
+- **Top-level cycles.** `users` ⇄ `activities`: `users` deletes an account's activities through
+  `activities.integration_service` and runs profile export/import through the activities contributors
+  (`activities.contributor_registry`, listed in `_LAYER_EXCEPTIONS`), while activities consumes
+  `users.integration_service`. Publishing a `user.deleted` event that activities subscribes to would
+  remove the first edge. `gears` no longer closes a cycle: it sits below activities (`_MUST_NOT_IMPORT`),
+  states the required usage questions in `gears/contributors.py`, and
+  `module_registry.configure_gear_contributors` installs the activities answers. A `layers` contract
+  (core, identity, followers/gears/health, activities, providers) can then state the module-level
+  direction once. The remaining edge that closes a cycle lives in `users`.
 - **Layer rules for unconverted modules.** `TestLayerRules` covers converted
   modules only. An unconverted module is outside it until converted, and the
   `auth-boundary` contract is the one generic rule over every module:
@@ -785,20 +785,24 @@ limitations rather than half-done:
 
 - **Persistence layers calling other modules.** Converted modules ask nothing of
   another bounded context below `service` (`TestLayerRules`). The unconverted ones still do,
-  for example `users` and `strava`.
+  for example `strava`.
 - **Persistence ending transactions.** Converted modules stage with `flush()` and
   let `service` (or the job, importer or `migration_service` that owns the unit of
-  work) commit. Unconverted modules (`auth`, `users`, …) are outside
+  work) commit. Unconverted modules (`auth`, `strava`) are outside
   `test_crud_does_not_end_transactions`; `_CRUD_TRANSACTION_DEBT` is empty and is
   where a module being converted lists its files.
 - **Subscribers reaching past a surface.** Followers holds no subscribers; its
   notification handlers live in `modules/notifications` and subscribe to
-  `followers.events` (`TestLayerRules`). `strava` and
-  `users.users_profile` still import another module's `utils`/`manager` directly.
-- **Forwarding surfaces on unconverted peers.** `garmin` reaches `users.users` through a small
-  `integration_service.py` that only forwards to its `crud`. That `crud` still commits and raises
-  `HTTPException`; the surface gets its real shape when `users.users` is converted. The `health_*` and
-  `users_integrations` surfaces already have it: they stage, and `garmin` commits.
+  `followers.events` (`TestLayerRules`). `strava`
+  still imports another module's `utils`/`manager` directly.
+- **Account creation spans two transactions.** `users.service.create_user` and `create_signup_user`
+  commit the user row, then store the password hash and the MFA row through the auth boundary
+  (`IdentityService`), whose writes commit themselves. A failure between the steps leaves an account
+  without a credential or MFA row. Making those auth writes stage would let the whole unit commit once.
+- **Profile import runs its own event loop.** `users_profile.service.import_profile` calls
+  `asyncio.run` on the request's worker thread, because `ImportService` awaits file validation. The
+  importer shares no loop-bound resource, so this is safe, but the importer should become synchronous
+  once the validation helpers have synchronous forms.
 - **Legacy model scan.** Converted modules declare their ORM module in
   `model_registry.py` and use scalar foreign keys with database `ON DELETE`
   behaviour. `app/model_registry.py` keeps a filesystem scan only for modules not

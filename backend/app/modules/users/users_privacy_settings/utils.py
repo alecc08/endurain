@@ -6,8 +6,7 @@ import modules.users.users_privacy_settings.schema as users_privacy_settings_sch
 def visibility_to_int(
     visibility: str | users_privacy_settings_schema.ActivityVisibility | None,
 ) -> int:
-    """
-    Convert visibility string or enum to integer.
+    """Convert visibility string or enum to integer.
 
     Args:
         visibility: Visibility as string, enum, or None.

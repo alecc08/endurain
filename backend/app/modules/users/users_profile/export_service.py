@@ -18,7 +18,7 @@ import zipfile
 from collections.abc import Generator
 from typing import Any
 
-import jasil.runtime as platform_runtime
+import jasil.providers as platform_providers
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -51,8 +51,7 @@ logger = core_logger.get_logger(__name__)
 
 
 class ExportPerformanceConfig(users_profile_utils.BasePerformanceConfig):
-    """
-    Performance configuration for export operations.
+    """Performance configuration for export operations.
 
     Attributes:
         batch_size: Number of items per batch.
@@ -72,14 +71,14 @@ class ExportPerformanceConfig(users_profile_utils.BasePerformanceConfig):
         enable_memory_monitoring: bool = True,
         timeout_seconds: int = 3600,
     ):
+        """Set the export limits; unset values come from the auto-detected tier."""
         super().__init__(batch_size, max_memory_mb, enable_memory_monitoring, timeout_seconds)
         self.compression_level = compression_level
         self.chunk_size = chunk_size
 
     @classmethod
     def _get_tier_configs(cls) -> dict[str, dict[str, Any]]:
-        """
-        Get tier-specific configuration dictionaries.
+        """Get tier-specific configuration dictionaries.
 
         Returns:
             Dictionary mapping tier names to config dicts.
@@ -110,11 +109,11 @@ class ExportPerformanceConfig(users_profile_utils.BasePerformanceConfig):
 
 
 class ExportService:
-    """
-    Service for exporting user profile data to ZIP archive.
+    """Service for exporting user profile data to ZIP archive.
 
     Attributes:
         user_id: ID of user to export data for.
+        storage: The platform storage provider.
         db: Database session.
         counts: Dictionary tracking exported item counts.
         performance_config: Performance configuration.
@@ -123,10 +122,13 @@ class ExportService:
     def __init__(
         self,
         user_id: int,
+        storage: platform_providers.StorageProvider,
         db: Session,
         performance_config: ExportPerformanceConfig | None = None,
     ):
+        """Bind the export to a user, the platform storage and a database session."""
         self.user_id = user_id
+        self.storage = storage
         self.db = db
         self.counts = users_profile_utils.initialize_operation_counts(include_user_count=True)
         self.performance_config: ExportPerformanceConfig = (
@@ -134,16 +136,17 @@ class ExportService:
         )
 
         logger.info(
-            f"ExportService initialized with performance config: "
-            f"batch_size={self.performance_config.batch_size}, "
-            f"max_memory_mb={self.performance_config.max_memory_mb}, "
-            f"compression_level={self.performance_config.compression_level}, "
-            f"timeout_seconds={self.performance_config.timeout_seconds}"
+            "ExportService initialized",
+            extra=core_logger.context(
+                batch_size=self.performance_config.batch_size,
+                max_memory_mb=self.performance_config.max_memory_mb,
+                compression_level=self.performance_config.compression_level,
+                timeout_seconds=self.performance_config.timeout_seconds,
+            ),
         )
 
     def collect_user_activities_data(self, zipf: zipfile.ZipFile) -> list[Any]:
-        """
-        Collect and write user activities to ZIP.
+        """Collect and write user activities to ZIP.
 
         Args:
             zipf: ZipFile instance to write to.
@@ -168,7 +171,7 @@ class ExportService:
             offset = 0
             batch_size = self.performance_config.batch_size
 
-            logger.info(f"Starting batched activity collection with batch_size={batch_size}")
+            logger.info("Starting batched activity collection", extra=core_logger.context(batch_size=batch_size))
 
             while True:
                 # Get a batch of activities
@@ -179,7 +182,11 @@ class ExportService:
                     # return an explicit error rather than silently skipping pages.
                     raise
                 except Exception as err:
-                    logger.warning(f"Failed to get activities batch (offset={offset}), skipping: {err}", exc_info=err)
+                    logger.warning(
+                        "Failed to get an activities batch, skipping",
+                        exc_info=err,
+                        extra=core_logger.context(offset=offset),
+                    )
                     offset += batch_size
                     continue
 
@@ -196,10 +203,13 @@ class ExportService:
                     self.performance_config.enable_memory_monitoring,
                 )
 
-                logger.info(f"Collected {len(batch_activities)} activities in batch (total: {len(all_activities)})")
+                logger.info(
+                    "Collected a batch of activities",
+                    extra=core_logger.context(batch_count=len(batch_activities), total_count=len(all_activities)),
+                )
 
             if not all_activities:
-                logger.info(f"No activities found for user {self.user_id}")
+                logger.info("No activities found for the user", extra=core_logger.context(user_id=self.user_id))
                 # Write empty activities file
                 users_profile_utils.write_json_to_zip(zipf, "data/activities.json", [], self.counts)
                 self._collect_and_write_global_activity_components(zipf)
@@ -209,28 +219,30 @@ class ExportService:
             activities_dicts = [users_profile_utils.sqlalchemy_obj_to_dict(a) for a in all_activities]
             users_profile_utils.write_json_to_zip(zipf, "data/activities.json", activities_dicts, self.counts)
 
-            logger.info(f"Written {len(activities_dicts)} activities to ZIP")
+            logger.info("Written activities to ZIP", extra=core_logger.context(count=len(activities_dicts)))
 
             # Filter out activities with None IDs and collect valid IDs
             activity_ids = [activity.id for activity in all_activities if activity.id is not None]
 
             if not activity_ids:
-                logger.warning(f"No valid activity IDs found for user {self.user_id}")
+                logger.warning(
+                    "No valid activity IDs found for the user", extra=core_logger.context(user_id=self.user_id)
+                )
             else:
                 self._collect_and_write_activity_components(zipf, activity_ids, all_activities)
 
             self._collect_and_write_global_activity_components(zipf)
 
         except SQLAlchemyError as err:
-            logger.error(f"Database error collecting activities: {err}", exc_info=err)
+            logger.error("Database error collecting activities", exc_info=err)
             raise DatabaseConnectionError(f"Failed to collect activity data: {err}") from err
         except MemoryAllocationError as err:
-            logger.error(f"Memory limit exceeded while collecting activities: {err}. ", exc_info=err)
+            logger.error("Memory limit exceeded while collecting activities", exc_info=err)
             raise err
         except DataCollectionError:
             raise
         except Exception as err:
-            logger.error(f"Unexpected error collecting activities: {err}", exc_info=err)
+            logger.error("Unexpected error collecting activities", exc_info=err)
             raise DataCollectionError(f"Failed to collect activity data: {err}") from err
 
         return all_activities
@@ -244,12 +256,15 @@ class ExportService:
                 users_profile_utils.write_json_to_zip(zipf, contributor.archive_path, record_dicts, self.counts)
                 self.counts[contributor.count_key] = len(record_dicts)
             except Exception as err:
-                logger.error(f"Failed to collect {contributor.key}: {err}", exc_info=err)
+                logger.error(
+                    "Failed to collect contributor data",
+                    exc_info=err,
+                    extra=core_logger.context(contributor_key=contributor.key),
+                )
                 raise DataCollectionError(f"Failed to collect {contributor.key}: {err}") from err
 
     def _get_activities_batch(self, offset: int, limit: int) -> list[Any]:
-        """
-        Get batch of activities using pagination.
+        """Get batch of activities using pagination.
 
         Args:
             offset: Offset for pagination.
@@ -270,7 +285,9 @@ class ExportService:
             )
 
         except Exception as err:
-            logger.error(f"Failed to get activities batch (offset={offset}, limit={limit}): {err}", exc_info=err)
+            logger.error(
+                "Failed to get an activities batch", exc_info=err, extra=core_logger.context(offset=offset, limit=limit)
+            )
             raise
 
     def _collect_and_write_activity_components(
@@ -279,8 +296,7 @@ class ExportService:
         activity_ids: list[int],
         user_activities: list[Any],
     ) -> None:
-        """
-        Collect and write activity components to ZIP.
+        """Collect and write activity components to ZIP.
 
         Args:
             zipf: ZipFile instance to write to.
@@ -327,8 +343,7 @@ class ExportService:
         user_activities: list[Any],
         batch_size: int,
     ) -> None:
-        """
-        Collect and write large components in chunks.
+        """Collect and write large components in chunks.
 
         Args:
             zipf: ZipFile instance to write to.
@@ -375,20 +390,37 @@ class ExportService:
                         users_profile_utils.write_json_to_zip(zipf, chunk_filename, chunk_to_write, self.counts)
                         file_counter += 1
 
-                        logger.debug(f"Written chunk {file_counter} for {component_key} ({len(chunk_to_write)} items)")
+                        logger.debug(
+                            "Written a chunk of component items",
+                            extra=core_logger.context(
+                                file_counter=file_counter, component_key=component_key, count=len(chunk_to_write)
+                            ),
+                        )
 
             except Exception as err:
-                logger.error(f"Failed to collect batch for {component_key}: {err}", exc_info=err)
+                logger.error(
+                    "Failed to collect a component batch",
+                    exc_info=err,
+                    extra=core_logger.context(component_key=component_key),
+                )
                 raise DataCollectionError(f"Failed to collect {component_key}: {err}") from err
 
-            logger.info(f"Processed {component_key} batch {i // batch_size + 1} ({len(batch_ids)} activities)")
+            logger.info(
+                "Processed a component batch",
+                extra=core_logger.context(
+                    component_key=component_key, batch_number=i // batch_size + 1, count=len(batch_ids)
+                ),
+            )
 
         # Write remaining data in buffer
         if chunk_buffer:
             if file_counter == 0:
                 # Only one chunk, use original filename
                 users_profile_utils.write_json_to_zip(zipf, base_filename, chunk_buffer, self.counts)
-                logger.info(f"Written {len(chunk_buffer)} {component_key} items to single file")
+                logger.info(
+                    "Written component items to a single file",
+                    extra=core_logger.context(count=len(chunk_buffer), component_key=component_key),
+                )
             else:
                 # Multiple chunks, write with numbered filename
                 base_name = base_filename.rsplit(".", 1)[0]
@@ -397,14 +429,24 @@ class ExportService:
 
                 users_profile_utils.write_json_to_zip(zipf, chunk_filename, chunk_buffer, self.counts)
                 file_counter += 1
-                logger.debug(f"Written final chunk for {component_key} ({len(chunk_buffer)} items)")
+                logger.debug(
+                    "Written the final chunk of component items",
+                    extra=core_logger.context(component_key=component_key, count=len(chunk_buffer)),
+                )
 
         if total_items == 0:
             # Write empty file for component type
             users_profile_utils.write_json_to_zip(zipf, base_filename, [], self.counts)
-            logger.info(f"No {component_key} data found, written empty file")
+            logger.info(
+                "No component data found, written an empty file", extra=core_logger.context(component_key=component_key)
+            )
         else:
-            logger.info(f"Written total {total_items} {component_key} items to {file_counter} file(s)")
+            logger.info(
+                "Written component items to files",
+                extra=core_logger.context(
+                    total_items=total_items, component_key=component_key, file_counter=file_counter
+                ),
+            )
         self.counts[component_key] = total_items
 
     def _collect_and_write_component_simple(
@@ -417,8 +459,7 @@ class ExportService:
         user_activities: list[Any],
         batch_size: int,
     ) -> None:
-        """
-        Collect and write small components in single file.
+        """Collect and write small components in single file.
 
         Args:
             zipf: ZipFile instance to write to.
@@ -446,27 +487,40 @@ class ExportService:
                 if data:
                     all_component_data.extend(data)
             except Exception as err:
-                logger.error(f"Failed to collect batch for {component_key}: {err}", exc_info=err)
+                logger.error(
+                    "Failed to collect a component batch",
+                    exc_info=err,
+                    extra=core_logger.context(component_key=component_key),
+                )
                 raise DataCollectionError(f"Failed to collect {component_key}: {err}") from err
 
-            logger.info(f"Processed {component_key} batch {i // batch_size + 1} ({len(batch_ids)} activities)")
+            logger.info(
+                "Processed a component batch",
+                extra=core_logger.context(
+                    component_key=component_key, batch_number=i // batch_size + 1, count=len(batch_ids)
+                ),
+            )
 
         # Write all component data to ZIP
         if all_component_data:
             component_dicts = [users_profile_utils.sqlalchemy_obj_to_dict(item) for item in all_component_data]
             users_profile_utils.write_json_to_zip(zipf, base_filename, component_dicts, self.counts)
-            logger.info(f"Written {len(component_dicts)} {component_key} items to ZIP")
+            logger.info(
+                "Written component items to ZIP",
+                extra=core_logger.context(count=len(component_dicts), component_key=component_key),
+            )
             # Clear from memory
             all_component_data.clear()
             component_dicts.clear()
         else:
             # Write empty file for component type
             users_profile_utils.write_json_to_zip(zipf, base_filename, [], self.counts)
-            logger.info(f"No {component_key} data found, written empty file")
+            logger.info(
+                "No component data found, written an empty file", extra=core_logger.context(component_key=component_key)
+            )
 
     def collect_gear_data(self, zipf: zipfile.ZipFile) -> None:
-        """
-        Collect and write gear data to ZIP.
+        """Collect and write gear data to ZIP.
 
         Args:
             zipf: ZipFile instance to write to.
@@ -484,7 +538,7 @@ class ExportService:
                 else:
                     users_profile_utils.write_json_to_zip(zipf, "data/gears.json", [], self.counts)
             except Exception as err:
-                logger.error(f"Failed to collect gears: {err}", exc_info=err)
+                logger.error("Failed to collect gears", exc_info=err)
                 raise DataCollectionError(f"Failed to collect gears: {err}") from err
 
             # Collect and write gear components
@@ -501,16 +555,15 @@ class ExportService:
                 else:
                     users_profile_utils.write_json_to_zip(zipf, "data/gear_components.json", [], self.counts)
             except Exception as err:
-                logger.error(f"Failed to collect gear components: {err}", exc_info=err)
+                logger.error("Failed to collect gear components", exc_info=err)
                 raise DataCollectionError(f"Failed to collect gear components: {err}") from err
 
         except SQLAlchemyError as err:
-            logger.error(f"Database error collecting gear data: {err}", exc_info=err)
+            logger.error("Database error collecting gear data", exc_info=err)
             raise DatabaseConnectionError(f"Failed to collect gear data: {err}") from err
 
     def collect_health_weight(self, zipf: zipfile.ZipFile) -> None:
-        """
-        Collect and write health data to ZIP.
+        """Collect and write health data to ZIP.
 
         Args:
             zipf: ZipFile instance to write to.
@@ -533,7 +586,7 @@ class ExportService:
                 else:
                     users_profile_utils.write_json_to_zip(zipf, "data/health_weight.json", [], self.counts)
             except Exception as err:
-                logger.error(f"Failed to collect health data: {err}", exc_info=err)
+                logger.error("Failed to collect health data", exc_info=err)
                 raise DataCollectionError(f"Failed to collect health data: {err}") from err
 
             # Collect and write health targets
@@ -551,16 +604,15 @@ class ExportService:
                 else:
                     users_profile_utils.write_json_to_zip(zipf, "data/health_targets.json", [], self.counts)
             except Exception as err:
-                logger.error(f"Failed to collect health targets: {err}", exc_info=err)
+                logger.error("Failed to collect health targets", exc_info=err)
                 raise DataCollectionError(f"Failed to collect health targets: {err}") from err
 
         except SQLAlchemyError as err:
-            logger.error(f"Database error collecting health data: {err}", exc_info=err)
+            logger.error("Database error collecting health data", exc_info=err)
             raise DatabaseConnectionError(f"Failed to collect health data: {err}") from err
 
     def collect_user_settings_data(self, zipf: zipfile.ZipFile) -> None:
-        """
-        Collect and write user settings to ZIP.
+        """Collect and write user settings to ZIP.
 
         Args:
             zipf: ZipFile instance to write to.
@@ -585,7 +637,7 @@ class ExportService:
                 else:
                     users_profile_utils.write_json_to_zip(zipf, "data/user_default_gear.json", [], self.counts)
             except Exception as err:
-                logger.error(f"Failed to collect user default gear: {err}", exc_info=err)
+                logger.error("Failed to collect user default gear", exc_info=err)
                 raise DataCollectionError(f"Failed to collect user default gear: {err}") from err
 
             # Collect and write user goals
@@ -597,7 +649,7 @@ class ExportService:
                 else:
                     users_profile_utils.write_json_to_zip(zipf, "data/user_goals.json", [], self.counts)
             except Exception as err:
-                logger.error(f"Failed to collect user goals: {err}", exc_info=err)
+                logger.error("Failed to collect user goals", exc_info=err)
                 raise DataCollectionError(f"Failed to collect user goals: {err}") from err
 
             # Collect and write user integrations
@@ -614,7 +666,7 @@ class ExportService:
                 else:
                     users_profile_utils.write_json_to_zip(zipf, "data/user_integrations.json", [], self.counts)
             except Exception as err:
-                logger.error(f"Failed to collect user integrations: {err}", exc_info=err)
+                logger.error("Failed to collect user integrations", exc_info=err)
                 raise DataCollectionError(f"Failed to collect user integrations: {err}") from err
 
             # Collect and write user privacy settings
@@ -631,16 +683,15 @@ class ExportService:
                 else:
                     users_profile_utils.write_json_to_zip(zipf, "data/user_privacy_settings.json", [], self.counts)
             except Exception as err:
-                logger.error(f"Failed to collect user privacy settings: {err}", exc_info=err)
+                logger.error("Failed to collect user privacy settings", exc_info=err)
                 raise DataCollectionError(f"Failed to collect user privacy settings: {err}") from err
 
         except SQLAlchemyError as err:
-            logger.error(f"Database error collecting user settings: {err}", exc_info=err)
+            logger.error("Database error collecting user settings", exc_info=err)
             raise DatabaseConnectionError(f"Failed to collect user settings: {err}") from err
 
     def add_activity_files_to_zip(self, zipf: zipfile.ZipFile, user_activities: list[Any]):
-        """
-        Add activity files to ZIP archive.
+        """Add activity files to ZIP archive.
 
         Reads each activity's retained source file through the platform
         ``StorageProvider`` (local disk or object storage) and writes it into the
@@ -653,7 +704,7 @@ class ExportService:
         if not user_activities:
             return
 
-        storage = platform_runtime.get_active_platform().storage
+        storage = self.storage
         for activity in user_activities:
             try:
                 stored = activity_file_storage_integration.get_activity_file(activity.id, storage)
@@ -665,15 +716,20 @@ class ExportService:
             except MemoryAllocationError:
                 raise
             except OSError as err:
-                logger.warning(f"Failed to add activity file for activity {activity.id}: {err}", exc_info=err)
+                logger.warning(
+                    "Failed to add activity file", exc_info=err, extra=core_logger.context(activity_id=activity.id)
+                )
                 continue
             except Exception as err:
-                logger.warning(f"Unexpected error adding activity file for activity {activity.id}: {err}", exc_info=err)
+                logger.warning(
+                    "Unexpected error adding activity file",
+                    exc_info=err,
+                    extra=core_logger.context(activity_id=activity.id),
+                )
                 continue
 
     def add_activity_media_to_zip(self, zipf: zipfile.ZipFile, user_activities: list[Any]):
-        """
-        Add activity media files to ZIP archive.
+        """Add activity media files to ZIP archive.
 
         Read through the platform ``StorageProvider`` rather than by walking a
         local directory, so an export is complete regardless of which storage
@@ -688,13 +744,17 @@ class ExportService:
         if not user_activities:
             return
 
-        storage = platform_runtime.get_active_platform().storage
+        storage = self.storage
 
         for activity in user_activities:
             try:
                 blobs = activity_media_integration.list_media_blobs(activity.id, storage)
             except Exception as err:
-                logger.warning(f"Failed to list media for activity {activity.id}: {err}", exc_info=err)
+                logger.warning(
+                    "Failed to list media for activity",
+                    exc_info=err,
+                    extra=core_logger.context(activity_id=activity.id),
+                )
                 continue
 
             for key, data in blobs:
@@ -704,12 +764,13 @@ class ExportService:
                 except MemoryAllocationError:
                     raise
                 except Exception as err:
-                    logger.warning(f"Unexpected error adding media file {key}: {err}", exc_info=err)
+                    logger.warning(
+                        "Unexpected error adding media file", exc_info=err, extra=core_logger.context(key=key)
+                    )
                     continue
 
     def add_user_images_to_zip(self, zipf: zipfile.ZipFile):
-        """
-        Add the user's profile image to the ZIP archive.
+        """Add the user's profile image to the ZIP archive.
 
         Read through the platform ``StorageProvider`` rather than by walking a
         local directory, so an export is complete regardless of which storage
@@ -720,25 +781,27 @@ class ExportService:
         Args:
             zipf: ZipFile instance to write to.
         """
-        storage = platform_runtime.get_active_platform().storage
+        storage = self.storage
         area = users_constants.USER_IMAGE_STORAGE_AREA
 
         try:
             keys = storage.list_keys(area, f"{self.user_id}.")
         except Exception as err:
-            logger.warning(f"Failed to list images for user {self.user_id}: {err}", exc_info=err)
+            logger.warning("Failed to list user images", exc_info=err, extra=core_logger.context(user_id=self.user_id))
             return
 
         for key in keys:
             try:
                 data = storage.get(area, key)
                 if data is None:
-                    logger.warning(f"User image blob not found for key: {key}")
+                    logger.warning("User image blob not found", extra=core_logger.context(key=key))
                     continue
 
                 size = len(data)
                 if size > 10 * 1024 * 1024:
-                    logger.warning(f"Large image file: {key} ({size / (1024 * 1024):.1f}MB)")
+                    logger.warning(
+                        "Large user image file", extra=core_logger.context(key=key, size_mb=size / (1024 * 1024))
+                    )
                 if size > 5 * 1024 * 1024:
                     users_profile_utils.check_memory_usage(
                         f"before image {key}",
@@ -751,11 +814,10 @@ class ExportService:
             except MemoryAllocationError:
                 raise
             except Exception as err:
-                logger.warning(f"Unexpected error adding user image {key}: {err}", exc_info=err)
+                logger.warning("Unexpected error adding user image", exc_info=err, extra=core_logger.context(key=key))
 
     def generate_export_archive(self, user_dict: dict[str, Any], timeout_seconds: int | None = 300) -> Generator[bytes]:
-        """
-        Generate and stream export archive as bytes.
+        """Generate and stream export archive as bytes.
 
         Args:
             user_dict: User data dictionary to export.
@@ -776,7 +838,7 @@ class ExportService:
             with tempfile.NamedTemporaryFile(delete=True) as tmp:
                 try:
                     compression_level = self.performance_config.compression_level
-                    logger.info(f"Creating ZIP with compression level {compression_level}")
+                    logger.info("Creating ZIP", extra=core_logger.context(compression_level=compression_level))
 
                     with zipfile.ZipFile(
                         tmp,
@@ -784,7 +846,7 @@ class ExportService:
                         compression=zipfile.ZIP_DEFLATED,
                         compresslevel=compression_level,
                     ) as zipf:
-                        logger.info(f"Starting export for user {self.user_id}")
+                        logger.info("Starting export", extra=core_logger.context(user_id=self.user_id))
 
                         # Collect and write activities data progressively
                         users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
@@ -831,13 +893,13 @@ class ExportService:
                         users_profile_utils.write_json_to_zip(zipf, "counts.json", [self.counts], self.counts)
 
                         users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                        logger.info(f"Export completed successfully. Counts: {self.counts}")
+                        logger.info("Export completed successfully", extra=core_logger.context(counts=self.counts))
 
                 except zipfile.BadZipFile as err:
-                    logger.error(f"ZIP creation error: {err}", exc_info=err)
+                    logger.error("ZIP creation error", exc_info=err)
                     raise ZipCreationError(f"Failed to create ZIP archive: {err}") from err
                 except zipfile.LargeZipFile as err:
-                    logger.error(f"ZIP file too large: {err}", exc_info=err)
+                    logger.error("ZIP file too large", exc_info=err)
                     raise ZipCreationError(f"Export archive too large: {err}") from err
 
                 # Ensure all data is written to disk before streaming
@@ -847,7 +909,9 @@ class ExportService:
 
                 # Get file size for logging
                 file_size = tmp.tell()
-                logger.info(f"ZIP archive created successfully: {file_size / (1024 * 1024):.2f}MB")
+                logger.info(
+                    "ZIP archive created successfully", extra=core_logger.context(size_mb=file_size / (1024 * 1024))
+                )
 
                 # Stream the file with error handling
                 tmp.seek(0)
@@ -861,15 +925,18 @@ class ExportService:
                         chunk_count += 1
                         yield chunk
                     except MemoryError as err:
-                        logger.error(f"Memory error during streaming: {err}", exc_info=err)
+                        logger.error("Memory error during streaming", exc_info=err)
                         raise MemoryAllocationError(f"Insufficient memory to stream export: {err}") from err
 
-                logger.info(f"Successfully streamed {chunk_count} chunks for user {self.user_id}")
+                logger.info(
+                    "Successfully streamed the export",
+                    extra=core_logger.context(chunk_count=chunk_count, user_id=self.user_id),
+                )
         except MemoryAllocationError as err:
             raise err
         except OSError as err:
-            logger.error(f"File system error during export: {err}", exc_info=err)
+            logger.error("File system error during export", exc_info=err)
             raise FileSystemError(f"File system error during export: {err}") from err
         except MemoryError as err:
-            logger.error(f"Memory allocation error during export: {err}", exc_info=err)
+            logger.error("Memory allocation error during export", exc_info=err)
             raise MemoryAllocationError(f"Insufficient memory for export: {err}") from err

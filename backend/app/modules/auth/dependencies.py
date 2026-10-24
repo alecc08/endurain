@@ -23,6 +23,7 @@ from fastapi.security import SecurityScopes
 
 import modules.auth._internal.security_stores as auth_security_stores
 import modules.auth.identity_service as auth_identity_service
+import modules.auth.mfa.setup_store as auth_mfa_setup_store
 from modules.auth._internal.internal_dependencies import (
     AuthContext,
     _resolve_and_cache_principal,
@@ -116,10 +117,12 @@ CurrentUserId = Annotated[int, Depends(get_sub_from_access_token)]
 __all__ = [
     "AuthContext",
     "CurrentUserId",
+    "MFASecretStoreBackend",
     "StepUpStore",
     "check_auth_scopes",
     "check_scopes",
     "get_access_token",
+    "get_mfa_secret_store",
     "get_sid_from_access_token",
     "get_step_up_attempts",
     "get_sub_from_access_token",
@@ -131,3 +134,7 @@ __all__ = [
 # Re-export step-up store type and dep getter for non-auth modules
 StepUpStore = auth_security_stores.StepUpStore
 get_step_up_attempts = auth_security_stores.get_step_up_attempts
+
+# Re-export the pending-MFA-secret store type and dep getter for non-auth modules
+MFASecretStoreBackend = auth_mfa_setup_store.MFASecretStoreBackend
+get_mfa_secret_store = auth_mfa_setup_store.get_mfa_secret_store

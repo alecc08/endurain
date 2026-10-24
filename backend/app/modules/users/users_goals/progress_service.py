@@ -41,11 +41,10 @@ _DEFAULT_ACTIVITY_TYPES: list[int] = [10, 19]
 def calculate_user_goals(
     user_id: int,
     date: str | None,
-    db: Session,
     first_day_of_week: core_calendar.WeekdayValue,
+    db: Session,
 ) -> list[user_goals_schema.UsersGoalProgress] | None:
-    """
-    Calculate progress for all user goals on a specified date.
+    """Calculate progress for all user goals on a specified date.
 
     Args:
         user_id: The ID of the user.
@@ -77,24 +76,25 @@ def calculate_user_goals(
             calculate_goal_progress_by_activity_type(
                 goal,
                 date,
-                db,
                 first_day_of_week,
+                db,
             )
             for goal in goals
         ]
     except (ValueError, TypeError) as err:
-        logger.error(f"Error in calculate_user_goals: {err}", exc_info=err)
+        logger.error(
+            "Invalid data while calculating user goals", exc_info=err, extra=core_logger.context(user_id=user_id)
+        )
         raise core_exceptions.InvalidInputError("Invalid data provided") from err
 
 
 def calculate_goal_progress_by_activity_type(
     goal: user_goals_schema.UsersGoalRead,
     date: str,
-    db: Session,
     first_day_of_week: core_calendar.WeekdayValue,
+    db: Session,
 ) -> user_goals_schema.UsersGoalProgress:
-    """
-    Calculate goal progress for a specific activity type.
+    """Calculate goal progress for a specific activity type.
 
     Args:
         goal: User goal object with goal details.
@@ -183,7 +183,9 @@ def calculate_goal_progress_by_activity_type(
             goal_duration=goal.goal_duration,
         )
     except (ValueError, TypeError) as err:
-        logger.error(f"Error in calculate_goal_progress_by_activity_type: {err}", exc_info=err)
+        logger.error(
+            "Invalid data while calculating goal progress", exc_info=err, extra=core_logger.context(goal_id=goal.id)
+        )
         raise core_exceptions.InvalidInputError("Invalid data provided") from err
 
 
@@ -205,4 +207,4 @@ def get_goals_progress(user_id: int, db: Session) -> list[user_goals_schema.User
         raise core_exceptions.NotFoundError("User not found")
 
     today = core_timezone.today_in(users_integration.timezone_or_default(user.timezone))
-    return calculate_user_goals(user_id, today.strftime("%Y-%m-%d"), db, user.first_day_of_week)
+    return calculate_user_goals(user_id, today.strftime("%Y-%m-%d"), user.first_day_of_week, db)

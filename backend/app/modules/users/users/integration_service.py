@@ -196,7 +196,7 @@ def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session)
     return users_service.stage_profile_edit(user_id, profile, db)
 
 
-async def upload_user_photo(
+def upload_user_photo(
     user_id: int,
     file: UploadFile,
     storage: platform_providers.StorageProvider,
@@ -218,7 +218,7 @@ async def upload_user_photo(
         InvalidInputError: If the upload has no filename.
         UnsupportedMediaTypeError: If the extension is not an allowed image type.
     """
-    return await users_photo_service.upload_photo(user_id, file, storage, db)
+    return users_photo_service.upload_photo(user_id, file, storage, db)
 
 
 def delete_user_photo(user_id: int, storage: platform_providers.StorageProvider, db: Session) -> None:

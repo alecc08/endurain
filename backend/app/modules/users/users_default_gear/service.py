@@ -8,9 +8,12 @@ commit for the user's own requests. What other modules may consume lives in
 from sqlalchemy.orm import Session
 
 import core.exceptions as core_exceptions
+import core.logger as core_logger
 import modules.gears.gear.integration_service as gears_integration
 import modules.users.users_default_gear.crud as users_default_gear_crud
 import modules.users.users_default_gear.schema as users_default_gear_schema
+
+logger = core_logger.get_logger(__name__)
 
 
 def get_default_gear(user_id: int, db: Session) -> users_default_gear_schema.UsersDefaultGearRead | None:
@@ -46,6 +49,10 @@ def stage_default_gear_edit(
         NotFoundError: If a gear is not the user's, or the user has no settings.
     """
     if user_default_gear.user_id != user_id:
+        logger.warning(
+            "Refused an edit of another user's default gear",
+            extra=core_logger.context(user_id=user_id, target_user_id=user_default_gear.user_id),
+        )
         raise core_exceptions.PermissionDeniedError("Cannot edit default gear for another user.")
 
     changes = user_default_gear.model_dump(exclude_unset=True, exclude={"user_id", "id"})
@@ -75,4 +82,5 @@ def edit_default_gear(
     """
     updated = stage_default_gear_edit(user_default_gear, user_id, db)
     db.commit()
+    logger.info("Default gear updated", extra=core_logger.context(user_id=user_id))
     return updated

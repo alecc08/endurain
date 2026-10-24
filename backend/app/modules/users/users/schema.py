@@ -19,8 +19,7 @@ import modules.server_settings.schema as server_settings_schema
 
 
 class Gender(Enum):
-    """
-    User gender enumeration.
+    """User gender enumeration.
 
     Attributes:
         MALE: Male gender.
@@ -34,8 +33,7 @@ class Gender(Enum):
 
 
 class Language(Enum):
-    """
-    Supported application languages.
+    """Supported application languages.
 
     Attributes:
         CATALAN: Catalan (ca).
@@ -103,8 +101,7 @@ class Language(Enum):
 
 
 class WeekDay(Enum):
-    """
-    Days of the week enumeration.
+    """Days of the week enumeration.
 
     Attributes:
         SUNDAY: Sunday.
@@ -126,8 +123,7 @@ class WeekDay(Enum):
 
 
 class UserAccessType(Enum):
-    """
-    User access level enumeration.
+    """User access level enumeration.
 
     Attributes:
         REGULAR: Standard user access.
@@ -139,8 +135,7 @@ class UserAccessType(Enum):
 
 
 def normalize_access_type(access_type: "UserAccessType | str") -> str:
-    """
-    Return the string value of an access type.
+    """Return the string value of an access type.
 
     Accepts either a :class:`UserAccessType` enum member or its raw
     string value and always returns the plain string form (e.g.
@@ -156,8 +151,7 @@ def normalize_access_type(access_type: "UserAccessType | str") -> str:
 
 
 class UsersBase(BaseModel):
-    """
-    Base users schema with common fields.
+    """Base users schema with common fields.
 
     Attributes:
         name: User's full name (1-250 chars).
@@ -274,8 +268,7 @@ class UsersBase(BaseModel):
     @field_validator("birthdate", mode="before")
     @classmethod
     def validate_birthdate(cls, value: datetime_date | str | None) -> str | None:
-        """
-        Convert birthdate to ISO format string.
+        """Convert birthdate to ISO format string.
 
         Args:
             value: Birthdate as date object, string, or None.
@@ -291,8 +284,7 @@ class UsersBase(BaseModel):
 
 
 class Users(UsersBase):
-    """
-    Complete users schema with administrative fields.
+    """Complete users schema with administrative fields.
 
     Note:
         ``mfa_secret`` is intentionally NOT part of any API-facing
@@ -347,8 +339,7 @@ class Users(UsersBase):
 
 
 class UsersRead(Users):
-    """
-    Users schema for read operations.
+    """Users schema for read operations.
 
     Attributes:
         id: User ID.
@@ -368,8 +359,7 @@ class UsersRead(Users):
 
 
 class UsersMe(UsersRead):
-    """
-    Extended users schema for current user profile.
+    """Extended users schema for current user profile.
 
     Includes privacy settings and integration status.
 
@@ -424,8 +414,7 @@ class UsersMe(UsersRead):
 
 
 class UsersSignup(UsersBase):
-    """
-    Users schema for signup operations.
+    """Users schema for signup operations.
 
     Attributes:
         password: User's password (min 8 chars).
@@ -440,8 +429,7 @@ class UsersSignup(UsersBase):
 
 
 class UsersCreate(Users):
-    """
-    Users schema for admin user creation.
+    """Users schema for admin user creation.
 
     Attributes:
         password: User's password (min 8 chars).
@@ -456,8 +444,7 @@ class UsersCreate(Users):
 
 
 class UsersEditPassword(BaseModel):
-    """
-    Schema for password update operations (self-service).
+    """Schema for password update operations (self-service).
 
     Requires the caller to prove possession of the current
     password — and an MFA code when MFA is enabled — before
@@ -506,8 +493,7 @@ class UsersEditPassword(BaseModel):
 
 
 class UsersAdminEditPassword(BaseModel):
-    """
-    Schema for admin password reset operations.
+    """Schema for admin password reset operations.
 
     Admin password resets are authorised by the caller's
     ``users:write`` scope on the admin route, not by knowing the
@@ -532,8 +518,7 @@ class UsersAdminEditPassword(BaseModel):
 
 
 class StepUpVerification(BaseModel):
-    """
-    Generic step-up verification payload.
+    """Generic step-up verification payload.
 
     Used by sensitive account-level operations (API key
     creation, MFA backup-code regeneration, etc.) to require
@@ -572,8 +557,7 @@ class StepUpVerification(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-    """
-    Schema for self-service profile updates.
+    """Schema for self-service profile updates.
 
     Strict allow-list of fields the authenticated user is
     permitted to change on their own account. Administrative
@@ -634,6 +618,14 @@ class ProfileUpdate(BaseModel):
     @field_validator("birthdate", mode="before")
     @classmethod
     def validate_birthdate(cls, value):
+        """Normalize a birthdate to an ISO string.
+
+        Args:
+            value: The submitted birthdate, as a date or an ISO string.
+
+        Returns:
+            The ISO date string, or None.
+        """
         if value is None:
             return None
         if isinstance(value, datetime_date):
@@ -666,8 +658,7 @@ class ProfileUpdate(BaseModel):
 
 
 class UsersListResponse(BaseModel):
-    """
-    Response model for paginated user listing.
+    """Response model for paginated user listing.
 
     Attributes:
         total: Total number of user records.

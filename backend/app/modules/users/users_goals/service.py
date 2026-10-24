@@ -8,8 +8,11 @@ modules may consume lives in :mod:`modules.users.users_goals.integration_service
 from sqlalchemy.orm import Session
 
 import core.exceptions as core_exceptions
+import core.logger as core_logger
 import modules.users.users_goals.crud as user_goals_crud
 import modules.users.users_goals.schema as user_goals_schema
+
+logger = core_logger.get_logger(__name__)
 
 
 def list_goals(
@@ -54,6 +57,7 @@ def create_goal(
     """
     created = user_goals_crud.create_user_goal(user_id, user_goal, db)
     db.commit()
+    logger.info("User goal created", extra=core_logger.context(user_id=user_id, goal_id=created.id))
     return created
 
 
@@ -77,10 +81,15 @@ def update_goal(
         NotFoundError: If the user has no such goal.
     """
     if user_goal.user_id != user_id:
+        logger.warning(
+            "Refused an edit of another user's goal",
+            extra=core_logger.context(user_id=user_id, target_user_id=user_goal.user_id),
+        )
         raise core_exceptions.PermissionDeniedError("Cannot edit user goal for another user")
 
     updated = user_goals_crud.update_user_goal(user_id, user_goal, db)
     db.commit()
+    logger.info("User goal updated", extra=core_logger.context(user_id=user_id, goal_id=updated.id))
     return updated
 
 
@@ -97,3 +106,4 @@ def delete_goal(user_id: int, goal_id: int, db: Session) -> None:
     """
     user_goals_crud.delete_user_goal(user_id, goal_id, db)
     db.commit()
+    logger.info("User goal deleted", extra=core_logger.context(user_id=user_id, goal_id=goal_id))

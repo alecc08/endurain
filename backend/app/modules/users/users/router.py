@@ -3,13 +3,14 @@
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Security, UploadFile, status
-from fastapi.concurrency import run_in_threadpool
+from fastapi import APIRouter, Depends, Query, Request, Security, UploadFile, status
 
 import core.dependencies as core_dependencies
+import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
 import modules.auth.identity_providers.links.schema as auth_identity_links_schema
 import modules.auth.identity_service as auth_identity_service
+import modules.users.users.dependencies as users_dependencies
 import modules.users.users.photo_service as users_photo_service
 import modules.users.users.schema as users_schema
 import modules.users.users.service as users_service
@@ -62,12 +63,12 @@ def read_users_all_pagination(
         Query(description="Filter by local authentication status"),
     ] = None,
 ) -> users_schema.UsersListResponse:
-    """
-    Retrieve paginated list of all users.
+    """Retrieve paginated list of all users.
 
     Args:
         _validate_pagination_values: Pagination validation.
         db: Database session dependency.
+        identity_service: Identity service dependency.
         page_number: Optional page number to retrieve.
         num_records: Optional number of records per page.
         show_inactive: Optional filter by inactive status.
@@ -99,11 +100,10 @@ def read_users_all_pagination(
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read"])],
 )
 def read_users_contain_username(
-    username: str,
+    username: users_dependencies.Username,
     db: core_dependencies.DbSession,
 ) -> list[users_schema.UsersRead] | users_schema.UsersRead | None:
-    """
-    Search users by partial username match.
+    """Search users by partial username match.
 
     Args:
         username: Partial username to search for.
@@ -122,11 +122,10 @@ def read_users_contain_username(
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read"])],
 )
 def read_users_username(
-    username: str,
+    username: users_dependencies.Username,
     db: core_dependencies.DbSession,
 ) -> users_schema.UsersRead | None:
-    """
-    Get user by exact username.
+    """Get user by exact username.
 
     Args:
         username: Exact username to search for.
@@ -145,11 +144,10 @@ def read_users_username(
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read"])],
 )
 def read_users_email(
-    email: str,
+    email: users_dependencies.Email,
     db: core_dependencies.DbSession,
 ) -> users_schema.UsersRead | None:
-    """
-    Get user by email address.
+    """Get user by email address.
 
     Args:
         email: Email address to search for.
@@ -171,8 +169,7 @@ def read_users_id(
     user_id: core_dependencies.PositiveId,
     db: core_dependencies.DbSession,
 ) -> users_schema.UsersRead | None:
-    """
-    Get user by ID.
+    """Get user by ID.
 
     Args:
         user_id: User ID to retrieve.
@@ -185,7 +182,9 @@ def read_users_id(
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=users_schema.UsersRead)
+@core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def create_user(
+    request: Request,
     user: users_schema.UsersCreate,
     _check_scope: Annotated[Callable, Security(auth_dependencies.check_scopes, scopes=["users:write"])],
     identity_service: Annotated[
@@ -194,10 +193,10 @@ def create_user(
     ],
     db: core_dependencies.DbSession,
 ) -> users_schema.UsersRead:
-    """
-    Create a new user (admin operation).
+    """Create a new user (admin operation).
 
     Args:
+        request: The incoming request, read by the rate limiter.
         user: User creation data.
         _check_scope: Authorization check.
         identity_service: Identity service dependency.
@@ -215,16 +214,18 @@ def create_user(
     response_model=str,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:write"])],
 )
-async def upload_user_image(
+@core_rate_limit.limiter.limit(core_rate_limit.UPLOAD)
+def upload_user_image(
+    request: Request,
     user_id: core_dependencies.PositiveId,
     file: UploadFile,
     storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
 ) -> str | None:
-    """
-    Upload user profile image.
+    """Upload user profile image.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         user_id: ID of user to upload image for.
         file: Uploaded image file.
         storage: The platform storage provider.
@@ -233,9 +234,8 @@ async def upload_user_image(
     Returns:
         Path to uploaded image.
     """
-    await users_photo_service.upload_photo(user_id, file, storage, db)
-    # Fetch the persisted user off the event loop (blocking sync DB read).
-    user: users_schema.UsersRead | None = await run_in_threadpool(users_service.get_user, user_id, db)
+    users_photo_service.upload_photo(user_id, file, storage, db)
+    user: users_schema.UsersRead | None = users_service.get_user(user_id, db)
     return user.photo_path if user and user.photo_path else None
 
 
@@ -245,7 +245,9 @@ async def upload_user_image(
     response_model=users_schema.UsersRead,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:write"])],
 )
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_user(
+    request: Request,
     user_id: core_dependencies.PositiveId,
     user_attributtes: users_schema.UsersRead,
     db: core_dependencies.DbSession,
@@ -254,13 +256,14 @@ def edit_user(
         Depends(auth_identity_service.get_identity_service),
     ],
 ) -> users_schema.UsersRead:
-    """
-    Update user information.
+    """Update user information.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         user_id: ID of user to update.
         user_attributtes: User data to update.
         db: Database session dependency.
+        identity_service: Identity service dependency.
 
     Returns:
         Updated user data.
@@ -274,7 +277,9 @@ def edit_user(
     response_model=dict[str, str],
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:write"])],
 )
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def approve_user(
+    request: Request,
     user_id: core_dependencies.PositiveId,
     db: core_dependencies.DbSession,
     identity_service: Annotated[
@@ -282,10 +287,10 @@ def approve_user(
         Depends(auth_identity_service.get_identity_service),
     ],
 ) -> dict[str, str]:
-    """
-    Approve pending user account.
+    """Approve pending user account.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         user_id: ID of user to approve.
         db: Database session dependency.
         identity_service: Identity service dependency.
@@ -301,7 +306,9 @@ def approve_user(
 
 
 @router.put("/{user_id}/password", status_code=status.HTTP_200_OK, response_model=dict[str, str])
+@core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def edit_user_password(
+    request: Request,
     user_id: core_dependencies.PositiveId,
     user_attributes: users_schema.UsersAdminEditPassword,
     _check_scope: Annotated[Callable, Security(auth_dependencies.check_scopes, scopes=["users:write"])],
@@ -310,10 +317,10 @@ def edit_user_password(
         Depends(auth_identity_service.get_identity_service),
     ],
 ) -> dict[str, str]:
-    """
-    Update user password.
+    """Update user password.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         user_id: ID of user to update password for.
         user_attributes: New password data.
         _check_scope: Authorization check.
@@ -337,15 +344,17 @@ def edit_user_password(
     response_model=None,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:write"])],
 )
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def delete_user_photo(
+    request: Request,
     user_id: core_dependencies.PositiveId,
     storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
 ) -> None:
-    """
-    Delete user profile photo.
+    """Delete user profile photo.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         user_id: ID of user whose photo to delete.
         storage: The platform storage provider.
         db: Database session dependency.
@@ -362,15 +371,17 @@ def delete_user_photo(
     response_model=None,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:write"])],
 )
+@core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def delete_user(
+    request: Request,
     user_id: core_dependencies.PositiveId,
     storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
 ) -> None:
-    """
-    Delete user account.
+    """Delete user account.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         user_id: ID of user to delete.
         storage: The platform storage provider.
         db: Database session dependency.
@@ -394,8 +405,7 @@ def get_user_identity_providers(
         Depends(auth_identity_service.get_identity_service),
     ],
 ) -> list[auth_identity_links_schema.UsersIdentityProviderResponse]:
-    """
-    List the identity provider links of a specific user (admin).
+    """List the identity provider links of a specific user (admin).
 
     Args:
         user_id: ID of the user whose identity provider links to retrieve.
@@ -413,18 +423,20 @@ def get_user_identity_providers(
     response_model=None,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:write"])],
 )
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def delete_user_identity_provider(
+    request: Request,
     user_id: core_dependencies.PositiveId,
-    idp_id: int,
+    idp_id: core_dependencies.PositiveId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
 ) -> None:
-    """
-    Unlink an identity provider from a specific user (admin).
+    """Unlink an identity provider from a specific user (admin).
 
     Args:
+        request: The incoming request, read by the rate limiter.
         user_id: ID of the user to unlink the identity provider from.
         idp_id: ID of the identity provider to unlink.
         identity_service: Identity service dependency.

@@ -1,20 +1,15 @@
 """User integrations database models."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, DateTime, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
 
-if TYPE_CHECKING:
-    from modules.users.users.models import Users
-
 
 class UsersIntegrations(Base):
-    """
-    User third-party service integration settings.
+    """User third-party service integration settings.
 
     Attributes:
         id: Primary key.
@@ -31,7 +26,6 @@ class UsersIntegrations(Base):
             data.
         garminconnect_sync_gear: Enable Garmin Connect gear
             synchronization.
-        user: Relationship to Users model.
     """
 
     __tablename__ = "users_integrations"
@@ -99,6 +93,3 @@ class UsersIntegrations(Base):
         default=False,
         comment="Whether Garmin Connect gear is to be synced",
     )
-
-    # Define a relationship to the Users model
-    users: Mapped["Users"] = relationship(back_populates="users_integrations")

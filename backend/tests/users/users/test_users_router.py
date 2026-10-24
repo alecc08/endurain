@@ -161,7 +161,7 @@ class TestUploadUserImage:
 
         assert response.status_code == 201
         assert response.json() == "/users/1/photo?t=x"
-        mock_upload.assert_awaited_once()
+        mock_upload.assert_called_once()
 
 
 class TestEditUser:

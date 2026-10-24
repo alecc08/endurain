@@ -14,8 +14,7 @@ from pydantic import (
 
 
 class UsersIntegrationsBase(BaseModel):
-    """
-    Base schema for user integrations.
+    """Base schema for user integrations.
 
     Attributes:
         strava_client_id: Encrypted Strava client ID.
@@ -71,16 +70,14 @@ class UsersIntegrationsBase(BaseModel):
 
 
 class UsersIntegrationsCreate(UsersIntegrationsBase):
-    """
-    Pydantic model for creating user integrations.
+    """Pydantic model for creating user integrations.
 
     Inherits all attributes from UsersIntegrationsBase.
     """
 
 
 class UsersIntegrationsUpdate(UsersIntegrationsBase):
-    """
-    Schema for updating user integrations.
+    """Schema for updating user integrations.
 
     Inherits all validation from UsersIntegrationsBase.
     All fields are optional for partial updates.
@@ -88,8 +85,7 @@ class UsersIntegrationsUpdate(UsersIntegrationsBase):
 
 
 class UsersIntegrationsRead(UsersIntegrationsBase):
-    """
-    Schema for reading user integrations.
+    """Schema for reading user integrations.
 
     Attributes:
         id: Unique identifier for the integrations record.

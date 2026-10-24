@@ -9,8 +9,7 @@ from pydantic import (
 
 
 class UsersDefaultGearBase(BaseModel):
-    """
-    Base schema for users default gear assignments.
+    """Base schema for users default gear assignments.
 
     Attributes:
         run_gear_id: Default gear for run activities.
@@ -122,8 +121,7 @@ class UsersDefaultGearBase(BaseModel):
 
 
 class UsersDefaultGearRead(UsersDefaultGearBase):
-    """
-    Schema for reading user default gear settings.
+    """Schema for reading user default gear settings.
 
     Extends base with identifier fields.
 
@@ -137,8 +135,7 @@ class UsersDefaultGearRead(UsersDefaultGearBase):
 
 
 class UsersDefaultGearUpdate(UsersDefaultGearRead):
-    """
-    Schema for updating user default gear settings.
+    """Schema for updating user default gear settings.
 
     Inherits all gear assignment fields from read schema.
     All fields are optional for partial updates.

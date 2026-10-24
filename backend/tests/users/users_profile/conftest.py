@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 import core.config as core_config
 import core.database as core_database
+import core.dependencies as core_dependencies
+import core.exceptions as core_exceptions
 import modules.auth.dependencies as auth_dependencies
 import modules.auth.identity_service as auth_identity_service
 import modules.auth.mfa.setup_store as auth_mfa_setup_store
@@ -79,7 +81,10 @@ def profile_app(
         prefix=core_config.ROOT_PATH + "/profile",
     )
 
+    core_exceptions.register_exception_handlers(app)
+
     app.dependency_overrides[core_database.get_db] = lambda: local_mock_db
+    app.dependency_overrides[core_dependencies.get_storage] = lambda: MagicMock()
     app.dependency_overrides[auth_dependencies.get_sub_from_access_token] = lambda: 1
     app.dependency_overrides[auth_dependencies.get_sid_from_access_token] = lambda: "session-1"
     app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: mock_identity_service

@@ -1,19 +1,13 @@
 """User fitness goals database models."""
 
-from typing import TYPE_CHECKING
-
 from sqlalchemy import ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
 
-if TYPE_CHECKING:
-    from modules.users.users.models import Users
-
 
 class UsersGoal(Base):
-    """
-    User fitness goal tracking model.
+    """User fitness goal tracking model.
 
     Attributes:
         id: Primary key.
@@ -27,7 +21,6 @@ class UsersGoal(Base):
         goal_distance: Target distance in meters.
         goal_elevation: Target elevation gain in meters.
         goal_duration: Target duration in seconds.
-        user: Relationship to Users model.
     """
 
     __tablename__ = "users_goals"
@@ -77,6 +70,3 @@ class UsersGoal(Base):
         nullable=True,
         comment=("Goal duration in seconds (e.g., 3600 for 1 hours)"),
     )
-
-    # Relationship to User
-    users: Mapped["Users"] = relationship(back_populates="goals")

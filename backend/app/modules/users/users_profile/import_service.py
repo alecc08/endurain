@@ -19,7 +19,7 @@ import zipfile
 from io import BytesIO
 from typing import Any
 
-import jasil.runtime as platform_runtime
+import jasil.providers as platform_providers
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -69,8 +69,7 @@ _IMPORTABLE_IMAGE_EXTENSIONS = frozenset({"png", "jpg", "jpeg"})
 
 
 class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
-    """
-    Performance configuration for import operations.
+    """Performance configuration for import operations.
 
     Attributes:
         batch_size: Number of items per batch.
@@ -92,6 +91,7 @@ class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
         chunk_size: int = 8192,
         enable_memory_monitoring: bool = True,
     ):
+        """Set the import limits; unset values come from the auto-detected tier."""
         super().__init__(
             batch_size=batch_size,
             max_memory_mb=max_memory_mb,
@@ -104,8 +104,7 @@ class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
 
     @classmethod
     def _get_tier_configs(cls) -> dict[str, dict[str, Any]]:
-        """
-        Get tier-specific configuration dictionaries.
+        """Get tier-specific configuration dictionaries.
 
         Returns:
             Dictionary mapping tier names to config dicts.
@@ -142,11 +141,11 @@ class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
 
 
 class ImportService:
-    """
-    Service for importing user profile data from ZIP archive.
+    """Service for importing user profile data from ZIP archive.
 
     Attributes:
         user_id: ID of user to import data for.
+        storage: The platform storage provider.
         db: Database session.
         counts: Dictionary tracking imported item counts.
         performance_config: Performance configuration.
@@ -155,10 +154,13 @@ class ImportService:
     def __init__(
         self,
         user_id: int,
+        storage: platform_providers.StorageProvider,
         db: Session,
         performance_config: ImportPerformanceConfig | None = None,
     ):
+        """Bind the import to a user, the platform storage and a database session."""
         self.user_id = user_id
+        self.storage = storage
         self.db = db
         self.counts = profile_utils.initialize_operation_counts(include_user_count=False)
         self.performance_config: ImportPerformanceConfig = (
@@ -166,16 +168,17 @@ class ImportService:
         )
 
         logger.info(
-            f"ImportService initialized with performance config: "
-            f"batch_size={self.performance_config.batch_size}, "
-            f"max_memory_mb={self.performance_config.max_memory_mb}, "
-            f"max_file_size_mb={self.performance_config.max_file_size_mb}, "
-            f"timeout_seconds={self.performance_config.timeout_seconds}"
+            "ImportService initialized",
+            extra=core_logger.context(
+                batch_size=self.performance_config.batch_size,
+                max_memory_mb=self.performance_config.max_memory_mb,
+                max_file_size_mb=self.performance_config.max_file_size_mb,
+                timeout_seconds=self.performance_config.timeout_seconds,
+            ),
         )
 
     async def import_from_zip_data(self, zip_data: bytes) -> dict[str, Any]:
-        """
-        Import profile data from ZIP file bytes.
+        """Import profile data from ZIP file bytes.
 
         Args:
             zip_data: ZIP file content as bytes.
@@ -290,8 +293,7 @@ class ImportService:
         return {"detail": "Import completed", "imported": self.counts}
 
     def _load_single_json(self, zipf: zipfile.ZipFile, filename: str, check_memory: bool = True) -> list[Any]:
-        """
-        Load and parse JSON file from ZIP archive.
+        """Load and parse JSON file from ZIP archive.
 
         Args:
             zipf: ZipFile instance to read from.
@@ -307,16 +309,21 @@ class ImportService:
         try:
             file_list = set(zipf.namelist())
             if filename not in file_list:
-                logger.warning(f"Expected data file {filename} not found in ZIP archive")
+                logger.warning(
+                    "Expected data file not found in ZIP archive", extra=core_logger.context(filename=filename)
+                )
                 return []
 
             data = json.loads(self._read_zip_entry(zipf, filename))
 
             if not isinstance(data, list):
-                logger.warning(f"Expected list in {filename}, got {type(data).__name__}, returning empty list")
+                logger.warning(
+                    "Expected a list in a data file, returning an empty list",
+                    extra=core_logger.context(filename=filename, found_type=type(data).__name__),
+                )
                 return []
 
-            logger.debug(f"Loaded {len(data)} items from {filename}")
+            logger.debug("Loaded items from a data file", extra=core_logger.context(count=len(data), filename=filename))
 
             if check_memory:
                 profile_utils.check_memory_usage(
@@ -339,6 +346,7 @@ class ImportService:
             self.counts[contributor.count_key] += restored
         # The restore functions stage; the importer owns the commit.
         self.db.commit()
+        logger.info("Restored the global activity components", extra=core_logger.context(user_id=self.user_id))
 
     def _read_zip_entry(
         self,
@@ -347,8 +355,7 @@ class ImportService:
         *,
         max_bytes: int | None = None,
     ) -> bytes:
-        """
-        Read a ZIP entry after checking its declared size.
+        """Read a ZIP entry after checking its declared size.
 
         Args:
             zipf: ZipFile instance to read from.
@@ -390,8 +397,7 @@ class ImportService:
         return b"".join(chunks)
 
     async def collect_and_import_gears_data(self, gears_data: list[Any]) -> dict[int, int]:
-        """
-        Import gear data and create ID mappings.
+        """Import gear data and create ID mappings.
 
         Args:
             gears_data: List of gear data dictionaries.
@@ -421,7 +427,7 @@ class ImportService:
 
         # The gear surface stages; the importer owns the commit.
         self.db.commit()
-        logger.info(f"Imported {self.counts['gears']} gears")
+        logger.info("Imported gears", extra=core_logger.context(count=self.counts["gears"]))
         return gears_id_mapping
 
     def _import_gear(self, gear: gear_schema.GearCreate) -> int:
@@ -455,8 +461,7 @@ class ImportService:
     async def collect_and_import_gear_components_data(
         self, gear_components_data: list[Any], gears_id_mapping: dict[int, int]
     ) -> None:
-        """
-        Import gear components data with ID remapping.
+        """Import gear components data with ID remapping.
 
         Args:
             gear_components_data: List of component dicts.
@@ -491,7 +496,7 @@ class ImportService:
 
         # The gear component surface stages; the importer owns the commit.
         self.db.commit()
-        logger.info(f"Imported {self.counts['gear_components']} gear components")
+        logger.info("Imported gear components", extra=core_logger.context(count=self.counts["gear_components"]))
 
     async def collect_and_import_user_data(
         self,
@@ -502,8 +507,7 @@ class ImportService:
         user_privacy_settings_data: list[Any],
         gears_id_mapping: dict[int, int],
     ) -> None:
-        """
-        Import user profile and related settings.
+        """Import user profile and related settings.
 
         Args:
             user_data: User profile data.
@@ -557,8 +561,7 @@ class ImportService:
     async def collect_and_import_user_default_gear(
         self, user_default_gear_data: list[Any], gears_id_mapping: dict[int, int]
     ) -> None:
-        """
-        Import user default gear settings with ID remapping.
+        """Import user default gear settings with ID remapping.
 
         Args:
             user_default_gear_data: Default gear data.
@@ -607,8 +610,7 @@ class ImportService:
         self.counts["user_default_gear"] += 1
 
     async def collect_and_import_user_integrations(self, user_integrations_data: list[Any]) -> None:
-        """
-        Import user integration settings.
+        """Import user integration settings.
 
         Args:
             user_integrations_data: Integration data.
@@ -627,8 +629,7 @@ class ImportService:
         self.counts["user_integrations"] += 1
 
     async def collect_and_import_user_goals(self, user_goals_data: list[Any]) -> None:
-        """
-        Import user goals data.
+        """Import user goals data.
 
         Args:
             user_goals_data: List of user goal dictionaries.
@@ -645,11 +646,10 @@ class ImportService:
             users_goals_integration.create_goal(self.user_id, goal, self.db)
             self.counts["user_goals"] += 1
 
-        logger.info(f"Imported {self.counts['user_goals']} user goals")
+        logger.info("Imported user goals", extra=core_logger.context(count=self.counts["user_goals"]))
 
     async def collect_and_import_user_privacy_settings(self, user_privacy_settings_data: list[Any]) -> None:
-        """
-        Import user privacy settings.
+        """Import user privacy settings.
 
         Args:
             user_privacy_settings_data: Privacy settings data.
@@ -697,8 +697,7 @@ class ImportService:
         start_time: float,
         timeout_seconds: int,
     ) -> dict[int, int]:
-        """
-        Import activities in batches to manage memory.
+        """Import activities in batches to manage memory.
 
         Args:
             zipf: ZipFile instance to read from.
@@ -745,7 +744,9 @@ class ImportService:
                     check_memory=False,
                 )
 
-        logger.info(f"Importing {len(activities_data)} activities with batched component loading")
+        logger.info(
+            "Importing activities with batched component loading", extra=core_logger.context(count=len(activities_data))
+        )
 
         # Process activities in batches
         batch_size = self.performance_config.batch_size
@@ -756,7 +757,10 @@ class ImportService:
             activities_batch = activities_data[batch_start:batch_end]
 
             logger.info(
-                f"Processing activities batch {batch_start // batch_size + 1}: activities {batch_start}-{batch_end}"
+                "Processing an activities batch",
+                extra=core_logger.context(
+                    batch_number=batch_start // batch_size + 1, batch_start=batch_start, batch_end=batch_end
+                ),
             )
 
             batch_components: dict[str, list[dict[str, Any]]] = {}
@@ -814,7 +818,7 @@ class ImportService:
                 self.performance_config.enable_memory_monitoring,
             )
 
-        logger.info(f"Imported {self.counts['activities']} activities")
+        logger.info("Imported activities", extra=core_logger.context(count=self.counts["activities"]))
         return activities_id_mapping
 
     @staticmethod
@@ -831,8 +835,7 @@ class ImportService:
         return [record for record in records if isinstance(record, dict) and record.get("activity_id") in activity_ids]
 
     def _get_split_files_list(self, file_list: set[str], base_filename: str) -> list[str]:
-        """
-        Get list of split component files from ZIP.
+        """Get list of split component files from ZIP.
 
         Args:
             file_list: Set of all file paths in ZIP.
@@ -857,8 +860,7 @@ class ImportService:
         activities_batch: list[Any],
         component_name: str,
     ) -> list[Any]:
-        """
-        Load components only for activities in current batch.
+        """Load components only for activities in current batch.
 
         Args:
             zipf: ZipFile instance to read from.
@@ -882,7 +884,10 @@ class ImportService:
             try:
                 components = json.loads(self._read_zip_entry(zipf, filename))
                 if not isinstance(components, list):
-                    logger.warning(f"Expected list in {filename}, got {type(components).__name__}")
+                    logger.warning(
+                        "Expected a list in a component file",
+                        extra=core_logger.context(filename=filename, found_type=type(components).__name__),
+                    )
                     continue
                 # Only keep components for activities in this batch
                 filtered = [
@@ -893,19 +898,30 @@ class ImportService:
                 all_components.extend(filtered)
 
                 if filtered:
-                    logger.debug(f"Loaded {len(filtered)}/{len(components)} {component_name} from {filename} for batch")
+                    logger.debug(
+                        "Loaded components for the batch",
+                        extra=core_logger.context(
+                            count=len(filtered),
+                            total_count=len(components),
+                            component_name=component_name,
+                            filename=filename,
+                        ),
+                    )
             except json.JSONDecodeError as err:
-                logger.warning(f"Failed to parse {filename}: {err}")
+                logger.warning(
+                    "Failed to parse a component file", extra=core_logger.context(filename=filename, error=err)
+                )
             except (FileFormatError, FileSizeError, OSError) as err:
-                logger.warning(f"Error loading {filename}: {err}")
+                logger.warning(
+                    "Error loading a component file", extra=core_logger.context(filename=filename, error=err)
+                )
 
         return all_components
 
     async def collect_and_import_health_weight(
         self, health_weight_data: list[Any], health_targets_data: list[Any]
     ) -> None:
-        """
-        Import health data and targets.
+        """Import health data and targets.
 
         Args:
             health_weight_data: List of health data records.
@@ -947,7 +963,7 @@ class ImportService:
                 health_weight_integration.upsert_health_weight(self.user_id, data, self.db)
                 self.db.commit()
                 self.counts["health_weight"] += 1
-            logger.info(f"Imported {self.counts['health_weight']} health weight records")
+            logger.info("Imported health weight records", extra=core_logger.context(count=self.counts["health_weight"]))
         else:
             logger.debug("No health weight data to import")
 
@@ -981,7 +997,7 @@ class ImportService:
                 health_targets_integration.edit_health_targets(target, self.user_id, self.db)
                 self.db.commit()
                 self.counts["health_targets"] += 1
-            logger.info(f"Imported {self.counts['health_targets']} health targets")
+            logger.info("Imported health targets", extra=core_logger.context(count=self.counts["health_targets"]))
         else:
             logger.debug("No health targets to import")
 
@@ -991,8 +1007,7 @@ class ImportService:
         file_list: set,
         activities_id_mapping: dict[int, int],
     ) -> None:
-        """
-        Extract and import activity files from ZIP.
+        """Extract and import activity files from ZIP.
 
         Args:
             zipf: ZipFile instance to read from.
@@ -1035,14 +1050,17 @@ class ImportService:
                             filename=new_file_name,
                         )
                     except core_exceptions.DomainError as err:
-                        logger.warning(f"Profile import dropped invalid activity file {new_file_name}: {err.detail}")
+                        logger.warning(
+                            "Profile import dropped an invalid activity file",
+                            extra=core_logger.context(file_name=new_file_name, detail=err.detail),
+                        )
                         continue
                     await asyncio.to_thread(
                         activity_file_storage_integration.store_activity_file,
                         new_id,
                         ext,
                         file_bytes,
-                        platform_runtime.get_active_platform().storage,
+                        self.storage,
                     )
                     self.counts["activity_files"] += 1
                 except ValueError:
@@ -1055,8 +1073,7 @@ class ImportService:
         file_list: set,
         activities_id_mapping: dict[int, int],
     ) -> None:
-        """
-        Extract and import activity media from ZIP.
+        """Extract and import activity media from ZIP.
 
         Args:
             zipf: ZipFile instance to read from.
@@ -1102,7 +1119,8 @@ class ImportService:
                             )
                         except core_exceptions.DomainError as err:
                             logger.warning(
-                                f"Profile import dropped invalid activity media {new_file_name}: {err.detail}"
+                                "Profile import dropped invalid activity media",
+                                extra=core_logger.context(file_name=new_file_name, detail=err.detail),
                             )
                             continue
                         activity_media_integration.store_media_blob(
@@ -1110,7 +1128,7 @@ class ImportService:
                             suffix,
                             ext,
                             file_bytes,
-                            platform_runtime.get_active_platform().storage,
+                            self.storage,
                         )
                         self.counts["media"] += 1
                     except ValueError:
@@ -1122,8 +1140,7 @@ class ImportService:
         zipf: zipfile.ZipFile,
         file_list: set,
     ) -> None:
-        """
-        Extract and import user images from ZIP.
+        """Extract and import user images from ZIP.
 
         Args:
             zipf: ZipFile instance to read from.
@@ -1140,7 +1157,7 @@ class ImportService:
 
             # Import user images
             if path.lower().endswith((".png", ".jpg", ".jpeg")) and path.startswith("user_images/"):
-                logger.debug(f"Processing user image file: {file_path}")
+                logger.debug("Processing a user image file", extra=core_logger.context(file_path=file_path))
                 ext = os.path.splitext(path)[1]
                 new_file_name = f"{self.user_id}{ext}"
 
@@ -1156,9 +1173,12 @@ class ImportService:
                         filename=new_file_name,
                     )
                 except core_exceptions.DomainError as err:
-                    logger.warning(f"Profile import dropped invalid user image {new_file_name}: {err.detail}")
+                    logger.warning(
+                        "Profile import dropped an invalid user image",
+                        extra=core_logger.context(file_name=new_file_name, detail=err.detail),
+                    )
                     continue
-                platform_runtime.get_active_platform().storage.save(
+                self.storage.save(
                     users_constants.USER_IMAGE_STORAGE_AREA,
                     new_file_name,
                     file_bytes,

@@ -1,19 +1,13 @@
 """User default gear database models."""
 
-from typing import TYPE_CHECKING
-
 from sqlalchemy import ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
 
-if TYPE_CHECKING:
-    from modules.users.users.models import Users
-
 
 class UsersDefaultGear(Base):
-    """
-    User default gear assignments for activity types.
+    """User default gear assignments for activity types.
 
     Attributes:
         id: Primary key.
@@ -38,7 +32,6 @@ class UsersDefaultGear(Base):
             activities.
         snowboard_gear_id: Default gear for snowboard activities.
         windsurf_gear_id: Default gear for windsurf activities.
-        user: Relationship to Users model.
     """
 
     __tablename__ = "users_default_gear"
@@ -145,4 +138,3 @@ class UsersDefaultGear(Base):
     )
 
     # Relationships
-    users: Mapped["Users"] = relationship(back_populates="users_default_gear")

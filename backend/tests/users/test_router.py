@@ -21,6 +21,7 @@ class TestEditUserPassword:
         user_attributes = users_schema.UsersAdminEditPassword(password=new_password)
 
         result = users_router.edit_user_password(
+            request=MagicMock(),
             user_id=user_id,
             user_attributes=user_attributes,
             _check_scope=MagicMock(),

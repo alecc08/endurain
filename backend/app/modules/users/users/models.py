@@ -1,23 +1,15 @@
 """User database models."""
 
 from datetime import date as date_type
-from typing import TYPE_CHECKING
 
 from sqlalchemy import String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
 
-if TYPE_CHECKING:
-    from modules.users.users_default_gear.models import UsersDefaultGear
-    from modules.users.users_goals.models import UsersGoal
-    from modules.users.users_integrations.models import UsersIntegrations
-    from modules.users.users_privacy_settings.models import UsersPrivacySettings
-
 
 class Users(Base):
-    """
-    User account and profile information.
+    """User account and profile information.
 
     Attributes:
         id: Primary key.
@@ -41,9 +33,6 @@ class Users(Base):
             been verified.
         pending_admin_approval: Whether the user is pending
             admin approval for activation.
-        users_integrations: List of integrations.
-        users_default_gear: List of default gear.
-        users_privacy_settings: List of privacy settings.
         health_sleep: List of health sleep records.
         health_weight: List of health weight records.
         health_steps: List of health steps records.
@@ -51,7 +40,6 @@ class Users(Base):
         health_fasting: List of health fasting records.
         health_water: List of health water intake records.
         health_poop: List of health poop records.
-        goals: List of user goals.
     """
 
     __tablename__ = "users"
@@ -154,22 +142,4 @@ class Users(Base):
         default=False,
         nullable=False,
         comment=("Whether the user is pending admin approval for activation (true - yes, false - no)"),
-    )
-
-    # Relationships
-    users_integrations: Mapped[list["UsersIntegrations"]] = relationship(
-        back_populates="users",
-        cascade="all, delete-orphan",
-    )
-    users_default_gear: Mapped[list["UsersDefaultGear"]] = relationship(
-        back_populates="users",
-        cascade="all, delete-orphan",
-    )
-    users_privacy_settings: Mapped[list["UsersPrivacySettings"]] = relationship(
-        back_populates="users",
-        cascade="all, delete-orphan",
-    )
-    goals: Mapped[list["UsersGoal"]] = relationship(
-        back_populates="users",
-        cascade="all, delete-orphan",
     )

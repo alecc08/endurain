@@ -4,16 +4,20 @@ import base64
 import hashlib
 import hmac
 import re
+from collections.abc import Callable
 from typing import Any
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+import core.async_bridge as core_async_bridge
 import core.config as core_config
 import core.logger as core_logger
+import core.network as core_network
 import modules.auth.identity_providers.links.crud as auth_identity_links_crud
 import modules.auth.identity_providers.schema as idp_schema
 import modules.auth.identity_providers.service as idp_service
+import modules.auth.oauth_state.utils as oauth_state_utils
 
 logger = core_logger.get_logger(__name__)
 
@@ -482,3 +486,80 @@ async def clear_all_idp_tokens(user_id: int, db: Session, revoke_at_idp: bool = 
         # Catch-all for unexpected errors (e.g., database query failure)
         logger.warning(f"Error retrieving IdP links for user {user_id} during logout: {err}", exc_info=err)
         # Don't raise - IdP token clearing is a best-effort security measure
+
+
+def start_browser_link(
+    link_token: str,
+    idp_id: int,
+    redirect: str | None,
+    request: Request,
+    claim_link_token: Callable[..., int],
+    db: Session,
+) -> str:
+    """Claim a one-time link token and return the identity provider's authorization URL.
+
+    Runs on a worker thread (a synchronous route), so the asynchronous authorization-URL build is
+    handed to the main event loop, which owns the shared HTTP client.
+
+    Args:
+        link_token: Plaintext one-time link token from the query string.
+        idp_id: The identity provider to link.
+        redirect: Optional frontend return path or configured custom scheme.
+        request: The incoming request.
+        claim_link_token: Callable that validates and claims the link token, returning the user id.
+        db: Active database session.
+
+    Returns:
+        The identity provider's authorization URL.
+
+    Raises:
+        HTTPException: 400 for a bad redirect target, 401 for an invalid, expired or used link token,
+            404 when the provider does not exist or is disabled, 409 when it is already linked,
+            500 when the flow cannot be started.
+    """
+    # Validate the optional return path up front (open-redirect guard) so a bad target fails
+    # before the one-time link token is consumed.
+    validate_redirect_url(redirect)
+
+    client_ip = core_network.get_ip_address(request)
+    token_user_id = claim_link_token(link_token=link_token, idp_id=idp_id, client_ip=client_ip)
+
+    idp = idp_service.get_identity_provider(idp_id, db)
+    if not idp or not idp.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Identity provider not found or disabled",
+        )
+
+    state, nonce = oauth_state_utils.create_state_id_and_nonce()
+
+    # A custom-scheme return target signals a native/mobile handoff (mirrors the login flow); a
+    # plain relative path is a normal web return.
+    client_type = "mobile" if is_custom_scheme_redirect(redirect) else "web"
+
+    idp_service.create_link_oauth_state(
+        db=db,
+        state_id=state,
+        idp_id=idp_id,
+        nonce=nonce,
+        client_type=client_type,
+        ip_address=client_ip,
+        user_id=token_user_id,
+        redirect_path=redirect,
+    )
+
+    future = core_async_bridge.dispatch(
+        idp_service.idp_service.initiate_link(idp, request, token_user_id, db, oauth_state_id=state)
+    )
+    if future is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to initiate identity provider linking",
+        )
+    authorization_url = future.result()
+
+    logger.info(
+        "User initiated an identity provider link",
+        extra=core_logger.context(user_id=token_user_id, idp_id=idp_id),
+    )
+    return authorization_url

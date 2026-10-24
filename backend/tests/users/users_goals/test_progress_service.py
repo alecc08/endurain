@@ -35,14 +35,14 @@ class TestCalculateUserGoals:
         mock_calc_progress.side_effect = [mock_progress1, mock_progress2]
 
         # Act
-        result = user_goals_progress_service.calculate_user_goals(user_id, date, mock_db, "sunday")
+        result = user_goals_progress_service.calculate_user_goals(user_id, date, "sunday", mock_db)
 
         # Assert
         assert result == [mock_progress1, mock_progress2]
         mock_get_goals.assert_called_once_with(user_id, mock_db)
         assert mock_calc_progress.call_args_list == [
-            ((mock_goal1, date, mock_db, "sunday"),),
-            ((mock_goal2, date, mock_db, "sunday"),),
+            ((mock_goal1, date, "sunday", mock_db),),
+            ((mock_goal2, date, "sunday", mock_db),),
         ]
 
     @patch("modules.users.users_goals.progress_service.user_goals_crud.get_user_goals_by_user_id")
@@ -55,7 +55,7 @@ class TestCalculateUserGoals:
         mock_get_goals.return_value = []
 
         # Act
-        result = user_goals_progress_service.calculate_user_goals(user_id, date, mock_db, "monday")
+        result = user_goals_progress_service.calculate_user_goals(user_id, date, "monday", mock_db)
 
         # Assert
         assert result is None
@@ -73,7 +73,7 @@ class TestCalculateUserGoals:
         mock_today.return_value = date_type(2024, 1, 15)
 
         # Act
-        result = user_goals_progress_service.calculate_user_goals(user_id, None, mock_db, "monday")
+        result = user_goals_progress_service.calculate_user_goals(user_id, None, "monday", mock_db)
 
         # Assert
         assert result is None
@@ -92,7 +92,7 @@ class TestCalculateUserGoals:
 
         # Act & Assert
         with pytest.raises(core_exceptions.InvalidInputError):
-            user_goals_progress_service.calculate_user_goals(user_id, date, mock_db, "monday")
+            user_goals_progress_service.calculate_user_goals(user_id, date, "monday", mock_db)
 
 
 class TestCalculateGoalProgressByActivityType:
@@ -130,8 +130,8 @@ class TestCalculateGoalProgressByActivityType:
         result = user_goals_progress_service.calculate_goal_progress_by_activity_type(
             mock_goal,
             "2024-01-15",
-            mock_db,
             "monday",
+            mock_db,
         )
 
         # Assert
@@ -170,8 +170,8 @@ class TestCalculateGoalProgressByActivityType:
         result = user_goals_progress_service.calculate_goal_progress_by_activity_type(
             mock_goal,
             "2024-01-15",
-            mock_db,
             "monday",
+            mock_db,
         )
 
         # Assert
@@ -206,8 +206,8 @@ class TestCalculateGoalProgressByActivityType:
         result = user_goals_progress_service.calculate_goal_progress_by_activity_type(
             mock_goal,
             "2024-01-15",
-            mock_db,
             "monday",
+            mock_db,
         )
 
         # Assert
@@ -244,8 +244,8 @@ class TestCalculateGoalProgressByActivityType:
         result = user_goals_progress_service.calculate_goal_progress_by_activity_type(
             mock_goal,
             "2024-01-15",
-            mock_db,
             "monday",
+            mock_db,
         )
 
         # Assert
@@ -279,8 +279,8 @@ class TestCalculateGoalProgressByActivityType:
         user_goals_progress_service.calculate_goal_progress_by_activity_type(
             mock_goal,
             "2024-01-15",
-            mock_db,
             "monday",
+            mock_db,
         )
 
         # Assert - verify exclude_hidden=True is passed
@@ -344,7 +344,7 @@ class TestGetGoalsProgress:
         result = user_goals_progress_service.get_goals_progress(1, mock_db)
 
         assert result == mock_calculate.return_value
-        mock_calculate.assert_called_once_with(1, "2026-03-12", mock_db, "sunday")
+        mock_calculate.assert_called_once_with(1, "2026-03-12", "sunday", mock_db)
 
     @patch("modules.users.users_goals.progress_service.users_integration")
     def test_unknown_user_is_not_found(self, mock_users):

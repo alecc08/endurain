@@ -201,6 +201,7 @@ forbidden_modules =
     modules.activities.*.migration_service
     modules.garmin.migration_service
     modules.health.*.migration_service
+    modules.users.*.migration_service
 
 # Provider modules describe users data with the read schemas the users CRUD actually
 # returns, never the ORM models: the runtime value is already a DTO, so naming the

@@ -19,8 +19,7 @@ def read_users_id(
     user_id: core_dependencies.PositiveId,
     db: core_dependencies.DbSession,
 ) -> users_schema.UsersRead | None:
-    """
-    Get public user info by ID.
+    """Get public user info by ID.
 
     Args:
         user_id: The user ID to retrieve.

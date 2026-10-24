@@ -49,15 +49,15 @@ class TestDeletePhoto:
 
 class TestUploadPhoto:
     @patch(_CRUD)
-    async def test_stores_the_blob_and_records_the_key(self, mock_crud, mock_db):
+    def test_stores_the_blob_and_records_the_key(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = MagicMock()
         storage = MagicMock()
 
         with patch(
-            "modules.users.users.photo_service.core_file_uploads.read_validated_upload",
+            "modules.users.users.photo_service.core_file_uploads.read_validated_upload_sync",
             return_value=b"bytes",
         ):
-            key = await users_photo_service.upload_photo(7, _upload("Avatar.JPG"), storage, mock_db)
+            key = users_photo_service.upload_photo(7, _upload("Avatar.JPG"), storage, mock_db)
 
         assert key == "7.jpg"
         assert storage.save.call_args.args[:3] == ("user_images", "7.jpg", b"bytes")
@@ -65,26 +65,26 @@ class TestUploadPhoto:
         mock_db.commit.assert_called_once()
 
     @patch(_CRUD)
-    async def test_unknown_user_is_not_found(self, mock_crud, mock_db):
+    def test_unknown_user_is_not_found(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = None
 
         with pytest.raises(core_exceptions.NotFoundError):
-            await users_photo_service.upload_photo(7, _upload("a.jpg"), MagicMock(), mock_db)
+            users_photo_service.upload_photo(7, _upload("a.jpg"), MagicMock(), mock_db)
 
     @patch(_CRUD)
-    async def test_missing_filename_is_invalid(self, mock_crud, mock_db):
+    def test_missing_filename_is_invalid(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = MagicMock()
 
         with pytest.raises(core_exceptions.InvalidInputError):
-            await users_photo_service.upload_photo(7, _upload(None), MagicMock(), mock_db)
+            users_photo_service.upload_photo(7, _upload(None), MagicMock(), mock_db)
 
     @patch(_CRUD)
-    async def test_unsupported_extension_stores_nothing(self, mock_crud, mock_db):
+    def test_unsupported_extension_stores_nothing(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = MagicMock()
         storage = MagicMock()
 
         with pytest.raises(core_exceptions.UnsupportedMediaTypeError):
-            await users_photo_service.upload_photo(7, _upload("a.exe"), storage, mock_db)
+            users_photo_service.upload_photo(7, _upload("a.exe"), storage, mock_db)
 
         storage.save.assert_not_called()
         mock_db.commit.assert_not_called()

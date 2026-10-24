@@ -2,9 +2,10 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query, Request, status
 
 import core.dependencies as core_dependencies
+import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
 import modules.users.users_goals.progress_service as user_goals_progress_service
 import modules.users.users_goals.schema as user_goals_schema
@@ -19,7 +20,7 @@ router = APIRouter()
     response_model=list[user_goals_schema.UsersGoalRead],
     status_code=status.HTTP_200_OK,
 )
-async def get_user_goals(
+def get_user_goals(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
     interval: Annotated[
@@ -35,8 +36,7 @@ async def get_user_goals(
         Query(description="Filter by goal type"),
     ] = None,
 ) -> list[user_goals_schema.UsersGoalRead]:
-    """
-    Retrieve goals for the authenticated user with optional filters.
+    """Retrieve goals for the authenticated user with optional filters.
 
     Args:
         token_user_id: User ID from access token.
@@ -62,12 +62,11 @@ async def get_user_goals(
     response_model=list[user_goals_schema.UsersGoalProgress] | None,
     status_code=status.HTTP_200_OK,
 )
-async def get_user_goals_results(
+def get_user_goals_results(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
 ) -> list[user_goals_schema.UsersGoalProgress] | None:
-    """
-    Calculate and retrieve goal progress for authenticated user.
+    """Calculate and retrieve goal progress for authenticated user.
 
     Args:
         token_user_id: User ID from access token.
@@ -84,15 +83,17 @@ async def get_user_goals_results(
     response_model=user_goals_schema.UsersGoalRead,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_user_goal(
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
+def create_user_goal(
+    request: Request,
     user_goal: user_goals_schema.UsersGoalCreate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
 ) -> user_goals_schema.UsersGoalRead:
-    """
-    Create a new goal for the authenticated user.
+    """Create a new goal for the authenticated user.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         user_goal: Goal data to create.
         token_user_id: User ID from access token.
         db: Database session dependency.
@@ -108,15 +109,17 @@ async def create_user_goal(
     status_code=status.HTTP_200_OK,
     response_model=user_goals_schema.UsersGoalRead,
 )
-async def update_user_goal(
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
+def update_user_goal(
+    request: Request,
     user_goal: user_goals_schema.UsersGoalUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
 ) -> user_goals_schema.UsersGoalRead:
-    """
-    Update an existing goal for the authenticated user.
+    """Update an existing goal for the authenticated user.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         user_goal: Updated goal data.
         token_user_id: User ID from access token.
         db: Database session dependency.
@@ -128,15 +131,17 @@ async def update_user_goal(
 
 
 @router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
-async def delete_user_goal(
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
+def delete_user_goal(
+    request: Request,
     goal_id: core_dependencies.PositiveId,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
 ) -> None:
-    """
-    Delete a goal for the authenticated user.
+    """Delete a goal for the authenticated user.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         goal_id: ID of the goal to delete.
         token_user_id: User ID from access token.
         db: Database session dependency.
