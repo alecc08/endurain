@@ -948,6 +948,8 @@
     "title": "My profile",
     "subtitle": "Manage your account details and privacy",
     "notSet": "Not set",
+    "emailManagedIn": "Your email is changed in Security settings.",
+    "emailManagedLink": "Open Security settings",
     "error": {
       "title": "Couldn't load your profile",
       "description": "Something went wrong while loading your profile. You can try again.",

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { RouterLink } from 'vue-router'
 
 import type { ProfileDetails, ProfileEditInput } from '@/features/profile/types'
 import type { Schemas } from '@/types'
@@ -263,6 +264,24 @@ watch(open, (isOpen) => {
             :disabled="isSubmitting"
             @blur="handleBlur('username')"
           />
+        </template>
+      </FormField>
+
+      <FormField :label="t('settings.users.form.email')">
+        <template #default="{ fieldId }">
+          <Input
+            :id="fieldId"
+            :model-value="props.profile.email"
+            name="email"
+            type="email"
+            disabled
+          />
+          <p class="text-hint">
+            {{ t('settings.profile.emailManagedIn') }}
+            <RouterLink :to="{ name: 'settings-security' }" class="underline" @click="open = false">
+              {{ t('settings.profile.emailManagedLink') }}
+            </RouterLink>
+          </p>
         </template>
       </FormField>
 
