@@ -35,6 +35,7 @@ def client(mock_db, identity_service):
     app.include_router(router, prefix="/users")
     core_exceptions.register_exception_handlers(app)
     app.dependency_overrides[auth_dependencies.check_scopes] = lambda: None
+    app.dependency_overrides[auth_dependencies.get_sub_from_access_token] = lambda: 9
     app.dependency_overrides[core_database.get_db] = lambda: mock_db
     app.dependency_overrides[core_dependencies.get_storage] = lambda: MagicMock()
     app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: identity_service
@@ -196,7 +197,7 @@ class TestEditUser:
         assert response.status_code == 200
         assert response.json()["external_auth_count"] == 2
         assert mock_edit.call_args.args[0] == 1
-        assert mock_edit.call_args.args[2:] == (identity_service, mock_db)
+        assert mock_edit.call_args.args[2:] == (9, identity_service, mock_db)
 
 
 class TestApproveUser:
@@ -221,7 +222,7 @@ class TestApproveUser:
 
 class TestEditUserPassword:
     def test_success(self, client, identity_service):
-        response = client.put("/users/1/password", json={"password": "newpassword123"})
+        response = client.post("/users/1/password/change", json={"password": "newpassword123"})
 
         assert response.status_code == 200
         assert response.json() == {"message": "User ID 1 password updated successfully"}

@@ -442,18 +442,43 @@ def stage_user_edit(user_id: int, user: users_schema.UsersRead, db: Session) -> 
     return updated
 
 
+def _edit_ends_sessions(before: users_schema.UsersRead, after: users_schema.UsersRead) -> bool:
+    """Whether an administrative edit changes who the user is or what they may do.
+
+    Args:
+        before: The user before the edit.
+        after: The user after the edit.
+
+    Returns:
+        True when the email, the access type or the active flag changed, so sessions issued
+        under the old values must not outlive the edit.
+    """
+    return (
+        before.email != after.email
+        or users_schema.normalize_access_type(before.access_type)
+        != users_schema.normalize_access_type(after.access_type)
+        or before.active != after.active
+    )
+
+
 def edit_user(
     user_id: int,
     user: users_schema.UsersRead,
+    actor_id: int,
     identity_service: "auth_identity_service.IdentityService",
     db: Session,
 ) -> users_schema.UsersRead:
     """Edit a user as an administrator, commit, and add their authentication status.
 
+    A change of email, access type or active flag signs the edited user out everywhere, so a
+    demoted, deactivated or re-addressed account does not keep working sessions. An administrator
+    editing their own account stays signed in.
+
     Args:
         user_id: ID of the user to update.
         user: The user data to apply.
-        identity_service: Identity service that answers the authentication status.
+        actor_id: ID of the administrator making the edit.
+        identity_service: Identity service that answers the authentication status and ends sessions.
         db: Database session.
 
     Returns:
@@ -463,6 +488,7 @@ def edit_user(
         NotFoundError: If the user does not exist.
         ConflictError: If the username or email is already taken.
     """
+    existing = require_user(user_id, db)
     try:
         updated = stage_user_edit(user_id, user, db)
     except core_exceptions.ConflictError:
@@ -470,6 +496,9 @@ def edit_user(
         raise
     db.commit()
     logger.info("User edited by an administrator", extra=core_logger.context(user_id=user_id))
+
+    if user_id != actor_id and _edit_ends_sessions(existing, updated):
+        identity_service.delete_all_user_sessions(user_id)
 
     updated.external_auth_count = identity_service.get_identity_link_counts_for_users([updated.id]).get(updated.id, 0)
     updated.mfa_enabled = identity_service.get_mfa_enabled_for_users([updated.id]).get(updated.id, False)

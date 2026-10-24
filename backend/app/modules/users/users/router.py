@@ -277,6 +277,7 @@ def edit_user(
     request: Request,
     user_id: core_dependencies.PositiveId,
     user_attributtes: users_schema.UsersRead,
+    token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
@@ -285,17 +286,20 @@ def edit_user(
 ) -> users_schema.UsersRead:
     """Update user information.
 
+    A change of email, access type or active flag signs the edited user out everywhere.
+
     Args:
         request: The incoming request, read by the rate limiter.
         user_id: ID of user to update.
         user_attributtes: User data to update.
+        token_user_id: ID of the administrator making the edit.
         db: Database session dependency.
         identity_service: Identity service dependency.
 
     Returns:
         Updated user data.
     """
-    return users_service.edit_user(user_id, user_attributtes, identity_service, db)
+    return users_service.edit_user(user_id, user_attributtes, token_user_id, identity_service, db)
 
 
 @router.put(
@@ -332,7 +336,7 @@ def approve_user(
     return users_schema.MessageResponse(message=f"User ID {user_id} approved successfully.")
 
 
-@router.put("/{user_id}/password", status_code=status.HTTP_200_OK, response_model=users_schema.MessageResponse)
+@router.post("/{user_id}/password/change", status_code=status.HTTP_200_OK, response_model=users_schema.MessageResponse)
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def edit_user_password(
     request: Request,

@@ -2746,7 +2746,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/profile/email": {
+    "/api/v1/profile/email/change": {
         parameters: {
             query?: never;
             header?: never;
@@ -2754,6 +2754,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
         /**
          * Edit Profile Email
          * @description Change the authenticated user's email after step-up verification.
@@ -2775,8 +2776,7 @@ export interface paths {
          *     Returns:
          *         Success message.
          */
-        put: operations["edit_profile_email_api_v1_profile_email_put"];
-        post?: never;
+        post: operations["edit_profile_email_api_v1_profile_email_change_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3484,7 +3484,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/profile/password": {
+    "/api/v1/profile/password/change": {
         parameters: {
             query?: never;
             header?: never;
@@ -3492,6 +3492,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
         /**
          * Edit Profile Password
          * @description Update user password after step-up verification.
@@ -3526,8 +3527,7 @@ export interface paths {
          *     Raises:
          *         HTTPException: 401 if step-up verification fails.
          */
-        put: operations["edit_profile_password_api_v1_profile_password_put"];
-        post?: never;
+        post: operations["edit_profile_password_api_v1_profile_password_change_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4880,10 +4880,13 @@ export interface paths {
          * Edit User
          * @description Update user information.
          *
+         *     A change of email, access type or active flag signs the edited user out everywhere.
+         *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of user to update.
          *         user_attributtes: User data to update.
+         *         token_user_id: ID of the administrator making the edit.
          *         db: Database session dependency.
          *         identity_service: Identity service dependency.
          *
@@ -5026,7 +5029,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/users/{user_id}/password": {
+    "/api/v1/users/{user_id}/password/change": {
         parameters: {
             query?: never;
             header?: never;
@@ -5034,6 +5037,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
         /**
          * Edit User Password
          * @description Update user password.
@@ -5048,8 +5052,7 @@ export interface paths {
          *     Returns:
          *         Success message.
          */
-        put: operations["edit_user_password_api_v1_users__user_id__password_put"];
-        post?: never;
+        post: operations["edit_user_password_api_v1_users__user_id__password_change_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -16970,7 +16973,7 @@ export interface operations {
             };
         };
     };
-    edit_profile_email_api_v1_profile_email_put: {
+    edit_profile_email_api_v1_profile_email_change_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -17824,7 +17827,7 @@ export interface operations {
             };
         };
     };
-    edit_profile_password_api_v1_profile_password_put: {
+    edit_profile_password_api_v1_profile_password_change_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -20072,7 +20075,7 @@ export interface operations {
             };
         };
     };
-    edit_user_password_api_v1_users__user_id__password_put: {
+    edit_user_password_api_v1_users__user_id__password_change_post: {
         parameters: {
             query?: never;
             header?: never;

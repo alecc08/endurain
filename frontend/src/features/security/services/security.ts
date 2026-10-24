@@ -131,8 +131,8 @@ export async function changePassword(input: PasswordChangeInput): Promise<void> 
     mfa_code: input.mfaCode,
     revoke_other_sessions: input.revokeOtherSessions,
   }
-  await apiFetch('/profile/password', {
-    method: 'PUT',
+  await apiFetch('/profile/password/change', {
+    method: 'POST',
     body: JSON.stringify(payload),
     responseType: 'void',
   })
@@ -368,8 +368,8 @@ export async function changeEmail(
     ...toStepUpWire(input),
     revoke_other_sessions: revokeOtherSessions,
   }
-  await apiFetch('/profile/email', {
-    method: 'PUT',
+  await apiFetch('/profile/email/change', {
+    method: 'POST',
     body: JSON.stringify(payload),
     responseType: 'void',
   })

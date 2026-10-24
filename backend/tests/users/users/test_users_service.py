@@ -31,6 +31,13 @@ def _signup() -> users_schema.UsersSignup:
     )
 
 
+def _identity() -> MagicMock:
+    identity = MagicMock()
+    identity.get_identity_link_counts_for_users.return_value = {}
+    identity.get_mfa_enabled_for_users.return_value = {}
+    return identity
+
+
 class TestRequirements:
     @patch(_CRUD)
     def test_require_user_returns_the_user(self, mock_crud, mock_db):
@@ -347,18 +354,61 @@ class TestEdits:
         identity.get_identity_link_counts_for_users.return_value = {1: 2}
         identity.get_mfa_enabled_for_users.return_value = {1: True}
 
-        result = users_service.edit_user(1, _user(1), identity, mock_db)
+        result = users_service.edit_user(1, _user(1), 9, identity, mock_db)
 
         mock_db.commit.assert_called_once()
         assert result.external_auth_count == 2
         assert result.mfa_enabled is True
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [
+            ({}, {"email": "other@example.com"}),
+            ({}, {"access_type": "admin"}),
+            ({}, {"active": False}),
+            ({"access_type": "admin"}, {"access_type": "regular"}),
+        ],
+    )
+    def test_a_security_relevant_edit_signs_the_user_out_after_the_commit(
+        self, mock_crud, mock_weight, mock_db, before, after
+    ):
+        mock_crud.get_user_by_id.return_value = _user(1, **before)
+        mock_crud.update_user.return_value = _user(1, **{**before, **after})
+        mock_crud.lock_active_admin_ids.return_value = [1, 2]
+        identity = _identity()
+        order = MagicMock()
+        order.attach_mock(mock_db.commit, "commit")
+        order.attach_mock(identity.delete_all_user_sessions, "revoke")
+
+        users_service.edit_user(1, _user(1, **{**before, **after}), 9, identity, mock_db)
+
+        assert [call[0] for call in order.mock_calls] == ["commit", "revoke"]
+        identity.delete_all_user_sessions.assert_called_once_with(1)
+
+    def test_an_edit_of_other_fields_keeps_the_sessions(self, mock_crud, mock_weight, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1)
+        mock_crud.update_user.return_value = _user(1, name="Renamed")
+        identity = _identity()
+
+        users_service.edit_user(1, _user(1, name="Renamed"), 9, identity, mock_db)
+
+        identity.delete_all_user_sessions.assert_not_called()
+
+    def test_an_administrator_editing_themselves_keeps_their_own_sessions(self, mock_crud, mock_weight, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1)
+        mock_crud.update_user.return_value = _user(1, email="other@example.com")
+        identity = _identity()
+
+        users_service.edit_user(1, _user(1, email="other@example.com"), 1, identity, mock_db)
+
+        identity.delete_all_user_sessions.assert_not_called()
 
     def test_edit_user_conflict_rolls_back(self, mock_crud, mock_weight, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1)
         mock_crud.update_user.side_effect = core_exceptions.ConflictError("dup")
 
         with pytest.raises(core_exceptions.ConflictError):
-            users_service.edit_user(1, _user(1), MagicMock(), mock_db)
+            users_service.edit_user(1, _user(1), 9, MagicMock(), mock_db)
 
         mock_db.rollback.assert_called_once()
         mock_db.commit.assert_not_called()

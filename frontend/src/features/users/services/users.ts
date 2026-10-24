@@ -203,8 +203,8 @@ export async function fetchUserById(id: number, signal?: AbortSignal): Promise<M
  * @throws {HttpError} When the request fails (e.g. password too short).
  */
 export async function changeUserPassword(userId: number, password: string): Promise<void> {
-  await apiFetch<{ message: string }>(`/users/${userId}/password`, {
-    method: 'PUT',
+  await apiFetch<{ message: string }>(`/users/${userId}/password/change`, {
+    method: 'POST',
     body: JSON.stringify({ password } satisfies Schemas['UsersAdminEditPassword']),
   })
 }

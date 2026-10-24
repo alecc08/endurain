@@ -207,7 +207,7 @@ def edit_user(
     return users_schema.MessageResponse(message=f"User ID {token_user_id} updated successfully")
 
 
-@router.put("/email", status_code=status.HTTP_200_OK, response_model=users_schema.MessageResponse)
+@router.post("/email/change", status_code=status.HTTP_200_OK, response_model=users_schema.MessageResponse)
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def edit_profile_email(
     request: Request,
@@ -275,7 +275,7 @@ def edit_profile_privacy_settings(
     return users_schema.MessageResponse(message=f"User ID {token_user_id} privacy settings updated successfully")
 
 
-@router.put("/password", status_code=status.HTTP_200_OK, response_model=users_schema.MessageResponse)
+@router.post("/password/change", status_code=status.HTTP_200_OK, response_model=users_schema.MessageResponse)
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def edit_profile_password(
     request: Request,

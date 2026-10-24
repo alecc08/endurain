@@ -386,12 +386,12 @@ class TestEditUser:
 
 
 class TestEditProfileEmail:
-    """Tests for PUT /profile/email — edit_profile_email."""
+    """Tests for POST /profile/email/change — edit_profile_email."""
 
     @patch("modules.users.users_profile.service.users_integration.stage_email_change")
     def test_success_runs_the_step_up_and_asks_for_verification(self, _stage, profile_client, mock_identity_service):
-        response = profile_client.put(
-            PREFIX + "/email",
+        response = profile_client.post(
+            PREFIX + "/email/change",
             json={"email": "new@example.com", "current_password": "pw", "mfa_code": None},
         )
 
@@ -403,8 +403,8 @@ class TestEditProfileEmail:
     def test_step_up_fails(self, profile_client, mock_identity_service):
         mock_identity_service.verify_step_up.side_effect = HTTPException(status_code=401, detail="Invalid credentials")
 
-        response = profile_client.put(
-            PREFIX + "/email",
+        response = profile_client.post(
+            PREFIX + "/email/change",
             json={"email": "new@example.com", "current_password": "wrong"},
         )
 
@@ -412,7 +412,9 @@ class TestEditProfileEmail:
         mock_identity_service.request_email_reverification.assert_not_called()
 
     def test_the_address_must_be_valid(self, profile_client):
-        response = profile_client.put(PREFIX + "/email", json={"email": "not-an-email", "current_password": "pw"})
+        response = profile_client.post(
+            PREFIX + "/email/change", json={"email": "not-an-email", "current_password": "pw"}
+        )
 
         assert response.status_code == 422
 
@@ -438,12 +440,12 @@ class TestEditProfilePrivacySettings:
 
 
 # ===================================================================
-# PUT /profile/password
+# POST /profile/password/change
 # ===================================================================
 
 
 class TestEditProfilePassword:
-    """Tests for PUT /profile/password — edit_profile_password."""
+    """Tests for POST /profile/password/change — edit_profile_password."""
 
     def test_success(
         self,
@@ -451,8 +453,8 @@ class TestEditProfilePassword:
         mock_identity_service,
     ):
         """Happy path: update password."""
-        response = profile_client.put(
-            PREFIX + "/password",
+        response = profile_client.post(
+            PREFIX + "/password/change",
             json={
                 "current_password": "oldpass",
                 "password": "NewPass123!",
@@ -475,8 +477,8 @@ class TestEditProfilePassword:
             detail="Invalid credentials",
         )
 
-        response = profile_client.put(
-            PREFIX + "/password",
+        response = profile_client.post(
+            PREFIX + "/password/change",
             json={
                 "current_password": "wrong",
                 "password": "NewPass123!",

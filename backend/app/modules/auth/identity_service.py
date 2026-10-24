@@ -448,6 +448,17 @@ class IdentityService(Protocol):
         """
         ...
 
+    def delete_all_user_sessions(self, user_id: int) -> None:
+        """Delete every session of a user, signing all their devices out.
+
+        Args:
+            user_id: Owner of the sessions.
+
+        Returns:
+            None.
+        """
+        ...
+
     def change_own_password(
         self,
         user_id: int,
@@ -1318,6 +1329,11 @@ class DefaultIdentityService:
             current_session_id,
             self._db,
         )
+
+    def delete_all_user_sessions(self, user_id: int) -> None:
+        """Delete every session of a user, signing all their devices out."""
+        revoked = auth_sessions_crud.delete_sessions_by_user(user_id, self._db)
+        logger.info("Revoked a user's sessions", extra=core_logger.context(user_id=user_id, revoked=revoked))
 
     def change_own_password(
         self,

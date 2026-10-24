@@ -838,3 +838,15 @@ class TestClearLocalPassword:
         ) as delete_credential:
             service.clear_local_password(42)
         delete_credential.assert_called_once_with(42, mock_db)
+
+
+class TestDeleteAllUserSessions:
+    """delete_all_user_sessions signs every device of a user out."""
+
+    def test_deletes_every_session_of_the_user(self, service, mock_db):
+        with patch(
+            "modules.auth.identity_service.auth_sessions_crud.delete_sessions_by_user", return_value=3
+        ) as delete:
+            service.delete_all_user_sessions(7)
+
+        delete.assert_called_once_with(7, mock_db)

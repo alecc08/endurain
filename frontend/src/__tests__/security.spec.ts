@@ -98,8 +98,8 @@ describe('security service requests', () => {
       revokeOtherSessions: true,
     })
 
-    expect(apiFetch).toHaveBeenCalledWith('/profile/password', {
-      method: 'PUT',
+    expect(apiFetch).toHaveBeenCalledWith('/profile/password/change', {
+      method: 'POST',
       body: JSON.stringify({
         current_password: 'old',
         password: 'new',
@@ -261,8 +261,8 @@ describe('changeEmail', () => {
 
     await changeEmail('new@example.com', { currentPassword: 'pw', mfaCode: '123456' }, true)
 
-    expect(apiFetch).toHaveBeenCalledWith('/profile/email', {
-      method: 'PUT',
+    expect(apiFetch).toHaveBeenCalledWith('/profile/email/change', {
+      method: 'POST',
       body: JSON.stringify({
         email: 'new@example.com',
         current_password: 'pw',

@@ -8,7 +8,8 @@ Certain sensitive account operations require the user to re-prove possession of 
 
 | Operation | Endpoint |
 | --------- | -------- |
-| Change own password | `PUT /profile/password` |
+| Change own password | `POST /profile/password/change` |
+| Change own email | `POST /profile/email/change` |
 | Enable MFA | `PUT /profile/mfa/enable` |
 | Disable MFA | `PUT /profile/mfa/disable` |
 | Regenerate MFA backup codes | `POST /profile/mfa/backup-codes` |

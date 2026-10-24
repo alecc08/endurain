@@ -237,8 +237,8 @@ describe('users service requests', () => {
 
     await changeUserPassword(7, 'secret123')
 
-    expect(apiFetch).toHaveBeenCalledWith('/users/7/password', {
-      method: 'PUT',
+    expect(apiFetch).toHaveBeenCalledWith('/users/7/password/change', {
+      method: 'POST',
       body: JSON.stringify({ password: 'secret123' }),
     })
   })

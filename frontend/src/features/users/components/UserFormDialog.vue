@@ -306,6 +306,17 @@ watch(
   },
   { immediate: true },
 )
+// A changed address is unverified until the admin says otherwise, so editing it clears the
+// flag (restoring the stored value when the address is put back). The admin can tick it again.
+const emailChanged = computed(
+  () => props.user !== null && values.email.trim().toLowerCase() !== props.user.email,
+)
+watch(emailChanged, (changed) => {
+  if (props.user) {
+    values.emailVerified = changed ? false : props.user.emailVerified
+  }
+})
+
 const dialogTitle = computed(() =>
   isEditing.value ? t('settings.users.form.editTitle') : t('settings.users.form.addTitle'),
 )
@@ -424,6 +435,9 @@ watch(open, (isOpen) => {
             :disabled="isSubmitting"
             @blur="handleBlur('email')"
           />
+          <p v-if="emailChanged" class="text-hint">
+            {{ t('settings.users.form.emailChangeHint') }}
+          </p>
         </template>
       </FormField>
 
