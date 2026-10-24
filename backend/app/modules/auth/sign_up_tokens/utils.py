@@ -1,5 +1,6 @@
 """Utility functions for sign-up token operations."""
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -126,19 +127,26 @@ def request_sign_up_admin_approval_emails(user_id: int, db: Session) -> None:
         sign_up_tokens_event_publishers.publish_sign_up_approval_requested(user_id, admin.id, db)
 
 
-def request_sign_up_approved_email(user_id: int, db: Session) -> None:
+def request_sign_up_approved_email(user_id: int, db: Session, *, commit: Callable[[], None]) -> bool:
     """
-    Queue the approval notice email for a user.
+    Commit an approval together with the notice email that tells the user.
+
+    The approval is the source of truth, so an instance that cannot send mail commits it without
+    the notice instead of failing it.
 
     Args:
         user_id: ID of the approved user.
-        db: Active SQLAlchemy session.
+        db: Active SQLAlchemy session holding the uncommitted approval.
+        commit: Commit the approval and the queued notice together.
 
-    Raises:
-        HTTPException: 503 if the email service is not configured.
+    Returns:
+        True if the notice was queued, False if outgoing email is not configured.
     """
-    _require_mail_configured(db)
-    sign_up_tokens_event_publishers.publish_sign_up_approved(user_id, db)
+    if not server_settings_integration.is_mail_configured(db):
+        commit()
+        return False
+    sign_up_tokens_event_publishers.publish_sign_up_approved(user_id, db, commit=commit)
+    return True
 
 
 def send_sign_up_verification_email_to_user(user_id: int, mail: platform_providers.MailProvider, db: Session) -> bool:

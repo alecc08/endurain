@@ -44,7 +44,7 @@ class TestCreateHealthFasting:
     def test_refuses_a_second_active_fast(self, _active, mock_create, mock_db):
         record = health_fasting_schema.HealthFastingCreate(fast_start_time=datetime(2024, 1, 15, 8, 0, 0))
 
-        with pytest.raises(core_exceptions.InvalidInputError, match="already has an active fasting session"):
+        with pytest.raises(core_exceptions.ConflictError, match="already has an active fasting session"):
             health_fasting_service.create_health_fasting(1, record, mock_db)
 
         mock_create.assert_not_called()
@@ -94,7 +94,18 @@ class TestCompleteHealthFasting:
     def test_refuses_a_session_that_is_not_in_progress(self, mock_get, mock_end, mock_db):
         mock_get.return_value = MagicMock(status="completed", fast_start_time=datetime(2024, 1, 15, 8, 0, 0))
 
-        with pytest.raises(core_exceptions.InvalidInputError, match="not in progress"):
+        with pytest.raises(core_exceptions.ConflictError, match="not in progress"):
+            health_fasting_service.complete_health_fasting(1, 5, _complete(), mock_db)
+
+        mock_end.assert_not_called()
+        mock_db.commit.assert_not_called()
+
+    @patch(f"{_CRUD}.end_health_fasting")
+    @patch(f"{_CRUD}.get_health_fasting_by_id_and_user_id")
+    def test_refuses_an_end_before_the_start(self, mock_get, mock_end, mock_db):
+        mock_get.return_value = MagicMock(status="in_progress", fast_start_time=datetime(2024, 1, 17, 8, 0, 0))
+
+        with pytest.raises(core_exceptions.InvalidInputError, match="before it started"):
             health_fasting_service.complete_health_fasting(1, 5, _complete(), mock_db)
 
         mock_end.assert_not_called()

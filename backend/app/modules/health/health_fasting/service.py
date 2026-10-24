@@ -143,10 +143,10 @@ def create_health_fasting(
         The created session.
 
     Raises:
-        InvalidInputError: If the user already has an active fasting session.
+        ConflictError: If the user already has an active fasting session.
     """
     if health_fasting_crud.get_active_fasting_by_user_id(user_id, db) is not None:
-        raise core_exceptions.InvalidInputError(
+        raise core_exceptions.ConflictError(
             "User already has an active fasting session. Complete or cancel it before starting a new one."
         )
 
@@ -202,14 +202,17 @@ def complete_health_fasting(
 
     Raises:
         NotFoundError: If the user has no such session.
-        InvalidInputError: If the session is not in progress.
+        ConflictError: If the session is not in progress.
+        InvalidInputError: If the end time is before the start time.
     """
     session = get_health_fasting(user_id, health_fasting_id, db)
     if session.status != health_fasting_schema.FastingStatus.IN_PROGRESS.value:
-        raise core_exceptions.InvalidInputError("Fasting session is not in progress")
+        raise core_exceptions.ConflictError("Fasting session is not in progress")
 
     start_time = core_timezone.to_utc_aware(session.fast_start_time)
     end_time = core_timezone.to_utc_aware(complete_data.fast_end_time)
+    if end_time < start_time:
+        raise core_exceptions.InvalidInputError("Fasting session cannot end before it started")
 
     ended = health_fasting_crud.end_health_fasting(
         user_id,

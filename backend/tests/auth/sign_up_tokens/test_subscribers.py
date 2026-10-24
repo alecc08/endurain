@@ -71,8 +71,17 @@ class TestPublishers:
 
         sign_up_tokens_event_publishers.publish_sign_up_verification_requested(4, db)
         sign_up_tokens_event_publishers.publish_sign_up_approval_requested(4, 9, db)
-        sign_up_tokens_event_publishers.publish_sign_up_approved(4, db)
 
         payloads = [call.args[1] for call in mock_publish.call_args_list]
-        assert payloads == [{"user_id": 4}, {"user_id": 4, "admin_user_id": 9}, {"user_id": 4}]
+        assert payloads == [{"user_id": 4}, {"user_id": 4, "admin_user_id": 9}]
         assert all(call.kwargs["db"] is db for call in mock_publish.call_args_list)
+
+    @patch("modules.auth.sign_up_tokens.event_publishers.platform_publisher.publish_committing")
+    def test_approval_is_published_around_the_commit(self, mock_publish):
+        db, commit = MagicMock(), MagicMock()
+
+        sign_up_tokens_event_publishers.publish_sign_up_approved(4, db, commit=commit)
+
+        assert mock_publish.call_args.args[1] == {"user_id": 4}
+        assert mock_publish.call_args.kwargs["db"] is db
+        assert mock_publish.call_args.kwargs["commit"] is commit

@@ -207,22 +207,20 @@ class TestEditUser:
 
 class TestApproveUser:
     @patch(f"{_SERVICE}.approve_user")
-    def test_approves_then_sends_the_notice(self, mock_approve, client, identity_service, mock_db):
+    def test_approves_with_the_notice_in_the_same_unit_of_work(self, mock_approve, client, identity_service, mock_db):
         response = client.put("/users/1/approve")
 
         assert response.status_code == 200
         assert response.json() == {"message": "User ID 1 approved successfully."}
-        mock_approve.assert_called_once_with(1, mock_db)
-        identity_service.request_sign_up_approved_email.assert_called_once_with(1)
+        mock_approve.assert_called_once_with(1, identity_service, mock_db)
 
     @patch(f"{_SERVICE}.approve_user")
-    def test_unverified_email_sends_no_notice(self, mock_approve, client, identity_service):
+    def test_unverified_email_is_refused(self, mock_approve, client):
         mock_approve.side_effect = core_exceptions.InvalidInputError("User email is not verified")
 
         response = client.put("/users/1/approve")
 
         assert response.status_code == 400
-        identity_service.request_sign_up_approved_email.assert_not_called()
 
 
 class TestEditUserPassword:

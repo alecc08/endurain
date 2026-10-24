@@ -15,6 +15,7 @@ from collections.abc import Generator
 import jasil.providers as platform_providers
 from sqlalchemy.orm import Session
 
+import core.config as core_config
 import core.database as core_database
 import core.exceptions as core_exceptions
 import core.logger as core_logger
@@ -24,6 +25,7 @@ import modules.users.users_profile.events as profile_events
 import modules.users.users_profile.exceptions as profile_exceptions
 import modules.users.users_profile.export_state_store as profile_export_state_store
 import modules.users.users_profile.service as profile_service
+import modules.users.users_profile.transfer_pool as profile_transfer_pool
 
 logger = core_logger.get_logger(__name__)
 
@@ -50,7 +52,10 @@ def request_export(
 
     Raises:
         ConflictError: When the user already has an export pending.
+        ServiceUnavailableError: When there is no durable worker and the in-process pool is full.
     """
+    if not core_config.settings.JOBS_ENABLED:
+        profile_transfer_pool.pool.require_capacity()
     if not states.begin(user_id):
         logger.warning(
             "Refused a second profile export while one is pending", extra=core_logger.context(user_id=user_id)
@@ -66,6 +71,22 @@ def request_export(
 
     logger.info("Profile export queued", extra=core_logger.context(user_id=user_id))
     return profile_export_state_store.ProfileExportState(status=_Status.QUEUED)
+
+
+def fail_unstarted_export(
+    payload: profile_events.ProfileExportRequestedPayload,
+    states: profile_export_state_store.ProfileExportStateStore,
+) -> None:
+    """Close an export that no worker took, so the user can request another.
+
+    Args:
+        payload: Whose profile was to be exported.
+        states: Shared store of the export's state.
+    """
+    logger.warning(
+        "Closed a profile export the in-process pool could not take", extra=core_logger.context(user_id=payload.user_id)
+    )
+    states.set_status(payload.user_id, _Status.FAILED, failure=_Failure.PROCESSING_FAILED)
 
 
 def get_export_status(

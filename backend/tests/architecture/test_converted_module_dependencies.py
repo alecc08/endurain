@@ -39,6 +39,7 @@ _ALLOWED_CORE: dict[str, str] = {
     "core.geocoding": "The reverse-geocoding configuration shape the settings store and the substrate is fed.",
     "core.hashing": "Content digests for upload and media deduplication.",
     "core.i18n": "Localises the test email.",
+    "core.local_pool": "The bounded in-process pool background work runs on when no durable worker does.",
     "core.logger": "Structured logging.",
     "core.mail": "The mail configuration shape the settings store, and its validation wording.",
     "core.network": "The SSRF check on a tile server URL before it is saved.",

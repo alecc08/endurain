@@ -54,6 +54,7 @@ import modules.server_settings.constants as server_settings_constants
 import modules.server_settings.integration_service as server_settings_integration
 import modules.strava.provider_registry as strava_provider_registry
 import modules.strava.scheduled_jobs as strava_scheduled_jobs
+import modules.users.users_profile.integration_service as users_profile_integration
 from api import router as api_router
 from core.database import SessionLocal
 from core.database import engine as core_db_engine
@@ -353,6 +354,7 @@ def shutdown_event(fastapi_app: FastAPI) -> None:
     activity_ingestion_integration.shutdown_background_ingestion()
     garmin_integration.shutdown_executors()
     runtime_module_registry.shutdown_deferred_subscribers()
+    users_profile_integration.shutdown_transfer_pool()
 
     # Stop the SSRF hostname-resolution pool (no-op when no lookup ever ran).
     core_network.shutdown_ssrf_dns_executor()

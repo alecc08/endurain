@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from jasil.events import Event, new_event
 
+import core.local_pool as core_local_pool
 import modules.users.users_profile.events as profile_events
 import modules.users.users_profile.subscribers as profile_subscribers
 
@@ -18,6 +19,14 @@ def _event(retry_count: int = 0) -> Event:
         source="test",
         retry_count=retry_count,
     )
+
+
+@pytest.fixture(autouse=True)
+def inline_transfer_pool():
+    """Run the transfer pool's jobs on the calling thread, and keep the real pool out of the test."""
+    with patch(f"{_MODULE}.profile_transfer_pool.pool") as pool:
+        pool.submit.side_effect = lambda run, *args, **kwargs: run(*args, **kwargs)
+        yield pool
 
 
 @pytest.fixture
@@ -55,6 +64,34 @@ def test_the_bus_subscriber_never_asks_for_a_retry(run_import):
     profile_subscribers.run_import_requested_on_bus(_event())
 
     assert run_import.call_args.kwargs["will_retry"] is False
+
+
+def test_a_bus_import_runs_on_the_transfer_pool_not_the_subscriber_thread(inline_transfer_pool, run_import):
+    profile_subscribers.run_import_requested_on_bus(_event())
+
+    inline_transfer_pool.submit.assert_called_once()
+
+
+def test_a_bus_import_the_full_pool_refuses_is_closed_not_left_queued(inline_transfer_pool):
+    inline_transfer_pool.submit.side_effect = core_local_pool.PoolFullError("full")
+    with (
+        patch(f"{_MODULE}.profile_import_job_service.fail_unstarted_import") as fail,
+        patch(f"{_MODULE}.platform_runtime.get_active_platform", return_value=MagicMock()),
+    ):
+        profile_subscribers.run_import_requested_on_bus(_event())
+
+    assert fail.call_args.args[0].user_id == 4
+
+
+def test_a_bus_export_the_full_pool_refuses_is_closed_not_left_queued(inline_transfer_pool):
+    inline_transfer_pool.submit.side_effect = core_local_pool.PoolFullError("full")
+    with (
+        patch(f"{_MODULE}.profile_export_job_service.fail_unstarted_export") as fail,
+        patch(f"{_MODULE}.platform_runtime.get_active_platform", return_value=MagicMock()),
+    ):
+        profile_subscribers.run_export_requested_on_bus(_export_event())
+
+    assert fail.call_args.args[0].user_id == 4
 
 
 def test_both_paths_are_registered_for_the_event():

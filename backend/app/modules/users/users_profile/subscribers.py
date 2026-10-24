@@ -13,12 +13,14 @@ from jasil.providers import EventBusProvider
 from jasil.subscribers import best_effort
 
 import core.config as core_config
+import core.local_pool as core_local_pool
 import core.logger as core_logger
 import modules.users.users_profile.events as profile_events
 import modules.users.users_profile.export_job_service as profile_export_job_service
 import modules.users.users_profile.export_state_store as profile_export_state_store
 import modules.users.users_profile.import_job_service as profile_import_job_service
 import modules.users.users_profile.import_state_store as profile_import_state_store
+import modules.users.users_profile.transfer_pool as profile_transfer_pool
 
 logger = core_logger.get_logger(__name__)
 
@@ -58,13 +60,22 @@ def process_import_requested_for_event(event: Event) -> None:
 
 
 def run_import_requested_on_bus(event: Event) -> None:
-    """Bus subscriber: import one staged archive; nothing retries it.
+    """Bus subscriber: hand the import to the transfer pool; nothing retries it.
+
+    The import runs on the profile transfer pool so it does not hold a subscriber thread for minutes.
+    An import the full pool refuses is closed as failed, since nothing else would finish its claim.
 
     Args:
         event: The ``users.profile_import_requested`` event.
     """
-    user_id = _import(event, will_retry=False)
-    logger.debug("Profile import task finished", extra=core_logger.context(user_id=user_id))
+    try:
+        profile_transfer_pool.pool.submit(_import, event, will_retry=False)
+    except core_local_pool.PoolFullError:
+        payload = platform_event_versioning.parse_payload(profile_events.ProfileImportRequestedPayload, event)
+        platform = platform_runtime.get_active_platform()
+        profile_import_job_service.fail_unstarted_import(
+            payload, profile_import_state_store.ProfileImportStateStore(platform.state), platform.storage
+        )
 
 
 on_import_requested = best_effort(run_import_requested_on_bus)
@@ -102,13 +113,21 @@ def process_export_requested_for_event(event: Event) -> None:
 
 
 def run_export_requested_on_bus(event: Event) -> None:
-    """Bus subscriber: build one export; nothing retries it.
+    """Bus subscriber: hand the export to the transfer pool; nothing retries it.
+
+    An export the full pool refuses is closed as failed, since nothing else would finish its claim.
 
     Args:
         event: The ``users.profile_export_requested`` event.
     """
-    user_id = _export(event, will_retry=False)
-    logger.debug("Profile export task finished", extra=core_logger.context(user_id=user_id))
+    try:
+        profile_transfer_pool.pool.submit(_export, event, will_retry=False)
+    except core_local_pool.PoolFullError:
+        payload = platform_event_versioning.parse_payload(profile_events.ProfileExportRequestedPayload, event)
+        platform = platform_runtime.get_active_platform()
+        profile_export_job_service.fail_unstarted_export(
+            payload, profile_export_state_store.ProfileExportStateStore(platform.state)
+        )
 
 
 on_export_requested = best_effort(run_export_requested_on_bus)

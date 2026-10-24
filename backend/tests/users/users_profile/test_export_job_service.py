@@ -41,6 +41,35 @@ def _run(states, outcome, *, will_retry=False):
 
 
 class TestRequestExport:
+    def test_a_full_local_pool_refuses_before_the_claim_is_taken(self, states, mock_db):
+        with (
+            patch(f"{_MODULE}.core_config.settings", MagicMock(JOBS_ENABLED=False)),
+            patch(f"{_MODULE}.profile_transfer_pool.pool") as pool,
+        ):
+            pool.require_capacity.side_effect = core_exceptions.ServiceUnavailableError("full")
+            with pytest.raises(core_exceptions.ServiceUnavailableError):
+                job_service.request_export(7, states, mock_db)
+
+        assert states.get(7) is None
+
+    def test_a_durable_deployment_does_not_look_at_the_local_pool(self, states, mock_db):
+        with (
+            patch(f"{_MODULE}.core_config.settings", MagicMock(JOBS_ENABLED=True)),
+            patch(f"{_MODULE}.profile_transfer_pool.pool") as pool,
+            patch(f"{_MODULE}.profile_event_publishers.publish_export_requested"),
+        ):
+            job_service.request_export(7, states, mock_db)
+
+        pool.require_capacity.assert_not_called()
+
+    def test_an_export_the_pool_could_not_take_is_closed(self, states):
+        states.begin(7)
+
+        job_service.fail_unstarted_export(_payload(7), states)
+
+        assert states.get(7).status == _Status.FAILED
+        assert states.get(7).failure == _Failure.PROCESSING_FAILED
+
     def test_queues_the_export(self, states, mock_db):
         with patch(f"{_MODULE}.profile_event_publishers.publish_export_requested") as publish:
             state = job_service.request_export(7, states, mock_db)

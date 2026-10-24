@@ -9,11 +9,9 @@ from datetime import date as date_type
 
 from sqlalchemy.orm import Session
 
-import core.config as core_config
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.pagination as core_pagination
-import core.timezone as core_timezone
 import modules.health.computation as health_computation
 import modules.health.constants as health_constants
 import modules.health.health_sleep.crud as health_sleep_crud
@@ -111,8 +109,8 @@ def stage_upsert_health_sleep(
         ConflictError: If the date's record cannot be created or found.
     """
     if health_sleep.date is None:
-        # The request carries no timezone, so the fallback is the server's configured zone.
-        health_sleep.date = core_timezone.today_in(core_config.settings.TZ)
+        # The request carries no timezone, so the day is the athlete's own.
+        health_sleep.date = users_integration.local_today(user_id, db)
 
     existing = health_sleep_crud.get_health_sleep_by_date_and_user_id(user_id, health_sleep.date.isoformat(), db)
     if existing is None:

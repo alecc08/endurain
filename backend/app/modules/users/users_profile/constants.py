@@ -89,3 +89,10 @@ class ExportFailure(StrEnum):
 
     TIMED_OUT = "timed_out"
     PROCESSING_FAILED = "processing_failed"
+
+
+#: Transfers run at once on the in-process pool: one, because an archive is held in memory.
+TRANSFER_POOL_WORKERS = 1
+
+#: Transfers the in-process pool holds, running and queued, before a new request is refused.
+TRANSFER_POOL_MAX_PENDING = 3

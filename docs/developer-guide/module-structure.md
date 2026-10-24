@@ -486,6 +486,10 @@ process and across replicas alike. Tests do not enforce them yet, so review does
   on a small background pool (`app/module_registry.py`); on Redis, on the consumer thread. Either
   way a subscriber opens its own session, assumes it may run twice or not at all, and relies on
   its reconciliation net. Nothing may assume a subscriber finished before the response.
+- **In-process work is bounded.** Without a durable worker, background work runs on a `core.local_pool.BoundedPool`,
+  which counts running and queued jobs and refuses one past its bound. A request that would start long work
+  (`users_profile` import and export) refuses up front with 503; a best-effort subscriber past the bound is
+  dropped and left to its reconciliation net. Long jobs get a pool of their own, never the subscriber pool.
 - **Threads inherit context.** Work handed to a pool runs under `contextvars.copy_context()`, so
   the request id reaches its logs and events.
 - **Every storage area has an owner, a lifecycle and an erasure path.** The domain that writes an
@@ -773,10 +777,6 @@ limitations rather than half-done:
   `users.integration_service`, and `users` creates default targets, recalculates BMI and exports and
   imports health records through the `health_targets` and `health_weight` surfaces. Only the
   contributor pattern described under *Top-level cycles* removes the second half.
-- **Missing dates default in `service`.** A health record created without a date is filed under today
-  in the server's configured timezone (`settings.TZ`), because the request carries none. The
-  athlete's own timezone would be correct near local midnight, but changing it is a behaviour change,
-  so it was not made during the conversion.
 - **`auth` naming.** `identity_service.py` and `_internal/` instead of
   `integration_service.py` and the filename vocabulary, as described above.
   The generic boundary rule needs a special case until it is aligned.

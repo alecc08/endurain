@@ -62,7 +62,6 @@ class TestRequestEmails:
         for call in (
             lambda: sign_up_tokens_utils.request_sign_up_verification_email(1, mock_db),
             lambda: sign_up_tokens_utils.request_sign_up_admin_approval_emails(1, mock_db),
-            lambda: sign_up_tokens_utils.request_sign_up_approved_email(1, mock_db),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 call()
@@ -97,10 +96,25 @@ class TestRequestEmails:
 
     @patch("modules.auth.sign_up_tokens.utils.sign_up_tokens_event_publishers.publish_sign_up_approved")
     @patch("modules.auth.sign_up_tokens.utils.server_settings_integration.is_mail_configured", return_value=True)
-    def test_approved_publishes_event(self, _configured, mock_publish, mock_db):
-        sign_up_tokens_utils.request_sign_up_approved_email(5, mock_db)
+    def test_approved_publishes_event_around_the_commit(self, _configured, mock_publish, mock_db):
+        commit = MagicMock()
 
-        mock_publish.assert_called_once_with(5, mock_db)
+        queued = sign_up_tokens_utils.request_sign_up_approved_email(5, mock_db, commit=commit)
+
+        assert queued is True
+        mock_publish.assert_called_once_with(5, mock_db, commit=commit)
+        commit.assert_not_called()
+
+    @patch("modules.auth.sign_up_tokens.utils.sign_up_tokens_event_publishers.publish_sign_up_approved")
+    @patch("modules.auth.sign_up_tokens.utils.server_settings_integration.is_mail_configured", return_value=False)
+    def test_approved_without_mail_still_commits(self, _configured, mock_publish, mock_db):
+        commit = MagicMock()
+
+        queued = sign_up_tokens_utils.request_sign_up_approved_email(5, mock_db, commit=commit)
+
+        assert queued is False
+        commit.assert_called_once_with()
+        mock_publish.assert_not_called()
 
 
 class TestSendEmailsToUser:

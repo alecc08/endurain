@@ -249,7 +249,7 @@ def create_health_fasting(
         The staged session.
 
     Raises:
-        ConflictError: If the insert violates a database constraint.
+        ConflictError: If the user already has a running fast.
     """
     db_health_fasting = health_fasting_models.HealthFasting(
         **health_fasting.model_dump(exclude_none=False),
@@ -261,7 +261,7 @@ def create_health_fasting(
         db.flush()
         db.refresh(db_health_fasting)
     except IntegrityError as err:
-        raise core_exceptions.ConflictError("Failed to create fasting record. Database integrity error.") from err
+        raise core_exceptions.ConflictError("User already has an active fasting session") from err
 
     return health_fasting_serializers.to_read_schema(db_health_fasting)
 
@@ -281,13 +281,17 @@ def edit_health_fasting(
 
     Raises:
         NotFoundError: If the user has no such record.
+        ConflictError: If the change would leave the user with two running fasts.
     """
     db_health_fasting = _get_model_by_id_and_user_id(health_fasting.id, user_id, db)
 
     for key, value in health_fasting.model_dump(exclude_unset=True).items():
         setattr(db_health_fasting, key, value)
 
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as err:
+        raise core_exceptions.ConflictError("User already has an active fasting session") from err
     db.refresh(db_health_fasting)
 
     return health_fasting_serializers.to_read_schema(db_health_fasting)

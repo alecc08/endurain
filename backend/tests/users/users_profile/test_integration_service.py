@@ -18,3 +18,10 @@ def test_deleting_staged_transfers_discards_the_export_and_the_imports():
 
     export.assert_called_once_with(7, storage)
     imports.assert_called_once_with(7, storage)
+
+
+def test_shutdown_stops_the_transfer_pool():
+    with patch("modules.users.users_profile.integration_service.profile_transfer_pool.pool") as pool:
+        profile_integration.shutdown_transfer_pool()
+
+    pool.shutdown.assert_called_once_with()

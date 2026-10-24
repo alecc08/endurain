@@ -19,6 +19,7 @@ import jasil.providers as platform_providers
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+import core.config as core_config
 import core.database as core_database
 import core.exceptions as core_exceptions
 import core.logger as core_logger
@@ -28,6 +29,7 @@ import modules.users.users_profile.events as profile_events
 import modules.users.users_profile.exceptions as profile_exceptions
 import modules.users.users_profile.import_service as profile_import_service
 import modules.users.users_profile.import_state_store as profile_import_state_store
+import modules.users.users_profile.transfer_pool as profile_transfer_pool
 
 logger = core_logger.get_logger(__name__)
 
@@ -70,7 +72,10 @@ def request_import(
 
     Raises:
         ConflictError: When the user already has an import pending.
+        ServiceUnavailableError: When there is no durable worker and the in-process pool is full.
     """
+    if not core_config.settings.JOBS_ENABLED:
+        profile_transfer_pool.pool.require_capacity()
     if not states.begin(user_id):
         logger.warning(
             "Refused a second profile import while one is pending", extra=core_logger.context(user_id=user_id)
@@ -89,6 +94,25 @@ def request_import(
 
     logger.info("Profile import queued", extra=core_logger.context(user_id=user_id))
     return profile_import_state_store.ProfileImportState(status=_Status.QUEUED)
+
+
+def fail_unstarted_import(
+    payload: profile_events.ProfileImportRequestedPayload,
+    states: profile_import_state_store.ProfileImportStateStore,
+    storage: platform_providers.StorageProvider,
+) -> None:
+    """Close an import that no worker took, so the user can start another.
+
+    Args:
+        payload: Which archive was to be imported and for whom.
+        states: Shared store of the import's state.
+        storage: The platform storage provider.
+    """
+    logger.warning(
+        "Closed a profile import the in-process pool could not take", extra=core_logger.context(user_id=payload.user_id)
+    )
+    states.set_status(payload.user_id, _Status.FAILED, failure=_Failure.PROCESSING_FAILED)
+    _discard_staged(payload.staged_key, storage)
 
 
 def get_import_status(

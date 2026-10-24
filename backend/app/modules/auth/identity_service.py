@@ -30,6 +30,7 @@ never use a module-level singleton.
 from __future__ import annotations
 
 import hmac
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated, Protocol, runtime_checkable
 
@@ -285,14 +286,15 @@ class IdentityService(Protocol):
         """
         ...
 
-    def request_sign_up_approved_email(self, user_id: int) -> None:
-        """Queue the notice telling a user their sign-up was approved.
+    def request_sign_up_approved_email(self, user_id: int, *, commit: Callable[[], None]) -> bool:
+        """Commit an approval together with the notice telling the user their sign-up was approved.
 
         Args:
             user_id: ID of the approved user.
+            commit: Commit the caller's uncommitted approval.
 
-        Raises:
-            HTTPException: 503 if the email service is not configured.
+        Returns:
+            True if the notice was queued, False if outgoing email is not configured.
         """
         ...
 
@@ -1191,16 +1193,17 @@ class DefaultIdentityService:
         """
         return auth_password_policy.validate_and_hash_for_user(self, server_settings, access_type, password)
 
-    def request_sign_up_approved_email(self, user_id: int) -> None:
-        """Queue the notice telling a user their sign-up was approved.
+    def request_sign_up_approved_email(self, user_id: int, *, commit: Callable[[], None]) -> bool:
+        """Commit an approval together with the notice telling the user their sign-up was approved.
 
         Args:
             user_id: ID of the approved user.
+            commit: Commit the caller's uncommitted approval.
 
-        Raises:
-            HTTPException: 503 if the email service is not configured.
+        Returns:
+            True if the notice was queued, False if outgoing email is not configured.
         """
-        auth_sign_up_tokens_utils.request_sign_up_approved_email(user_id, self._db)
+        return auth_sign_up_tokens_utils.request_sign_up_approved_email(user_id, self._db, commit=commit)
 
     def request_email_reverification(self, user_id: int) -> bool:
         """Queue the verification email for a user whose address just changed.

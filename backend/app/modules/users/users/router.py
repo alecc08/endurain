@@ -330,8 +330,7 @@ def approve_user(
     Returns:
         Success message.
     """
-    users_service.approve_user(user_id, db)
-    identity_service.request_sign_up_approved_email(user_id)
+    users_service.approve_user(user_id, identity_service, db)
 
     # Return success message
     return users_schema.MessageResponse(message=f"User ID {user_id} approved successfully.")

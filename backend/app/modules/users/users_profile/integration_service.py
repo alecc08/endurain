@@ -4,6 +4,7 @@ import jasil.providers as platform_providers
 
 import modules.users.users_profile.export_job_service as profile_export_job_service
 import modules.users.users_profile.import_job_service as profile_import_job_service
+import modules.users.users_profile.transfer_pool as profile_transfer_pool
 
 
 def delete_staged_transfers(user_id: int, storage: platform_providers.StorageProvider) -> None:
@@ -18,3 +19,8 @@ def delete_staged_transfers(user_id: int, storage: platform_providers.StoragePro
     """
     profile_export_job_service.discard_staged_export(user_id, storage)
     profile_import_job_service.discard_staged_imports(user_id, storage)
+
+
+def shutdown_transfer_pool() -> None:
+    """Stop the in-process pool profile imports and exports run on, without waiting for them."""
+    profile_transfer_pool.pool.shutdown()

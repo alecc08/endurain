@@ -579,11 +579,12 @@ def stage_email_change(user_id: int, email: str, db: Session) -> bool:
     return True
 
 
-def approve_user(user_id: int, db: Session) -> None:
-    """Approve a pending user by activating them, and commit.
+def approve_user(user_id: int, identity_service: "auth_identity_service.IdentityService", db: Session) -> None:
+    """Approve a pending user by activating them, and commit with the notice that tells them.
 
     Args:
         user_id: ID of the user to approve.
+        identity_service: Identity service that commits the approval together with the notice email.
         db: Database session.
 
     Raises:
@@ -595,8 +596,8 @@ def approve_user(user_id: int, db: Session) -> None:
         raise core_exceptions.InvalidInputError("User email is not verified")
 
     users_crud.update_user(user_id, {"pending_admin_approval": False, "active": True}, db)
-    db.commit()
-    logger.info("User approved", extra=core_logger.context(user_id=user_id))
+    notified = identity_service.request_sign_up_approved_email(user_id, commit=db.commit)
+    logger.info("User approved", extra=core_logger.context(user_id=user_id, notified=notified))
 
 
 def stage_email_verification(

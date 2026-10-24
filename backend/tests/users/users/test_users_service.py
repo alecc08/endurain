@@ -458,16 +458,27 @@ class TestApproveAndVerify:
     def test_approve_activates_and_commits(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1, email_verified=True)
 
-        users_service.approve_user(1, mock_db)
+        identity_service = MagicMock()
+
+        users_service.approve_user(1, identity_service, mock_db)
 
         mock_crud.update_user.assert_called_once_with(1, {"pending_admin_approval": False, "active": True}, mock_db)
-        mock_db.commit.assert_called_once()
+        identity_service.request_sign_up_approved_email.assert_called_once_with(1, commit=mock_db.commit)
+
+    def test_approve_without_mail_is_still_approved(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1, email_verified=True)
+        identity_service = MagicMock()
+        identity_service.request_sign_up_approved_email.return_value = False
+
+        users_service.approve_user(1, identity_service, mock_db)
+
+        mock_crud.update_user.assert_called_once()
 
     def test_approve_refuses_an_unverified_email(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1, email_verified=False)
 
         with pytest.raises(core_exceptions.InvalidInputError):
-            users_service.approve_user(1, mock_db)
+            users_service.approve_user(1, MagicMock(), mock_db)
 
         mock_crud.update_user.assert_not_called()
 

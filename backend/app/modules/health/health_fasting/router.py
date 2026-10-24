@@ -150,7 +150,7 @@ def create_health_fasting(
         Created HealthFastingRead record.
 
     Raises:
-        InvalidInputError: If user already has an active fast.
+        ConflictError: If user already has an active fast.
     """
     return health_fasting_service.create_health_fasting(token_user_id, health_fasting, db)
 

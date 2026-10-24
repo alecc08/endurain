@@ -59,6 +59,37 @@ def _run(states, storage, importer, *, will_retry=False, payload=None):
 
 
 class TestRequestImport:
+    def test_a_full_local_pool_refuses_before_anything_is_staged(self, states, storage, mock_db):
+        with (
+            patch(f"{_MODULE}.core_config.settings", MagicMock(JOBS_ENABLED=False)),
+            patch(f"{_MODULE}.profile_transfer_pool.pool") as pool,
+        ):
+            pool.require_capacity.side_effect = core_exceptions.ServiceUnavailableError("full")
+            with pytest.raises(core_exceptions.ServiceUnavailableError):
+                job_service.request_import(7, b"zip", states, storage, mock_db)
+
+        storage.save.assert_not_called()
+        assert states.get(7) is None
+
+    def test_a_durable_deployment_does_not_look_at_the_local_pool(self, states, storage, mock_db):
+        with (
+            patch(f"{_MODULE}.core_config.settings", MagicMock(JOBS_ENABLED=True)),
+            patch(f"{_MODULE}.profile_transfer_pool.pool") as pool,
+            patch(f"{_MODULE}.profile_event_publishers.publish_import_requested"),
+        ):
+            job_service.request_import(7, b"zip", states, storage, mock_db)
+
+        pool.require_capacity.assert_not_called()
+
+    def test_an_import_the_pool_could_not_take_is_closed_and_its_archive_removed(self, states, storage):
+        _queued(states, 7)
+
+        job_service.fail_unstarted_import(_payload(7), states, storage)
+
+        assert states.get(7).status == _Status.FAILED
+        assert states.get(7).failure == _Failure.PROCESSING_FAILED
+        storage.delete.assert_called_once_with(_AREA, "7/abc.zip")
+
     def test_stages_the_archive_under_the_users_prefix_and_queues_it(self, states, storage, mock_db):
         with patch(f"{_MODULE}.profile_event_publishers.publish_import_requested") as publish:
             state = job_service.request_import(7, b"zip", states, storage, mock_db)

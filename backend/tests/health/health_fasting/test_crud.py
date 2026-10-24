@@ -146,6 +146,14 @@ class TestEditHealthFasting:
         mock_db.flush.assert_called_once()
         mock_db.commit.assert_not_called()
 
+    def test_a_second_active_fast_is_a_conflict(self, mock_db):
+        _returns_one(mock_db, _row())
+        mock_db.flush.side_effect = IntegrityError("constraint", None, None)
+        update = health_fasting_schema.HealthFastingUpdate(id=1, user_id=1, status="in_progress")
+
+        with pytest.raises(core_exceptions.ConflictError):
+            health_fasting_crud.edit_health_fasting(1, update, mock_db)
+
     def test_unknown_record_is_not_found(self, mock_db):
         _returns_one(mock_db, None)
         update = health_fasting_schema.HealthFastingUpdate(id=9, user_id=1, notes="x")
