@@ -4,12 +4,22 @@ import threading
 
 import pytest
 
-import modules.garmin.link_service as garmin_link_service
+import core.local_pool as core_local_pool
 
 
-@pytest.fixture(autouse=True)
-def fresh_link_slots(monkeypatch):
-    """Give every test its own link capacity, so a mocked executor never leaks slots."""
-    monkeypatch.setattr(
-        garmin_link_service, "_link_slots", threading.BoundedSemaphore(garmin_link_service.MAX_CONCURRENT_LINKS)
-    )
+@pytest.fixture
+def blocked_pool():
+    """Build a pool of the given size whose jobs hold their slot until the test releases them."""
+    release = threading.Event()
+    pools: list[core_local_pool.BoundedPool] = []
+
+    def build(max_pending: int) -> core_local_pool.BoundedPool:
+        pool = core_local_pool.BoundedPool("test-garmin", workers=max_pending, max_pending=max_pending)
+        pools.append(pool)
+        return pool
+
+    build.release = release
+    yield build
+    release.set()
+    for pool in pools:
+        pool.shutdown(wait=True)

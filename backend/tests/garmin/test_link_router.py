@@ -38,7 +38,7 @@ def _client(user_id: int = 1):
     return TestClient(app), link_states
 
 
-@patch("modules.garmin.link_service._LINK_EXECUTOR")
+@patch("modules.garmin.link_service._link_pool")
 def test_link_returns_pending_at_once_and_starts_the_login(mock_start):
     client, link_states = _client()
 
@@ -47,10 +47,10 @@ def test_link_returns_pending_at_once_and_starts_the_login(mock_start):
     assert response.status_code == 202
     assert response.json() == {"status": "pending", "reason": None}
     assert link_states.get(1).status == garmin_constants.LinkStatus.PENDING
-    assert mock_start.submit.call_args.args[2:4] == (1, "me@example.com")
+    assert mock_start.submit.call_args.args[1:3] == (1, "me@example.com")
 
 
-@patch("modules.garmin.link_service._LINK_EXECUTOR")
+@patch("modules.garmin.link_service._link_pool")
 def test_a_second_link_while_one_runs_is_a_conflict(mock_start):
     client, _ = _client()
     client.post("/garminconnect/link", json=_BODY)
@@ -61,7 +61,7 @@ def test_a_second_link_while_one_runs_is_a_conflict(mock_start):
     mock_start.submit.assert_called_once()
 
 
-@patch("modules.garmin.link_service._LINK_EXECUTOR")
+@patch("modules.garmin.link_service._link_pool")
 def test_a_failed_link_can_be_retried(mock_start):
     client, link_states = _client()
     client.post("/garminconnect/link", json=_BODY)
@@ -133,7 +133,7 @@ def test_a_second_gear_sync_while_one_is_pending_is_a_conflict():
     client, _ = _client()
     with (
         patch("modules.garmin.sync_service.core_config.settings", MagicMock(JOBS_ENABLED=False)),
-        patch("modules.garmin.sync_service._SYNC_EXECUTOR"),
+        patch("modules.garmin.sync_service._sync_pool"),
     ):
         first = client.post("/garminconnect/gear")
         second = client.post("/garminconnect/gear")
@@ -148,7 +148,7 @@ def test_a_sync_status_is_reported_once_queued_and_not_found_before():
 
     with (
         patch("modules.garmin.sync_service.core_config.settings", MagicMock(JOBS_ENABLED=False)),
-        patch("modules.garmin.sync_service._SYNC_EXECUTOR"),
+        patch("modules.garmin.sync_service._sync_pool"),
     ):
         client.post("/garminconnect/health", params={"start_date": "2026-01-01", "end_date": "2026-01-01"})
 

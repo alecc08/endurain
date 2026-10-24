@@ -6,9 +6,6 @@ pool that is not the request threadpool. Either way a gear or health sync is rec
 shared sync state, which the client polls and which stops a user queueing the same sync twice.
 """
 
-import contextvars
-import threading
-from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 
 import garminconnect
@@ -18,6 +15,7 @@ from sqlalchemy.orm import Session
 import core.config as core_config
 import core.database as core_database
 import core.exceptions as core_exceptions
+import core.local_pool as core_local_pool
 import core.logger as core_logger
 import modules.activities.activity_ingestion.integration_service as activity_ingestion_integration
 import modules.activities.activity_ingestion.schema as activity_ingestion_schema
@@ -34,24 +32,18 @@ import modules.users.users.integration_service as users_integration
 logger = core_logger.get_logger(__name__)
 
 # Small on purpose: syncs are Garmin round trips and compete with the request threads.
-_MAX_WORKERS = 2
-_SYNC_EXECUTOR = ThreadPoolExecutor(max_workers=_MAX_WORKERS, thread_name_prefix="garmin-sync")
-_local_slots = threading.BoundedSemaphore(garmin_constants.MAX_PENDING_LOCAL_SYNCS)
+_sync_pool = core_local_pool.BoundedPool("garmin-sync", workers=2, max_pending=garmin_constants.MAX_PENDING_LOCAL_SYNCS)
 
 _USERS_PAGE_SIZE = 100
 
 
-class LocalPoolFullError(core_exceptions.ServiceUnavailableError):
-    """Raised when the in-process pool stays full for the whole time a caller is willing to wait."""
-
-
-def shutdown_sync_executor(*, wait: bool = False) -> None:
+def shutdown_sync_pool(*, wait: bool = False) -> None:
     """Stop accepting syncs and release the pool threads.
 
     Args:
         wait: Whether to wait for syncs still running.
     """
-    _SYNC_EXECUTOR.shutdown(wait=wait, cancel_futures=True)
+    _sync_pool.shutdown(wait=wait)
 
 
 def _validate_range(start_date: date, end_date: date, max_days: int | None = None) -> None:
@@ -116,45 +108,6 @@ def run_sync(payload: garmin_events.SyncRequestedPayload, states: garmin_sync_st
     states.set_status(payload.user_id, payload.kind, outcome)
 
 
-def _finish_local(future: Future) -> None:
-    """Give a local pool slot back and log an exception raised by a sync on the pool."""
-    _local_slots.release()
-    if future.cancelled():
-        return
-    exc = future.exception()
-    if exc is not None:
-        logger.error("Garmin Connect sync failed", exc_info=exc)
-
-
-def _submit_local(
-    payload: garmin_events.SyncRequestedPayload,
-    states: garmin_sync_state_store.GarminSyncStateStore,
-    wait_seconds: float,
-) -> None:
-    """Run a sync on the in-process pool, refusing it when the pool stays at its limit.
-
-    Args:
-        payload: What to sync.
-        states: Shared store of the sync's state.
-        wait_seconds: How long to wait for a slot when the pool is full; ``0`` refuses at once.
-
-    Raises:
-        LocalPoolFullError: When the pool still holds ``MAX_PENDING_LOCAL_SYNCS`` syncs after the wait.
-    """
-    if not _local_slots.acquire(timeout=wait_seconds):
-        raise LocalPoolFullError("Too many Garmin Connect syncs in progress; try again shortly")
-    try:
-        future = _SYNC_EXECUTOR.submit(contextvars.copy_context().run, run_sync, payload, states)
-    except BaseException:
-        _local_slots.release()
-        raise
-    future.add_done_callback(_finish_local)
-    logger.info(
-        "Garmin Connect sync queued on the in-process pool",
-        extra=core_logger.context(user_id=payload.user_id, kind=payload.kind),
-    )
-
-
 def _queue(
     user_id: int,
     kind: garmin_constants.SyncKind,
@@ -183,7 +136,7 @@ def _queue(
 
     Raises:
         ConflictError: When a sync of this kind is already pending for the user.
-        LocalPoolFullError: When the in-process pool is still full after the wait.
+        PoolFullError: When the in-process pool is still full after the wait.
     """
     if not states.begin(user_id, kind):
         raise core_exceptions.ConflictError(f"A Garmin Connect {kind.value} sync is already in progress")
@@ -199,7 +152,11 @@ def _queue(
             payload = garmin_events.SyncRequestedPayload(
                 user_id=user_id, kind=kind, start_date=start_date, end_date=end_date
             )
-            _submit_local(payload, states, wait_seconds)
+            _sync_pool.submit(run_sync, payload, states, wait_seconds=wait_seconds)
+            logger.info(
+                "Garmin Connect sync queued on the in-process pool",
+                extra=core_logger.context(user_id=user_id, kind=kind),
+            )
     except BaseException:
         # The sync never started, so nothing else would finish its claim.
         states.set_status(user_id, kind, garmin_constants.SyncStatus.FAILED)
@@ -326,7 +283,7 @@ def _sync_recent_health_for_user(user_id: int, states: garmin_sync_state_store.G
         states: Shared store of the sync's state.
 
     Raises:
-        LocalPoolFullError: When the in-process pool stayed full for the whole wait.
+        PoolFullError: When the in-process pool stayed full for the whole wait.
     """
     with core_database.SessionLocal() as db:
         end_date = users_integration.local_today(user_id, db)
@@ -368,7 +325,7 @@ def sync_recent_health(states: garmin_sync_state_store.GarminSyncStateStore) -> 
         for user_id in user_ids:
             try:
                 _sync_recent_health_for_user(user_id, states)
-            except LocalPoolFullError:
+            except core_local_pool.PoolFullError:
                 logger.warning(
                     "Garmin Connect health pull stopped: the in-process pool stayed full",
                     extra=core_logger.context(user_id=user_id),

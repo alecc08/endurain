@@ -487,9 +487,11 @@ process and across replicas alike. Tests do not enforce them yet, so review does
   way a subscriber opens its own session, assumes it may run twice or not at all, and relies on
   its reconciliation net. Nothing may assume a subscriber finished before the response.
 - **In-process work is bounded.** Without a durable worker, background work runs on a `core.local_pool.BoundedPool`,
-  which counts running and queued jobs and refuses one past its bound. A request that would start long work
-  (`users_profile` import and export) refuses up front with 503; a best-effort subscriber past the bound is
-  dropped and left to its reconciliation net. Long jobs get a pool of their own, never the subscriber pool.
+  which counts running and queued jobs and refuses one past its bound. A request that would start background work
+  (`users_profile` import and export, `activity_ingestion`, Garmin Connect link and sync) refuses up front with 503,
+  before it stages anything or creates a job row, and closes the job as failed if the pool fills after that. A
+  best-effort subscriber past the bound is dropped and left to its reconciliation net. Long jobs get a pool of
+  their own, never the subscriber pool.
 - **Threads inherit context.** Work handed to a pool runs under `contextvars.copy_context()`, so
   the request id reaches its logs and events.
 - **Every storage area has an owner, a lifecycle and an erasure path.** The domain that writes an

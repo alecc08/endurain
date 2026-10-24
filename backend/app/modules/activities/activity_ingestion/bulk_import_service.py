@@ -34,6 +34,7 @@ import core.config as core_config
 import core.database as core_database
 import core.exceptions as core_exceptions
 import core.file_uploads as core_file_uploads
+import core.local_pool as core_local_pool
 import core.logger as core_logger
 import modules.activities.activity_ingestion.constants as activity_ingestion_constants
 import modules.activities.activity_ingestion.contracts as activity_ingestion_contracts
@@ -172,7 +173,9 @@ def accept_archive(
             with nothing importable.
         ConflictError: When the user already has an import running.
         DomainError: When the shared upload validators or the archive caps reject it.
+        PoolFullError: On the local profile, when the in-process pool is full.
     """
+    activity_ingestion_dispatch_service.require_capacity()
     bulk_format = resolve_format(source)
     if filename is None or os.path.splitext(filename)[1].lower() != ".zip":
         raise core_exceptions.InvalidInputError("A bulk import takes a .zip archive")
@@ -226,7 +229,7 @@ def accept_archive(
         activity_ingestion_upload_entry_service.discard_staged_upload(key, storage)
         raise
 
-    activity_ingestion_dispatch_service.run_in_background(run_bulk_import_job, job_id, storage)
+    activity_ingestion_service.run_in_background_or_fail(run_bulk_import_job, job_id, storage)
     logger.info(
         "Bulk import accepted",
         extra=core_logger.context(console=True, user_id=user_id, job_id=job_id, files=files_total),
@@ -259,7 +262,9 @@ def start_from_directory(
     Raises:
         InvalidInputError: For an unknown source or an empty folder.
         ConflictError: When the user already has an import running.
+        PoolFullError: When the in-process pool is full.
     """
+    activity_ingestion_dispatch_service.require_node_capacity()
     bulk_format = resolve_format(source)
     _ensure_none_running(user_id, db)
     directory = bulk_format.drop_directory(user_id)
@@ -281,9 +286,15 @@ def start_from_directory(
         db.rollback()
         raise core_exceptions.ConflictError("A bulk import is already running") from err
 
-    activity_ingestion_dispatch_service.run_on_this_node(
-        feed_archive_from_directory, job_id, user_id, bulk_format.name, directory, storage
-    )
+    try:
+        activity_ingestion_dispatch_service.run_on_this_node(
+            feed_archive_from_directory, job_id, user_id, bulk_format.name, directory, storage
+        )
+    except core_local_pool.PoolFullError:
+        activity_ingestion_service.fail_ingestion_job(
+            job_id, activity_ingestion_constants.IngestionJobErrorCode.PROCESSING_FAILED, storage
+        )
+        raise
     logger.info(
         "Bulk import from the import folder accepted",
         extra=core_logger.context(console=True, user_id=user_id, job_id=job_id),

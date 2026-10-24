@@ -23,20 +23,11 @@ def states():
     return garmin_sync_state_store.GarminSyncStateStore(state=MemoryState())
 
 
-@pytest.fixture(autouse=True)
-def fresh_local_slots(monkeypatch):
-    import threading
-
-    monkeypatch.setattr(
-        garmin_sync_service, "_local_slots", threading.BoundedSemaphore(garmin_constants.MAX_PENDING_LOCAL_SYNCS)
-    )
-
-
 @pytest.fixture
 def local():
     with (
         patch.object(garmin_sync_service.core_config, "settings", MagicMock(JOBS_ENABLED=False)),
-        patch.object(garmin_sync_service, "_SYNC_EXECUTOR") as executor,
+        patch.object(garmin_sync_service, "_sync_pool") as executor,
     ):
         yield executor
 
@@ -46,7 +37,7 @@ def durable():
     with (
         patch.object(garmin_sync_service.core_config, "settings", MagicMock(JOBS_ENABLED=True)),
         patch.object(garmin_sync_service.garmin_event_publishers, "publish_sync_requested") as publish,
-        patch.object(garmin_sync_service, "_SYNC_EXECUTOR") as executor,
+        patch.object(garmin_sync_service, "_sync_pool") as executor,
     ):
         yield publish, executor
 
@@ -55,7 +46,7 @@ def test_a_gear_sync_goes_to_the_pool_without_durable_jobs(local, states):
     result = garmin_sync_service.request_gear_sync(1, states, MagicMock())
 
     local.submit.assert_called_once()
-    assert local.submit.call_args.args[2].kind == Kind.GEAR
+    assert local.submit.call_args.args[1].kind == Kind.GEAR
     assert result.status == Status.QUEUED
     assert states.get(1, Kind.GEAR).status == Status.QUEUED
 
@@ -101,12 +92,18 @@ def test_a_sync_that_cannot_be_queued_does_not_block_a_retry(local, states):
     assert states.get(1, Kind.GEAR).status == Status.QUEUED
 
 
-def test_the_pool_refuses_syncs_beyond_its_limit(local, states, monkeypatch):
-    import threading
+@pytest.fixture
+def full_pool(blocked_pool, monkeypatch):
+    """Replace the sync pool with one already holding its only job, which stays until the test releases it."""
+    pool = blocked_pool(1)
+    monkeypatch.setattr(garmin_sync_service.core_config, "settings", MagicMock(JOBS_ENABLED=False))
+    monkeypatch.setattr(garmin_sync_service, "run_sync", lambda *args: blocked_pool.release.wait(5))
+    monkeypatch.setattr(garmin_sync_service, "_sync_pool", pool)
+    pool.submit(blocked_pool.release.wait, 5)
+    return blocked_pool.release
 
-    monkeypatch.setattr(garmin_sync_service, "_local_slots", threading.BoundedSemaphore(1))
-    garmin_sync_service.request_gear_sync(1, states, MagicMock())
 
+def test_the_pool_refuses_syncs_beyond_its_limit(states, full_pool):
     with pytest.raises(core_exceptions.ServiceUnavailableError):
         garmin_sync_service.request_gear_sync(2, states, MagicMock())
 
@@ -255,12 +252,7 @@ class TestRecentHealth:
         assert states.get(1, Kind.HEALTH).status == Status.QUEUED
         assert states.get(2, Kind.HEALTH).status == Status.QUEUED
 
-    def test_a_pool_that_stays_full_ends_the_pass(self, local, states, monkeypatch):
-        import threading
-
-        full = threading.BoundedSemaphore(1)
-        full.acquire()
-        monkeypatch.setattr(garmin_sync_service, "_local_slots", full)
+    def test_a_pool_that_stays_full_ends_the_pass(self, full_pool, states, monkeypatch):
         monkeypatch.setattr(garmin_constants, "SCHEDULED_SLOT_WAIT_SECONDS", 0.01)
         with (
             patch.object(garmin_sync_service.garmin_service, "linked_user_ids", side_effect=[[1, 2], []]) as listing,
@@ -268,25 +260,20 @@ class TestRecentHealth:
         ):
             garmin_sync_service.sync_recent_health(states)
 
-        local.submit.assert_not_called()
         assert listing.call_count == 1
         assert states.begin(1, Kind.HEALTH) is True
 
-    def test_a_user_waits_for_a_slot_to_free_instead_of_being_skipped(self, local, states, monkeypatch):
+    def test_a_user_waits_for_a_slot_to_free_instead_of_being_skipped(self, full_pool, states, monkeypatch):
         import threading
 
-        slots = threading.BoundedSemaphore(1)
-        slots.acquire()
-        monkeypatch.setattr(garmin_sync_service, "_local_slots", slots)
         monkeypatch.setattr(garmin_constants, "SCHEDULED_SLOT_WAIT_SECONDS", 5)
-        threading.Timer(0.05, slots.release).start()
+        threading.Timer(0.05, full_pool.set).start()
         with (
             patch.object(garmin_sync_service.garmin_service, "linked_user_ids", side_effect=[[1], []]),
             patch.object(garmin_sync_service.core_database, "SessionLocal"),
         ):
             garmin_sync_service.sync_recent_health(states)
 
-        assert local.submit.call_count == 1
         assert states.get(1, Kind.HEALTH).status == Status.QUEUED
 
     def test_the_window_is_the_users_local_yesterday_and_today(self, durable, states, local_today):

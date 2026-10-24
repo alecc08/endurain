@@ -22,7 +22,7 @@ def register_activity_provider() -> None:
     )
 
 
-def shutdown_executors() -> None:
-    """Stop the Garmin Connect link and sync threads."""
-    garmin_link_service.shutdown_link_executor()
-    garmin_sync_service.shutdown_sync_executor()
+def shutdown_pools() -> None:
+    """Stop the Garmin Connect link and sync pools."""
+    garmin_link_service.shutdown_link_pool()
+    garmin_sync_service.shutdown_sync_pool()

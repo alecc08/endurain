@@ -4,15 +4,13 @@ Owns the dedicated login threads. Unlinking and the sessions a linked account's 
 :mod:`modules.garmin.service`.
 """
 
-import contextvars
-import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
 
 import garminconnect
 
 import core.database as core_database
 import core.exceptions as core_exceptions
+import core.local_pool as core_local_pool
 import core.logger as core_logger
 import modules.garmin.constants as garmin_constants
 import modules.garmin.link_state_store as garmin_link_state_store
@@ -29,17 +27,16 @@ logger = core_logger.get_logger(__name__)
 # A login past this capacity is refused rather than queued: a queued one would outlive its
 # polled state while holding the user's credentials in memory.
 MAX_CONCURRENT_LINKS = 4
-_LINK_EXECUTOR = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_LINKS, thread_name_prefix="garmin-link")
-_link_slots = threading.BoundedSemaphore(MAX_CONCURRENT_LINKS)
+_link_pool = core_local_pool.BoundedPool("garmin-link", workers=MAX_CONCURRENT_LINKS, max_pending=MAX_CONCURRENT_LINKS)
 
 
-def shutdown_link_executor(*, wait: bool = False) -> None:
+def shutdown_link_pool(*, wait: bool = False) -> None:
     """Stop accepting link attempts and release the login threads.
 
     Args:
         wait: Whether to wait for logins still running.
     """
-    _LINK_EXECUTOR.shutdown(wait=wait, cancel_futures=True)
+    _link_pool.shutdown(wait=wait)
 
 
 def wait_for_mfa_code(
@@ -71,20 +68,6 @@ def wait_for_mfa_code(
     return None
 
 
-def _finish_link(future: Future) -> None:
-    """Give a link slot back and log an exception that escaped the login thread.
-
-    Args:
-        future: The finished link.
-    """
-    _link_slots.release()
-    if future.cancelled():
-        return
-    exc = future.exception()
-    if exc is not None:
-        logger.error("Garmin Connect link failed", exc_info=exc)
-
-
 def start_link(
     user_id: int,
     login: garmin_schema.GarminLogin,
@@ -107,32 +90,26 @@ def start_link(
 
     Raises:
         ConflictError: When an attempt for this user is already running.
-        ServiceUnavailableError: When every login thread of this process is busy.
+        PoolFullError: When every login thread of this process is busy.
     """
-    if not _link_slots.acquire(blocking=False):
-        raise core_exceptions.ServiceUnavailableError("Too many Garmin Connect links in progress; try again shortly")
+    # Checked before the attempt is recorded, so a refused login leaves no pending state to poll.
+    _link_pool.require_capacity()
+    if not link_states.begin(user_id):
+        raise core_exceptions.ConflictError("A Garmin Connect link is already in progress")
     try:
-        if not link_states.begin(user_id):
-            raise core_exceptions.ConflictError("A Garmin Connect link is already in progress")
-        try:
-            future = _LINK_EXECUTOR.submit(
-                contextvars.copy_context().run,
-                link_garminconnect,
-                user_id,
-                login.username,
-                login.password.get_secret_value(),
-                mfa_codes,
-                link_states,
-                login.is_cn,
-            )
-        except BaseException:
-            # The attempt never started, so nothing would ever release its claim.
-            link_states.release(user_id)
-            raise
+        _link_pool.submit(
+            link_garminconnect,
+            user_id,
+            login.username,
+            login.password.get_secret_value(),
+            mfa_codes,
+            link_states,
+            login.is_cn,
+        )
     except BaseException:
-        _link_slots.release()
+        # The attempt never started, so nothing would ever release its claim.
+        link_states.release(user_id)
         raise
-    future.add_done_callback(_finish_link)
     return garmin_schema.GarminLinkStatus(status=garmin_constants.LinkStatus.PENDING)
 
 

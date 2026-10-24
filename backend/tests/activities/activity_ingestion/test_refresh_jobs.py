@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import core.local_pool as core_local_pool
 import modules.activities.activity_ingestion.constants as activity_ingestion_constants
 import modules.activities.activity_ingestion.events as ingestion_events
 import modules.activities.activity_ingestion.provider_registry as provider_registry
@@ -56,6 +57,40 @@ class TestAcceptRefresh:
         publish.assert_not_called()
         db.commit.assert_called_once()
         submit.assert_called_once_with(ingestion_jobs.run_refresh_job, create.call_args.args[0], "storage")
+
+    def test_a_full_pool_refuses_the_request_before_a_job_exists(self):
+        db = MagicMock()
+        with (
+            patch.object(
+                ingestion_jobs.activity_ingestion_dispatch_service,
+                "require_capacity",
+                side_effect=core_local_pool.PoolFullError("full"),
+            ),
+            patch.object(ingestion_jobs.activity_ingestion_crud, "create_ingestion_job") as create,
+            pytest.raises(core_local_pool.PoolFullError),
+        ):
+            ingestion_jobs.accept_refresh(7, "storage", db)
+
+        create.assert_not_called()
+
+    def test_a_pool_that_fills_after_the_commit_closes_the_job_instead_of_leaving_it_pending(self):
+        db = MagicMock()
+        with (
+            patch.object(ingestion_jobs.core_config.settings, "JOBS_ENABLED", False),
+            patch.object(ingestion_jobs.activity_ingestion_crud, "create_ingestion_job") as create,
+            patch.object(
+                ingestion_jobs.activity_ingestion_dispatch_service.activity_ingestion_background,
+                "submit",
+                side_effect=core_local_pool.PoolFullError("full"),
+            ),
+            patch.object(ingestion_jobs, "fail_ingestion_job") as fail,
+            pytest.raises(core_local_pool.PoolFullError),
+        ):
+            ingestion_jobs.accept_refresh(7, "storage", db)
+
+        fail.assert_called_once_with(
+            create.call_args.args[0], activity_ingestion_constants.IngestionJobErrorCode.PROCESSING_FAILED, "storage"
+        )
 
     def test_a_refresh_job_carries_no_file_fields(self):
         db = MagicMock()
