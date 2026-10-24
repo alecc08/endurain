@@ -173,13 +173,45 @@ def filter_waypoints_by_time_range(
     return [wp for wp in waypoints if start_dt <= _parse_utc(wp["time"]) <= end_dt]
 
 
+def slice_lap_elevation(
+    smoothed_ele_waypoints: list[dict],
+    start_time: str,
+    end_time: str,
+) -> list[dict]:
+    """Return a lap's slice of the once-smoothed elevation stream.
+
+    The slice is ``[start_time, end_time]`` plus the sample just before it when
+    the lap's first sample is later than ``start_time``. Laps whose boundary
+    falls between two samples then count the step across it once, in the later
+    lap, and consecutive lap sums add up to the activity total. A sample exactly
+    at ``start_time`` already ends the previous lap and is not extended.
+
+    Args:
+        smoothed_ele_waypoints: Time-ordered smoothed elevation stream.
+        start_time: ISO 8601 lap start (inclusive).
+        end_time: ISO 8601 lap end (inclusive).
+
+    Returns:
+        The lap's elevation samples; empty when none fall within the lap.
+    """
+    start_dt = _parse_utc(start_time)
+    end_dt = _parse_utc(end_time)
+    indices = [i for i, wp in enumerate(smoothed_ele_waypoints) if start_dt <= _parse_utc(wp["time"]) <= end_dt]
+    if not indices:
+        return []
+    first = indices[0]
+    if first > 0 and _parse_utc(smoothed_ele_waypoints[first]["time"]) > start_dt:
+        first -= 1
+    return smoothed_ele_waypoints[first : indices[-1] + 1]
+
+
 def _compute_lap_metrics(
     start_time: str,
     end_time: str,
     start_point: dict,
     end_point: dict,
     total_distance: float,
-    ele_waypoints: list[dict],
+    smoothed_ele_waypoints: list[dict],
     power_waypoints: list[dict],
     hr_waypoints: list[dict],
     cad_waypoints: list[dict],
@@ -194,7 +226,8 @@ def _compute_lap_metrics(
         start_point: Lat/lon dict of lap start.
         end_point: Lat/lon dict of lap end.
         total_distance: Lap distance in km.
-        ele_waypoints: Full elevation stream.
+        smoothed_ele_waypoints: Full elevation stream, already smoothed
+            once (see smooth_elevation_stream).
         power_waypoints: Full power stream.
         hr_waypoints: Full HR stream.
         cad_waypoints: Full cadence stream.
@@ -209,8 +242,8 @@ def _compute_lap_metrics(
     # The metric helpers live in this package's dependency-free computation module.
     import modules.activities.computation as activities_computation
 
-    lap_ele = filter_waypoints_by_time_range(
-        ele_waypoints,
+    lap_ele = slice_lap_elevation(
+        smoothed_ele_waypoints,
         start_time,
         end_time,
     )
@@ -237,9 +270,7 @@ def _compute_lap_metrics(
 
     ele_gain, ele_loss = None, None
     if lap_ele:
-        ele_gain, ele_loss = activities_computation.compute_elevation_gain_and_loss(
-            elevations=lap_ele,
-        )
+        ele_gain, ele_loss = activities_computation.sum_elevation_deltas(lap_ele)
 
     avg_hr, max_hr = None, None
     if lap_hr:
@@ -294,8 +325,9 @@ def _compute_lap_metrics(
         "max_cadence": round(max_cad) if max_cad else None,
         "avg_power": round(avg_power) if avg_power else None,
         "max_power": round(max_power) if max_power else None,
-        "total_ascent": round(ele_gain) if ele_gain else None,
-        "total_descent": round(ele_loss) if ele_loss else None,
+        # A flat lap has a genuine 0 m ascent/descent, distinct from missing data.
+        "total_ascent": round(ele_gain) if ele_gain is not None else None,
+        "total_descent": round(ele_loss) if ele_loss is not None else None,
         "normalized_power": round(norm_power) if norm_power else None,
         "enhanced_avg_pace": 1 / avg_speed if avg_speed else None,
         "enhanced_avg_speed": avg_speed,
@@ -313,6 +345,7 @@ def generate_activity_laps(
     vel_waypoints: list[dict],
     distance_per_lap_km: float = 1.0,
     measured_vel_times: set[str] | None = None,
+    smoothed_ele_waypoints: list[dict] | None = None,
 ) -> list[LapMetrics]:
     """Split waypoints into distance-based laps and compute metrics.
 
@@ -327,13 +360,25 @@ def generate_activity_laps(
         measured_vel_times: Timestamps of velocity samples that are real
             measurements, for sources that emit placeholder samples; ``None``
             treats every sample as measured.
+        smoothed_ele_waypoints: ``ele_waypoints`` already smoothed once (see
+            smooth_elevation_stream). Callers that build laps for several
+            segments of one activity pass it to avoid re-smoothing the stream;
+            when None, ``ele_waypoints`` is smoothed here.
 
     Returns:
         List of lap dicts with computed metrics.
     """
+    # The metric helpers live in this package's dependency-free computation module.
+    import modules.activities.computation as activities_computation
+
     laps: list[LapMetrics] = []
     current_lap_distance = 0.0
     lap_start = None
+
+    # Smooth the elevation stream once for the whole activity so the per-lap
+    # slices partition the activity-level gain/loss exactly.
+    if smoothed_ele_waypoints is None:
+        smoothed_ele_waypoints = activities_computation.smooth_elevation_stream(ele_waypoints)
 
     for i in range(1, len(lat_lon_waypoints)):
         prev_point = lat_lon_waypoints[i - 1]
@@ -357,7 +402,7 @@ def generate_activity_laps(
                     start_point=lap_start,
                     end_point=current_point,
                     total_distance=current_lap_distance,
-                    ele_waypoints=ele_waypoints,
+                    smoothed_ele_waypoints=smoothed_ele_waypoints,
                     power_waypoints=power_waypoints,
                     hr_waypoints=hr_waypoints,
                     cad_waypoints=cad_waypoints,
@@ -376,7 +421,7 @@ def generate_activity_laps(
                 start_point=lap_start,
                 end_point=lat_lon_waypoints[-1],
                 total_distance=current_lap_distance,
-                ele_waypoints=ele_waypoints,
+                smoothed_ele_waypoints=smoothed_ele_waypoints,
                 power_waypoints=power_waypoints,
                 hr_waypoints=hr_waypoints,
                 cad_waypoints=cad_waypoints,

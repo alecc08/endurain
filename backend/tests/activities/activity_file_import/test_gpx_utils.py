@@ -473,6 +473,113 @@ class TestParseGpxFile:
         assert result["activity"].average_hr is None
         assert result["activity"].max_hr is None
 
+    def test_parse_gpx_file_flat_track_stores_zero_elevation_gain(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """
+        Test a flat track stores 0 m elevation gain/loss, not None.
+        """
+        _patch_parser_side_effects(monkeypatch)
+        start = datetime(2025, 1, 1, 0, 0, 0)
+        trkpts = "\n".join(
+            f'<trkpt lat="{40.0 + i * 0.001}" lon="-3.0">'
+            f"<ele>100.0</ele>"
+            f"<time>{(start + timedelta(seconds=10 * i)).strftime('%Y-%m-%dT%H:%M:%SZ')}</time>"
+            f"</trkpt>"
+            for i in range(15)
+        )
+        gpx_path = _write_gpx(
+            tmp_path,
+            f"""
+            <gpx version="1.1" creator="pytest">
+              <trk>
+                <name>Flat ride</name>
+                <trkseg>
+                {trkpts}
+                </trkseg>
+              </trk>
+            </gpx>
+            """.strip(),
+        )
+
+        result = gpx_utils.parse_gpx_file(gpx_path, user_id=1, default_timezone=_SERVER_TZ)
+
+        assert result["activity"].elevation_gain == 0
+        assert result["activity"].elevation_loss == 0
+        assert result["laps"]
+        assert all(lap["total_ascent"] == 0 for lap in result["laps"])
+        assert all(lap["total_descent"] == 0 for lap in result["laps"])
+
+    def test_invalid_elevation_stream_stores_none(self):
+        """
+        Test an elevation stream with no valid values stores None, not 0 m.
+        """
+        start = datetime(2025, 1, 1, 0, 0, 0)
+        state = gpx_utils.ParseState(
+            timezone=_SERVER_TZ,
+            activity_type="Ride",
+            first_waypoint_time=start,
+            last_waypoint_time=start + timedelta(minutes=1),
+            ele_waypoints=[{"time": "2025-01-01T00:00:00", "ele": "n/a"}],
+        )
+
+        gpx_utils._compute_derived_metrics(state)
+        activity = gpx_utils._build_activity_schema(state, user_id=1)
+
+        assert activity.elevation_gain is None
+        assert activity.elevation_loss is None
+
+    def test_parse_gpx_file_smooths_elevation_once_for_all_segments(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """
+        Test every segment's laps reuse one smoothed elevation stream.
+        """
+        _patch_parser_side_effects(monkeypatch)
+        parser_utils = gpx_utils.activity_file_import_parser_utils
+        generate_activity_laps = parser_utils.generate_activity_laps
+        received_streams: list[list[dict] | None] = []
+
+        def _record_laps(*args, **kwargs):
+            received_streams.append(kwargs.get("smoothed_ele_waypoints"))
+            return generate_activity_laps(*args, **kwargs)
+
+        monkeypatch.setattr(parser_utils, "generate_activity_laps", _record_laps)
+        start = datetime(2025, 1, 1, 0, 0, 0)
+        segments = "\n".join(
+            "<trkseg>"
+            + "".join(
+                f'<trkpt lat="{40.0 + (seg * 5 + i) * 0.001}" lon="-3.0">'
+                f"<ele>{100.0 + seg * 5 + i}</ele>"
+                f"<time>{(start + timedelta(seconds=10 * (seg * 5 + i))).strftime('%Y-%m-%dT%H:%M:%SZ')}</time>"
+                f"</trkpt>"
+                for i in range(5)
+            )
+            + "</trkseg>"
+            for seg in range(3)
+        )
+        gpx_path = _write_gpx(
+            tmp_path,
+            f"""
+            <gpx version="1.1" creator="pytest">
+              <trk>
+                <name>Segmented climb</name>
+                {segments}
+              </trk>
+            </gpx>
+            """.strip(),
+        )
+
+        result = gpx_utils.parse_gpx_file(gpx_path, user_id=1, default_timezone=_SERVER_TZ)
+
+        assert len(received_streams) == 3
+        assert all(stream is received_streams[0] for stream in received_streams)
+        assert received_streams[0] == activities_computation.smooth_elevation_stream(result["ele_waypoints"])
+
 
 def _steady_run_gpx(n_points: int, spike_indexes: dict[int, float]) -> str:
     """Build a ~3 m/s eastbound GPX run with 1 s spacing.

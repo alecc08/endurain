@@ -1,6 +1,6 @@
 """Tests for FIT activity file import utilities."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import modules.activities.activity_file_import.fit_frames as fit_frames
 import modules.activities.activity_file_import.fit_utils as fit_utils
@@ -300,6 +300,126 @@ class TestUtilsFit:
         activities_list = fit_utils.create_activity_objects([record], user_id=1, default_timezone=_SERVER_TZ)
 
         assert activities_list[0]["activity"].distance == 5000
+
+    def test_create_activity_objects_session_zero_elevation_persists(self):
+        """A computed 0 m gain on a flat ride is stored as 0, not None."""
+        record = _session_record(None)
+        record["ele_waypoints"] = [{"time": f"2026-06-20T08:20:{i:02d}", "ele": 100.0} for i in range(0, 60, 10)]
+
+        activities_list = fit_utils.create_activity_objects([record], user_id=1, default_timezone=_SERVER_TZ)
+
+        activity = activities_list[0]["activity"]
+        assert activity.elevation_gain == 0
+        assert activity.elevation_loss == 0
+
+    def test_create_activity_objects_invalid_elevation_stays_none(self):
+        """An altitude stream with no valid values leaves session and lap elevation None, not 0."""
+        record = _session_record(None)
+        record["ele_waypoints"] = [{"time": f"2026-06-20T08:20:{i:02d}", "ele": None} for i in range(0, 60, 10)]
+        record["laps"] = [
+            {
+                "start_time": datetime(2026, 6, 20, 8, 20, 0, tzinfo=UTC),
+                "total_elapsed_time": 50.0,
+                "total_ascent": None,
+                "total_descent": None,
+            }
+        ]
+
+        activities_list = fit_utils.create_activity_objects([record], user_id=1, default_timezone=_SERVER_TZ)
+
+        activity = activities_list[0]["activity"]
+        assert activity.elevation_gain is None
+        assert activity.elevation_loss is None
+        assert record["laps"][0]["total_ascent"] is None
+        assert record["laps"][0]["total_descent"] is None
+
+    def test_create_activity_objects_fills_lap_elevation_from_waypoints(self):
+        """Lap ascent/descent missing from the FIT lap frame are computed from the altitude record stream."""
+        record = _session_record(None)
+        # 1 Hz: 60 s climbing 1 m/s, then 60 s descending, long enough for the smoothing windows.
+        start = datetime(2026, 6, 20, 8, 20, 0, tzinfo=UTC)
+        record["ele_waypoints"] = [
+            {"time": (start + timedelta(seconds=i)).strftime("%Y-%m-%dT%H:%M:%S"), "ele": 100 + min(i, 120 - i)}
+            for i in range(121)
+        ]
+        record["laps"] = [
+            {
+                "start_time": start,
+                "total_elapsed_time": 120.0,
+                "total_ascent": None,
+                "total_descent": None,
+            }
+        ]
+
+        fit_utils.create_activity_objects([record], user_id=1, default_timezone=_SERVER_TZ)
+
+        lap = record["laps"][0]
+        assert lap["total_ascent"] is not None
+        assert lap["total_ascent"] > 0
+        assert lap["total_descent"] is not None
+        assert lap["total_descent"] > 0
+
+    def test_create_activity_objects_keeps_device_lap_elevation(self):
+        """Device-reported lap ascent wins; only the missing field is filled."""
+        record = _session_record(None)
+        record["ele_waypoints"] = [
+            {"time": "2026-06-20T08:20:00", "ele": 100},
+            {"time": "2026-06-20T08:20:10", "ele": 110},
+            {"time": "2026-06-20T08:20:20", "ele": 120},
+            {"time": "2026-06-20T08:20:30", "ele": 110},
+            {"time": "2026-06-20T08:20:40", "ele": 100},
+        ]
+        record["laps"] = [
+            {
+                "start_time": datetime(2026, 6, 20, 8, 20, 0, tzinfo=UTC),
+                "total_elapsed_time": 40.0,
+                "total_ascent": 250,
+                "total_descent": None,
+            }
+        ]
+
+        fit_utils.create_activity_objects([record], user_id=1, default_timezone=_SERVER_TZ)
+
+        lap = record["laps"][0]
+        assert lap["total_ascent"] == 250
+        assert lap["total_descent"] is not None
+
+    def test_create_activity_objects_lap_elevation_none_without_waypoints(self):
+        """No altitude stream leaves lap ascent/descent None."""
+        record = _session_record(None)
+        record["laps"] = [
+            {
+                "start_time": datetime(2026, 6, 20, 8, 20, 0, tzinfo=UTC),
+                "total_elapsed_time": 80.0,
+                "total_ascent": None,
+                "total_descent": None,
+            }
+        ]
+
+        fit_utils.create_activity_objects([record], user_id=1, default_timezone=_SERVER_TZ)
+
+        lap = record["laps"][0]
+        assert lap["total_ascent"] is None
+        assert lap["total_descent"] is None
+
+    def test_create_activity_objects_flat_lap_elevation_stores_zero(self):
+        """A flat lap window computes to 0, stored as 0 rather than None."""
+        record = _session_record(None)
+        record["ele_waypoints"] = [{"time": f"2026-06-20T08:20:{i:02d}", "ele": 100.0} for i in range(0, 60, 10)]
+        record["laps"] = [
+            {
+                "start_time": datetime(2026, 6, 20, 8, 20, 0, tzinfo=UTC),
+                "total_elapsed_time": 50.0,
+                "total_ascent": None,
+                "total_descent": None,
+            }
+        ]
+
+        fit_utils.create_activity_objects([record], user_id=1, default_timezone=_SERVER_TZ)
+
+        lap = record["laps"][0]
+        assert lap["total_ascent"] == 0
+        assert lap["total_descent"] == 0
 
 
 class TestParseFrameSession:

@@ -3,8 +3,10 @@
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import text
 
 import core.config as core_config
+import core.dependencies as core_dependencies
 import core.utils as core_utils
 
 # Define the API router
@@ -66,6 +68,30 @@ async def about() -> AboutResponse:
             url=core_config.LICENSE_URL,
         ),
     )
+
+
+@router.get(core_config.ROOT_PATH + "/health", status_code=status.HTTP_200_OK)
+def health(db: core_dependencies.DbSession) -> dict[str, str]:
+    """
+    Liveness check that needs a database connection.
+
+    Unlike ``/about``, this fails when the connection pool is exhausted or the
+    database is unreachable, so orchestrators can detect a wedged instance.
+
+    Args:
+        db: Database session.
+
+    Returns:
+        ``{"status": "ok"}`` when the database answers.
+
+    Raises:
+        HTTPException: 503 when no connection can be obtained or the query fails.
+    """
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception as err:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database unavailable") from err
+    return {"status": "ok"}
 
 
 # NOTE: there is deliberately no ``/server_images/{img}``, ``/user_images/{user_img}``,
