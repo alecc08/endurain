@@ -48,7 +48,7 @@ async def process_migration_6(db: Session) -> None:
                     }
                 )
 
-                users_migration.edit_user(user.id, user_converted, db)
+                users_migration.edit_user(user.id, users_schema.UsersEdit.from_read(user_converted), db)
             except Exception as err:
                 logger.error(
                     f"Migration 6 - Error processing user {user.id}: {err}",

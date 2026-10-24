@@ -160,7 +160,7 @@ def stage_email_verification(
     users_service.stage_email_verification(user_id, server_settings, db)
 
 
-def edit_user(user_id: int, user: users_schema.UsersRead, db: Session) -> users_schema.UsersRead:
+def edit_user(user_id: int, user: users_schema.UsersEdit, db: Session) -> users_schema.UsersRead:
     """Stage an administrative edit of a user.
 
     Args:

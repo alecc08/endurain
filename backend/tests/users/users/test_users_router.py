@@ -183,6 +183,16 @@ class TestUploadUserImage:
 
 
 class TestEditUser:
+    @pytest.mark.parametrize("read_only", [{"id": 1}, {"external_auth_count": 2}])
+    def test_a_read_only_field_is_not_accepted_in_the_body(self, read_only, client):
+        response = client.put(
+            "/users/1",
+            json={"name": "U", "username": "u", "email": "u@example.com", "active": True, "access_type": "regular"}
+            | read_only,
+        )
+
+        assert response.status_code == 422
+
     @patch(f"{_SERVICE}.edit_user")
     def test_returns_the_edited_user(self, mock_edit, client, identity_service, mock_db):
         mock_edit.return_value = _user(1, name="Updated User", external_auth_count=2)
@@ -190,7 +200,6 @@ class TestEditUser:
         response = client.put(
             "/users/1",
             json={
-                "id": 1,
                 "name": "Updated User",
                 "username": "updated",
                 "email": "updated@example.com",

@@ -381,6 +381,27 @@ class UserPublicRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
+class UsersEdit(Users):
+    """Users schema for an administrative edit.
+
+    The stored columns of a user and nothing a read adds: ``id`` is the path, and
+    ``external_auth_count`` is derived. ``photo_path`` and ``mfa_enabled`` are read-only
+    projections, so a write ignores them.
+    """
+
+    @classmethod
+    def from_read(cls, user: "UsersRead") -> "UsersEdit":
+        """Build the edit that re-applies a user as stored, for a caller that changes a few fields.
+
+        Args:
+            user: The user as read, usually with the changes already applied.
+
+        Returns:
+            The same user as an edit.
+        """
+        return cls.model_validate(user.model_dump(exclude={"id", "external_auth_count"}))
+
+
 class UsersMe(UsersRead):
     """Extended users schema for current user profile.
 

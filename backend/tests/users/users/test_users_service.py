@@ -25,6 +25,10 @@ def _user(user_id: int = 1, **overrides) -> users_schema.UsersRead:
     return users_schema.UsersRead(**fields)
 
 
+def _edit(user_id: int = 1, **overrides) -> users_schema.UsersEdit:
+    return users_schema.UsersEdit.from_read(_user(user_id, **overrides))
+
+
 def _signup() -> users_schema.UsersSignup:
     return users_schema.UsersSignup(
         name="New", username="NewUser", email="New@Example.com", password="SecurePass1!", preferred_language="en"
@@ -113,9 +117,17 @@ class TestPublicProjection:
 
         assert set(dumped) == {"id", "name", "username", "city", "photo_path"}
 
+    @pytest.mark.parametrize("state", [{"active": False}, {"active": False, "pending_admin_approval": True}])
     @patch(_CRUD)
-    def test_an_inactive_account_keeps_its_public_identity(self, mock_crud, mock_db):
-        mock_crud.get_user_by_id.return_value = _user(3, active=False)
+    def test_an_inactive_or_pending_account_is_not_found(self, mock_crud, state, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(3, **state)
+
+        with pytest.raises(core_exceptions.NotFoundError):
+            users_service.get_public_profile(3, mock_db)
+
+    @patch(_CRUD)
+    def test_an_active_account_is_returned(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(3)
 
         assert users_service.get_public_profile(3, mock_db).id == 3
 
@@ -334,7 +346,7 @@ class TestEdits:
         mock_crud.get_user_by_id.return_value = _user(1, height=170)
         mock_crud.update_user.return_value = _user(1, height=170)
 
-        users_service.stage_user_edit(1, _user(1, username="MixedCase", photo_path="/url"), mock_db)
+        users_service.stage_user_edit(1, _edit(1, username="MixedCase", photo_path="/url"), mock_db)
 
         changes = mock_crud.update_user.call_args.args[1]
         assert changes["username"] == "mixedcase"
@@ -346,7 +358,7 @@ class TestEdits:
         mock_crud.get_user_by_id.return_value = _user(1, height=170)
         mock_crud.update_user.return_value = _user(1, height=180)
 
-        users_service.stage_user_edit(1, _user(1, height=180), mock_db)
+        users_service.stage_user_edit(1, _edit(1, height=180), mock_db)
 
         mock_weight.recalculate_bmi_for_user.assert_called_once_with(1, 180.0, mock_db)
 
@@ -357,7 +369,7 @@ class TestEdits:
         identity.get_identity_link_counts_for_users.return_value = {1: 2}
         identity.get_mfa_enabled_for_users.return_value = {1: True}
 
-        result = users_service.edit_user(1, _user(1), 9, identity, mock_db)
+        result = users_service.edit_user(1, _edit(1), 9, identity, mock_db)
 
         mock_db.commit.assert_called_once()
         assert result.external_auth_count == 2
@@ -383,7 +395,7 @@ class TestEdits:
         order.attach_mock(mock_db.commit, "commit")
         order.attach_mock(identity.delete_all_user_sessions, "revoke")
 
-        users_service.edit_user(1, _user(1, **{**before, **after}), 9, identity, mock_db)
+        users_service.edit_user(1, _edit(1, **{**before, **after}), 9, identity, mock_db)
 
         assert [call[0] for call in order.mock_calls] == ["commit", "revoke"]
         identity.delete_all_user_sessions.assert_called_once_with(1)
@@ -393,7 +405,7 @@ class TestEdits:
         mock_crud.update_user.return_value = _user(1, name="Renamed")
         identity = _identity()
 
-        users_service.edit_user(1, _user(1, name="Renamed"), 9, identity, mock_db)
+        users_service.edit_user(1, _edit(1, name="Renamed"), 9, identity, mock_db)
 
         identity.delete_all_user_sessions.assert_not_called()
 
@@ -402,7 +414,7 @@ class TestEdits:
         mock_crud.update_user.return_value = _user(1, email="other@example.com")
         identity = _identity()
 
-        users_service.edit_user(1, _user(1, email="other@example.com"), 1, identity, mock_db)
+        users_service.edit_user(1, _edit(1, email="other@example.com"), 1, identity, mock_db)
 
         identity.delete_all_user_sessions.assert_not_called()
 
@@ -411,7 +423,7 @@ class TestEdits:
         mock_crud.update_user.side_effect = core_exceptions.ConflictError("dup")
 
         with pytest.raises(core_exceptions.ConflictError):
-            users_service.edit_user(1, _user(1), 9, MagicMock(), mock_db)
+            users_service.edit_user(1, _edit(1), 9, MagicMock(), mock_db)
 
         mock_db.rollback.assert_called_once()
         mock_db.commit.assert_not_called()
@@ -569,7 +581,7 @@ class TestLastAdminIsProtected:
         mock_crud.lock_active_admin_ids.return_value = [1]
 
         with pytest.raises(core_exceptions.ConflictError, match=action):
-            users_service.stage_user_edit(1, _user(1, **{"access_type": "admin", **edit}), mock_db)
+            users_service.stage_user_edit(1, _edit(1, **{"access_type": "admin", **edit}), mock_db)
 
         mock_crud.update_user.assert_not_called()
 
@@ -580,7 +592,7 @@ class TestLastAdminIsProtected:
         mock_crud.lock_active_admin_ids.return_value = [1, 2]
         mock_crud.update_user.return_value = _user(1)
 
-        users_service.stage_user_edit(1, _user(1, access_type="regular"), mock_db)
+        users_service.stage_user_edit(1, _edit(1, access_type="regular"), mock_db)
 
         mock_crud.update_user.assert_called_once()
 
@@ -590,7 +602,7 @@ class TestLastAdminIsProtected:
         mock_crud.get_user_by_id.return_value = _user(1, access_type="admin")
         mock_crud.update_user.return_value = _user(1)
 
-        users_service.stage_user_edit(1, _user(1, access_type="admin", name="Renamed"), mock_db)
+        users_service.stage_user_edit(1, _edit(1, access_type="admin", name="Renamed"), mock_db)
 
         mock_crud.lock_active_admin_ids.assert_not_called()
 
@@ -600,7 +612,7 @@ class TestLastAdminIsProtected:
         mock_crud.update_user.return_value = _user(1)
 
         with patch("modules.users.users.service.health_weight_integration"):
-            users_service.stage_user_edit(1, _user(1, access_type="regular", active=False), mock_db)
+            users_service.stage_user_edit(1, _edit(1, access_type="regular", active=False), mock_db)
 
         mock_crud.lock_active_admin_ids.assert_not_called()
 
@@ -671,7 +683,7 @@ class TestAdminEditNormalizesIdentity:
         mock_crud.get_user_by_id.return_value = _user(1)
         mock_crud.update_user.return_value = _user(1)
 
-        users_service.stage_user_edit(1, _user(1, username="Bob", email="Bob@Example.COM"), mock_db)
+        users_service.stage_user_edit(1, _edit(1, username="Bob", email="Bob@Example.COM"), mock_db)
 
         changes = mock_crud.update_user.call_args.args[1]
         assert changes["username"] == "bob"

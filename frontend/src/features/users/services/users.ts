@@ -3,6 +3,7 @@ import type {
   EditUserFields,
   ManagedUser,
   UserDto,
+  UserEditDto,
   UsersListParams,
   UsersListResponseDto,
   UsersPage,
@@ -47,19 +48,17 @@ export function mapManagedUser(dto: UserDto): ManagedUser {
 }
 
 /**
- * Rebuilds the editable `UsersRead` wire payload from a {@link ManagedUser}.
+ * Rebuilds the `UsersEdit` wire payload from a {@link ManagedUser}.
  * Every stored column is sent so fields the admin form doesn't expose round-trip
- * untouched, but the derived, read-only fields are omitted: `mfa_enabled` is a
- * model property with no setter and `external_auth_count` is computed per
- * request. The edit endpoint mass-assigns whatever it receives, so sending them
- * would raise `AttributeError` server-side.
+ * untouched, but the derived, read-only fields are omitted: `id` is the path,
+ * `mfa_enabled` is a model property with no setter and `external_auth_count` is
+ * computed per request, and the edit body rejects the latter.
  *
  * @param user - The managed user (already merged with any edits).
  * @returns The snake-cased editable body (without the read-only fields).
  */
-function toUserWire(user: ManagedUser): Omit<UserDto, 'mfa_enabled' | 'external_auth_count'> {
+function toUserWire(user: ManagedUser): Omit<UserEditDto, 'mfa_enabled'> {
   return {
-    id: user.id,
     name: user.name,
     username: user.username,
     email: user.email,

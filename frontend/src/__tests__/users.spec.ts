@@ -201,7 +201,6 @@ describe('users service requests', () => {
     expect(apiFetch).toHaveBeenCalledWith('/users/7', {
       method: 'PUT',
       body: JSON.stringify({
-        id: 7,
         name: 'Ada L.',
         username: 'ada',
         email: 'ada@example.com',

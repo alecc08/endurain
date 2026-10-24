@@ -277,7 +277,7 @@ def upload_user_image(
 def edit_user(
     request: Request,
     user_id: core_dependencies.PositiveId,
-    user_attributtes: users_schema.UsersRead,
+    user_attributtes: users_schema.UsersEdit,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
     identity_service: Annotated[

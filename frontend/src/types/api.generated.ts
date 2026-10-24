@@ -1353,7 +1353,7 @@ export interface paths {
          *         Created HealthFastingRead record.
          *
          *     Raises:
-         *         InvalidInputError: If user already has an active fast.
+         *         ConflictError: If user already has an active fast.
          */
         post: operations["create_health_fasting_api_v1_health_fasting_post"];
         delete?: never;
@@ -11086,6 +11086,112 @@ export interface components {
             windsurf_gear_id?: number | null;
         };
         /**
+         * UsersEdit
+         * @description Users schema for an administrative edit.
+         *
+         *     The stored columns of a user and nothing a read adds: ``id`` is the path, and
+         *     ``external_auth_count`` is derived. ``photo_path`` and ``mfa_enabled`` are read-only
+         *     projections, so a write ignores them.
+         */
+        UsersEdit: {
+            /** @description User access level */
+            access_type: components["schemas"]["UserAccessType"];
+            /**
+             * Active
+             * @description Whether the user is active
+             */
+            active: boolean;
+            /**
+             * Birthdate
+             * @description User's birthdate
+             */
+            birthdate?: string | null;
+            /**
+             * City
+             * @description User's city
+             */
+            city?: string | null;
+            /**
+             * @description User currency (euro, dollar, pound)
+             * @default euro
+             */
+            currency: components["schemas"]["Currency"];
+            /**
+             * Email
+             * Format: email
+             * @description User's email address
+             */
+            email: string;
+            /**
+             * Email Verified
+             * @description Whether email is verified
+             * @default false
+             */
+            email_verified: boolean;
+            /**
+             * @description First day of the week
+             * @default monday
+             */
+            first_day_of_week: components["schemas"]["WeekDay"];
+            /**
+             * @description User's gender
+             * @default unspecified
+             */
+            gender: components["schemas"]["Gender"];
+            /**
+             * Height
+             * @description Height in centimeters
+             */
+            height?: number | null;
+            /**
+             * Max Heart Rate
+             * @description Maximum heart rate in bpm
+             */
+            max_heart_rate?: number | null;
+            /**
+             * Mfa Enabled
+             * @description Whether MFA is enabled
+             * @default false
+             */
+            mfa_enabled: boolean;
+            /**
+             * Name
+             * @description User's full name
+             */
+            name: string;
+            /**
+             * Pending Admin Approval
+             * @description Whether pending admin approval
+             * @default false
+             */
+            pending_admin_approval: boolean;
+            /**
+             * Photo Path
+             * @description Servable URL of the user's photo (read-only)
+             */
+            photo_path?: string | null;
+            /**
+             * @description Preferred language
+             * @default en
+             */
+            preferred_language: components["schemas"]["Language"];
+            /**
+             * Timezone
+             * @description IANA timezone the athlete lives in. Used as the fallback for activities imported without a GPS track, which would otherwise inherit the server's timezone. Null means not set.
+             */
+            timezone?: string | null;
+            /**
+             * @description User units (metric, imperial)
+             * @default metric
+             */
+            units: components["schemas"]["Units"];
+            /**
+             * Username
+             * @description Unique username (alphanumeric, dots, hyphen, underscore)
+             */
+            username: string;
+        };
+        /**
          * UsersEditPassword
          * @description Schema for password update operations (self-service).
          *
@@ -19638,7 +19744,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UsersRead"];
+                "application/json": components["schemas"]["UsersEdit"];
             };
         };
         responses: {

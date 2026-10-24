@@ -52,7 +52,7 @@ def set_photo_key(user_id: int, photo_key: str | None, db: Session) -> None:
     db.commit()
 
 
-def edit_user(user_id: int, user: users_schema.UsersRead, db: Session) -> None:
+def edit_user(user_id: int, user: users_schema.UsersEdit, db: Session) -> None:
     """Apply an administrative edit to a user and commit.
 
     Args:

@@ -99,9 +99,13 @@ def get_public_profile(user_id: int, db: Session) -> users_schema.UserPublicRead
         The public projection.
 
     Raises:
-        NotFoundError: If the user does not exist.
+        NotFoundError: If the user does not exist, is inactive or still awaits approval, so a viewer
+            cannot tell the three apart.
     """
-    return users_schema.UserPublicRead.model_validate(require_user(user_id, db))
+    user = require_user(user_id, db)
+    if not user.active or user.pending_admin_approval:
+        raise core_exceptions.NotFoundError("User not found")
+    return users_schema.UserPublicRead.model_validate(user)
 
 
 def get_public_user(user_id: int, db: Session) -> users_schema.UserPublicRead:
@@ -391,7 +395,7 @@ def _refuse_to_remove_last_admin(user: users_schema.UsersRead, action: str, db: 
         raise core_exceptions.ConflictError(f"The only administrator cannot be {action}")
 
 
-def stage_user_edit(user_id: int, user: users_schema.UsersRead, db: Session) -> users_schema.UsersRead:
+def stage_user_edit(user_id: int, user: users_schema.UsersEdit, db: Session) -> users_schema.UsersRead:
     """Stage an administrative edit of a user.
 
     Intended for admin endpoints that legitimately set fields like ``access_type``, ``active``
@@ -420,10 +424,7 @@ def stage_user_edit(user_id: int, user: users_schema.UsersRead, db: Session) -> 
     # ``photo_path`` is excluded because the read schema exposes a resolved, signed URL while
     # the column stores a storage key: echoing the read model back would overwrite the key
     # with its own URL. The photo is owned solely by the upload and delete operations.
-    changes = user.model_dump(
-        exclude_unset=True,
-        exclude={"password", "external_auth_count", "mfa_enabled", "photo_path"},
-    )
+    changes = user.model_dump(exclude_unset=True, exclude={"mfa_enabled", "photo_path"})
     changes["username"] = user.username.lower()
     changes["email"] = user.email.lower()
 
@@ -453,7 +454,7 @@ def _edit_ends_sessions(before: users_schema.UsersRead, after: users_schema.User
 
 def edit_user(
     user_id: int,
-    user: users_schema.UsersRead,
+    user: users_schema.UsersEdit,
     actor_id: int,
     identity_service: "auth_identity_service.IdentityService",
     db: Session,
