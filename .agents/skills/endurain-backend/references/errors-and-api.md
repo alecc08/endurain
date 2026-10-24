@@ -38,7 +38,7 @@
 
 - `response_model` on every JSON route (bytes routes declare `responses=` with the media type); status 200 GET, 201 POST create, 202 POST accepted for background processing, 204 DELETE.
 - Routers validate and delegate; domain rules live in `service`.
-- Authorization through `Depends`/`Security(auth_dependencies.check_scopes, scopes=[...])`.
+- Authorization through `dependencies=[Security(auth_dependencies.check_scopes, scopes=[...])]` on the route decorator; the caller's id through `auth_dependencies.CurrentUserId`.
 - Blob routes addressed by a signed capability token answer 404, not 403, for a bad token, and log a WARNING.
 
 ## Pagination

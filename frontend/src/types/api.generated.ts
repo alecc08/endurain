@@ -1284,8 +1284,6 @@ export interface paths {
          *     filtering. Access is restricted to users with the 'health:read' scope.
          *
          *     Args:
-         *         _check_scopes: Security dependency that validates the user has
-         *             'health:read' scope.
          *         _validate_pagination_values_on_query: Dependency that validates
          *             pagination parameters.
          *         token_user_id: The ID of the authenticated user extracted from the
@@ -1315,7 +1313,6 @@ export interface paths {
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         health_fasting: Fasting data to update.
-         *         _check_scopes: Security dependency for health:write scope.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
          *
@@ -1330,7 +1327,6 @@ export interface paths {
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         health_fasting: Fasting data to create.
-         *         _check_scopes: Security dependency for health:write scope.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
          *
@@ -1359,7 +1355,6 @@ export interface paths {
          * @description Retrieve the active fasting session for the authenticated user.
          *
          *     Args:
-         *         _check_scopes: Security dependency for health:read scope.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
          *
@@ -1387,7 +1382,6 @@ export interface paths {
          * @description Retrieve fasting statistics for the authenticated user.
          *
          *     Args:
-         *         _check_scopes: Security dependency for health:read scope.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
          *
@@ -1416,7 +1410,6 @@ export interface paths {
          *
          *     Args:
          *         health_fasting_id: ID of the fasting record.
-         *         _check_scopes: Security dependency for health:read scope.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
          *
@@ -1436,7 +1429,6 @@ export interface paths {
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         health_fasting_id: ID of the fasting record to delete.
-         *         _check_scopes: Security dependency for health:write scope.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
          */
@@ -1463,7 +1455,6 @@ export interface paths {
          *         request: The incoming request, read by the rate limiter.
          *         health_fasting_id: ID of the fasting record to complete.
          *         complete_data: Completion data with end time and status.
-         *         _check_scopes: Security dependency for health:write scope.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
          *
@@ -1489,8 +1480,6 @@ export interface paths {
          * @description Retrieve paginated poop records for the user.
          *
          *     Args:
-         *         _check_scopes: Security dependency that validates the
-         *             user has 'health:read' scope.
          *         _validate_pagination_values_on_query: Dependency that
          *             validates pagination parameters.
          *         token_user_id: The ID of the authenticated user
@@ -1516,7 +1505,6 @@ export interface paths {
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         health_poop: Poop data to update.
-         *         _check_scopes: Security dependency for health:write.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
          *
@@ -1537,7 +1525,6 @@ export interface paths {
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         health_poop: Poop data to create.
-         *         _check_scopes: Security dependency for health:write.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
          *
@@ -1564,7 +1551,6 @@ export interface paths {
          *
          *     Args:
          *         health_poop_id: ID of the poop record.
-         *         _check_scopes: Security dependency for health:read.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
          *
@@ -1584,7 +1570,6 @@ export interface paths {
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         health_poop_id: ID of the poop record to delete.
-         *         _check_scopes: Security dependency for health:write.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
          *
@@ -1612,8 +1597,6 @@ export interface paths {
          *     filtering. Access is restricted to users with the 'health:read' scope.
          *
          *     Args:
-         *         _check_scopes: Security dependency that validates the user has
-         *             'health:read' scope.
          *         _validate_pagination_values_on_query: Dependency that validates
          *             pagination parameters.
          *         token_user_id: The ID of the authenticated user extracted from the
@@ -1647,8 +1630,6 @@ export interface paths {
          *         request: The incoming request, read by the rate limiter.
          *         health_sleep (health_sleep_schema.HealthSleepUpdate): The health sleep data to be updated,
          *             containing the new values for the health sleep record.
-         *         _check_scopes (Callable): Security dependency that verifies the user has 'health:write'
-         *             scope permission.
          *         token_user_id (int): The user ID extracted from the JWT access token, used to identify
          *             the user making the request.
          *         db (Session): Database session dependency for performing database operations.
@@ -1674,8 +1655,6 @@ export interface paths {
          *         request: The incoming request, read by the rate limiter.
          *         health_sleep (health_sleep_schema.HealthSleepCreate): The health sleep data to create
          *             or update, including the date and sleep duration.
-         *         _check_scopes (Callable): Security dependency that verifies the user has
-         *             'health:write' scope.
          *         token_user_id (int): The ID of the authenticated user extracted from the
          *             access token.
          *         db (Session): Database session dependency for database operations.
@@ -1710,7 +1689,6 @@ export interface paths {
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         health_sleep_id (int): The unique identifier of the health sleep record to delete.
-         *         _check_scopes (Callable): Security dependency that verifies the user has 'health:write' scope.
          *         token_user_id (int): The user ID extracted from the access token.
          *         db (Session): Database session dependency for executing the delete operation.
          *
@@ -1741,8 +1719,6 @@ export interface paths {
          * @description Retrieve the user's health dashboard for today.
          *
          *     Args:
-         *         _check_scopes: Security dependency that validates the user has
-         *             'health:read' scope.
          *         token_user_id: The ID of the authenticated user extracted from the
          *             access token.
          *         db: Database session for executing queries.
@@ -1783,8 +1759,6 @@ export interface paths {
          *     filtering. Access is restricted to users with the 'health:read' scope.
          *
          *     Args:
-         *         _check_scopes: Security dependency that validates the user has
-         *             'health:read' scope.
          *         _validate_pagination_values_on_query: Dependency that validates
          *             pagination parameters.
          *         token_user_id: The ID of the authenticated user extracted from the
@@ -1818,8 +1792,6 @@ export interface paths {
          *         request: The incoming request, read by the rate limiter.
          *         health_steps (health_steps_schema.HealthSteps): The health steps data to be updated,
          *             containing the new values for the health steps record.
-         *         _check_scopes (Callable): Security dependency that verifies the user has 'health:write'
-         *             scope permission.
          *         token_user_id (int): The user ID extracted from the JWT access token, used to identify
          *             the user making the request.
          *         db (Session): Database session dependency for performing database operations.
@@ -1845,8 +1817,6 @@ export interface paths {
          *         request: The incoming request, read by the rate limiter.
          *         health_steps (health_steps_schema.HealthSteps): The health steps data to create
          *             or update, including the date and step count.
-         *         _check_scopes (Callable): Security dependency that verifies the user has
-         *             'health:write' scope.
          *         token_user_id (int): The ID of the authenticated user extracted from the
          *             access token.
          *         db (Session): Database session dependency for database operations.
@@ -1881,7 +1851,6 @@ export interface paths {
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         health_steps_id (int): The unique identifier of the health steps record to delete.
-         *         _check_scopes (Callable): Security dependency that verifies the user has 'health:write' scope.
          *         token_user_id (int): The user ID extracted from the access token.
          *         db (Session): Database session dependency for executing the delete operation.
          *
@@ -1915,9 +1884,6 @@ export interface paths {
          *     access token. It requires the 'health:read' scope for authorization.
          *
          *     Args:
-         *         _check_scopes (Callable): Security dependency that verifies the user has the
-         *             required 'health:read' scope. The underscore prefix indicates this parameter
-         *             is injected by FastAPI's security system but not directly used in the function.
          *         token_user_id (int): The user ID extracted from the JWT access token, automatically
          *             injected by the authentication dependency.
          *         db (Session): SQLAlchemy database session dependency for executing database queries.
@@ -1943,9 +1909,6 @@ export interface paths {
          *         request: The incoming request, read by the rate limiter.
          *         health_targets: The health targets to update, containing the new values for
          *             the health metrics.
-         *         _check_scopes (Callable): Security dependency that
-         *             verifies the user has 'health:write' scope
-         *             permission.
          *         token_user_id (int): The authenticated user's ID
          *             extracted from the access token.
          *         db (Session): Database session dependency for database
@@ -1981,8 +1944,6 @@ export interface paths {
          * @description Retrieve paginated water intake records for the user.
          *
          *     Args:
-         *         _check_scopes: Security dependency that validates the
-         *             user has 'health:read' scope.
          *         _validate_pagination_values_on_query: Dependency that
          *             validates pagination parameters.
          *         token_user_id: The ID of the authenticated user
@@ -2008,7 +1969,6 @@ export interface paths {
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         health_water: Water intake data to update.
-         *         _check_scopes: Security dependency for health:write.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
          *
@@ -2029,7 +1989,6 @@ export interface paths {
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         health_water: Water intake data to create.
-         *         _check_scopes: Security dependency for health:write.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
          *
@@ -2060,7 +2019,6 @@ export interface paths {
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         health_water_id: ID of the water intake record.
-         *         _check_scopes: Security dependency for health:write.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
          *
@@ -2088,8 +2046,6 @@ export interface paths {
          *     filtering. Access is restricted to users with the 'health:read' scope.
          *
          *     Args:
-         *         _check_scopes: Security dependency that validates the user has
-         *             'health:read' scope.
          *         _validate_pagination_values_on_query: Dependency that validates
          *             pagination parameters.
          *         token_user_id: The ID of the authenticated user extracted from the
@@ -2124,8 +2080,6 @@ export interface paths {
          *         request: The incoming request, read by the rate limiter.
          *         health_weight (health_weight_schema.HealthWeight): The health weight data
          *             to be updated, containing the weight information and associated metadata.
-         *         _check_scopes (Callable): Security dependency that verifies the user has
-         *             'health:write' scope permission.
          *         token_user_id (int): The ID of the authenticated user extracted from the
          *             access token.
          *         db (Session): Database session dependency for executing database operations.
@@ -2149,7 +2103,6 @@ export interface paths {
          *         request: The incoming request, read by the rate limiter.
          *         health_weight (health_weight_schema.HealthWeightCreate): The health weight data to create or update.
          *             Must include a date field.
-         *         _check_scopes (Callable): Security dependency that verifies the user has 'health:write' scope.
          *         token_user_id (int): The ID of the authenticated user extracted from the access token.
          *         db (Session): Database session dependency for performing database operations.
          *
@@ -2183,7 +2136,6 @@ export interface paths {
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         health_weight_id (int): The unique identifier of the health weight entry to delete.
-         *         _check_scopes (Callable): Security dependency that verifies the user has 'health:write' scope.
          *         token_user_id (int): The user ID extracted from the access token, used to ensure
          *             users can only delete their own weight entries.
          *         db (Session): Database session dependency for performing database operations.
@@ -2213,8 +2165,6 @@ export interface paths {
          *
          *     Args:
          *         db: SQLAlchemy database session dependency.
-         *         _check_scopes: Authenticated user with the
-         *             'identity_providers:read' scope.
          *
          *     Returns:
          *         A list of all configured identity providers.
@@ -2228,8 +2178,6 @@ export interface paths {
          *     Args:
          *         idp_data: Data required to create the identity provider.
          *         db: SQLAlchemy database session dependency.
-         *         _check_scopes: Authenticated user with the
-         *             'identity_providers:write' scope.
          *
          *     Returns:
          *         The newly created identity provider.
@@ -2257,8 +2205,6 @@ export interface paths {
          * @description Get the list of pre-configured IdP templates (admin only).
          *
          *     Args:
-         *         _check_scopes: Authenticated user with the
-         *             'identity_providers:read' scope.
          *
          *     Returns:
          *         A list of identity provider templates.
@@ -2288,8 +2234,6 @@ export interface paths {
          *         idp_id: The unique identifier of the identity provider to update.
          *         idp_data: The data to update the identity provider with.
          *         db: SQLAlchemy database session dependency.
-         *         _check_scopes: Authenticated user with the
-         *             'identity_providers:write' scope.
          *
          *     Returns:
          *         The updated identity provider.
@@ -2306,8 +2250,6 @@ export interface paths {
          *
          *     Args:
          *         idp_id: The unique identifier of the identity provider to delete.
-         *         _check_scopes: Authenticated user with the
-         *             'identity_providers:write' scope.
          *         db: SQLAlchemy database session dependency.
          *
          *     Raises:
@@ -2332,8 +2274,6 @@ export interface paths {
          * @description Retrieve paginated notifications for the user.
          *
          *     Args:
-         *         _check_scopes: Dependency that checks if the user has the required
-         *             scopes.
          *         token_user_id: ID of the user from the access token.
          *         db: Database session dependency.
          *         page: Resolved page number and size.
@@ -2362,8 +2302,6 @@ export interface paths {
          * @description Retrieve notification count for the user.
          *
          *     Args:
-         *         _check_scopes: Dependency that checks if the user has the required
-         *             scopes.
          *         token_user_id: ID of the user from the access token.
          *         db: Database session dependency.
          *
@@ -2393,8 +2331,6 @@ export interface paths {
          *
          *     Args:
          *         request: The incoming request, used by the rate limiter.
-         *         _check_scopes: Dependency that checks if the user has the required
-         *             scopes.
          *         token_user_id: ID of the user from the access token.
          *         db: Database session dependency.
          *
@@ -2422,8 +2358,6 @@ export interface paths {
          *
          *     Args:
          *         notification_id: Unique ID of the notification.
-         *         _check_scopes: Dependency that checks if the user has the required
-         *             scopes.
          *         token_user_id: ID of the user from the access token.
          *         db: Database session dependency.
          *
@@ -2454,8 +2388,6 @@ export interface paths {
          *     Args:
          *         request: The incoming request, used by the rate limiter.
          *         notification_id: ID of the notification to mark as read.
-         *         _check_scopes: Dependency that checks if the user has the required
-         *             scopes.
          *         token_user_id: ID of the user from the access token.
          *         db: Database session dependency.
          *
@@ -4611,7 +4543,6 @@ export interface paths {
          *
          *     Args:
          *         _validate_pagination_values: Pagination validation.
-         *         _check_scopes: Authorization check.
          *         db: Database session dependency.
          *         page_number: Optional page number to retrieve.
          *         num_records: Optional number of records per page.
@@ -4659,7 +4590,6 @@ export interface paths {
          *
          *     Args:
          *         email: Email address to search for.
-         *         _check_scopes: Authorization check.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -4688,7 +4618,6 @@ export interface paths {
          *     Args:
          *         user_id: User ID to retrieve.
          *         _validate_id: User ID validation dependency.
-         *         _check_scopes: Authorization check.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -4716,7 +4645,6 @@ export interface paths {
          *
          *     Args:
          *         username: Partial username to search for.
-         *         _check_scopes: Authorization check.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -4744,7 +4672,6 @@ export interface paths {
          *
          *     Args:
          *         username: Exact username to search for.
-         *         _check_scopes: Authorization check.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -4775,7 +4702,6 @@ export interface paths {
          *         user_id: ID of user to update.
          *         _validate_id: User ID validation dependency.
          *         user_attributtes: User data to update.
-         *         _check_scopes: Authorization check.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -4790,7 +4716,6 @@ export interface paths {
          *     Args:
          *         user_id: ID of user to delete.
          *         _validate_id: User ID validation dependency.
-         *         _check_scopes: Authorization check.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -4817,7 +4742,6 @@ export interface paths {
          *     Args:
          *         user_id: ID of user to approve.
          *         _validate_id: User ID validation dependency.
-         *         _check_scopes: Authorization check.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -4845,7 +4769,6 @@ export interface paths {
          *     Args:
          *         user_id: ID of the user whose identity provider links to retrieve.
          *         _validate_id: User ID validation dependency.
-         *         _check_scopes: Authorization check (users:read scope).
          *         identity_service: Identity service dependency.
          *
          *     Returns:
@@ -4878,7 +4801,6 @@ export interface paths {
          *         user_id: ID of the user to unlink the identity provider from.
          *         idp_id: ID of the identity provider to unlink.
          *         _validate_id: User ID validation dependency.
-         *         _check_scopes: Authorization check (users:write scope).
          *         identity_service: Identity service dependency.
          *
          *     Returns:
@@ -4907,7 +4829,6 @@ export interface paths {
          *         user_id: ID of user to upload image for.
          *         _validate_id: User ID validation dependency.
          *         file: Uploaded image file.
-         *         _check_scopes: Authorization check.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -4982,7 +4903,6 @@ export interface paths {
          *     Args:
          *         user_id: ID of user whose photo to delete.
          *         _validate_id: User ID validation dependency.
-         *         _check_scopes: Authorization check.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -5014,7 +4934,6 @@ export interface paths {
          *
          *     Args:
          *         request: The request, which the rate limiter keys on.
-         *         _check_scopes: Requires the scope that reads the notifications the hints announce.
          *         user_id: Authenticated user ID from auth dependency.
          *         ticket_store: WsTicketStore for issuing tickets.
          *
