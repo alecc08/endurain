@@ -765,11 +765,8 @@
       "subtitle": "This is where password resets and notices are sent. Changing it requires you to confirm your identity, and the new address must be verified.",
       "current": "Current email",
       "action": "Change email",
-      "dialogTitle": "Change your email",
-      "dialogDescription": "Enter your new address and confirm your identity to continue.",
       "new": "New email",
       "invalid": "Enter a valid email address.",
-      "confirm": "Change email",
       "success": "Email updated. Check your inbox to verify the new address.",
       "conflict": "That email is already in use.",
       "error": "Couldn't change your email. Please try again."

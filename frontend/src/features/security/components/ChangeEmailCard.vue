@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Mail } from '@lucide/vue'
+import { LoaderCircle, Mail } from '@lucide/vue'
 
-import type { StepUpInput } from '@/features/security/types'
-
-import StepUpDialog from '@/features/security/components/StepUpDialog.vue'
+import PasswordInput from '@/features/security/components/PasswordInput.vue'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -29,31 +27,49 @@ const { t } = useI18n()
 const toasts = useToasts()
 const changeMutation = useChangeEmailMutation()
 
-const isDialogOpen = ref(false)
 const newEmail = ref('')
+const currentPassword = ref('')
+const mfaCode = ref('')
 const revokeOtherSessions = ref(false)
 
-const invalidMessage = t('settings.security.email.invalid')
 const trimmedEmail = computed(() => newEmail.value.trim())
 const isEmailValid = computed(() => isValidEmail(trimmedEmail.value))
 const showInvalid = computed(() => trimmedEmail.value.length > 0 && !isEmailValid.value)
 
-// Start from an empty field each time the dialog opens.
-watch(isDialogOpen, (isOpen) => {
-  if (isOpen) {
-    newEmail.value = ''
-    revokeOtherSessions.value = false
-  }
-})
+const canSubmit = computed(
+  () =>
+    isEmailValid.value &&
+    (!props.hasLocalPassword || currentPassword.value.length > 0) &&
+    (!props.mfaEnabled || mfaCode.value.trim().length > 0) &&
+    !changeMutation.isPending.value,
+)
 
-/** Changes the email after step-up, then closes and tells the user to verify the new address. */
-function onConfirm(stepUp: StepUpInput): void {
+/** Clears every field after a successful change. */
+function resetForm(): void {
+  newEmail.value = ''
+  currentPassword.value = ''
+  mfaCode.value = ''
+  revokeOtherSessions.value = false
+}
+
+/** Changes the email after step-up, then tells the user to verify the new address. */
+function submit(): void {
+  if (!canSubmit.value) {
+    return
+  }
   changeMutation.mutate(
-    { email: trimmedEmail.value, stepUp, revokeOtherSessions: revokeOtherSessions.value },
+    {
+      email: trimmedEmail.value,
+      stepUp: {
+        currentPassword: props.hasLocalPassword ? currentPassword.value : null,
+        mfaCode: props.mfaEnabled ? mfaCode.value.trim() : null,
+      },
+      revokeOtherSessions: revokeOtherSessions.value,
+    },
     {
       onSuccess: () => {
-        isDialogOpen.value = false
         toasts.success(t('settings.security.email.success'))
+        resetForm()
       },
       onError: (error) => {
         if (error instanceof HttpError && error.status === 409) {
@@ -70,7 +86,7 @@ function onConfirm(stepUp: StepUpInput): void {
 </script>
 
 <template>
-  <Card class="flex flex-col gap-3">
+  <Card class="flex flex-col gap-3" as="form" novalidate @submit.prevent="submit">
     <div class="flex flex-col gap-1">
       <h2 class="text-card-heading">{{ t('settings.security.email.title') }}</h2>
       <p class="text-hint">{{ t('settings.security.email.subtitle') }}</p>
@@ -87,41 +103,60 @@ function onConfirm(stepUp: StepUpInput): void {
       />
     </div>
 
+    <div class="flex flex-col gap-1.5">
+      <Label for="security-new-email">{{ t('settings.security.email.new') }}</Label>
+      <Input
+        id="security-new-email"
+        v-model="newEmail"
+        type="email"
+        maxlength="250"
+        autocomplete="email"
+        :aria-invalid="showInvalid"
+        :disabled="changeMutation.isPending.value"
+        class="w-full"
+      />
+      <p v-if="showInvalid" class="text-hint text-destructive">
+        {{ t('settings.security.email.invalid') }}
+      </p>
+    </div>
+
+    <div v-if="hasLocalPassword" class="flex flex-col gap-1.5">
+      <Label for="security-email-password">{{ t('settings.security.password.current') }}</Label>
+      <PasswordInput
+        id="security-email-password"
+        v-model="currentPassword"
+        autocomplete="current-password"
+        :disabled="changeMutation.isPending.value"
+      />
+    </div>
+
+    <div v-if="mfaEnabled" class="flex flex-col gap-1.5">
+      <Label for="security-email-mfa">{{ t('settings.security.mfaCode') }}</Label>
+      <Input
+        id="security-email-mfa"
+        v-model="mfaCode"
+        inputmode="numeric"
+        autocomplete="one-time-code"
+        :placeholder="t('settings.security.mfaCodePlaceholder')"
+        :disabled="changeMutation.isPending.value"
+        class="w-full"
+      />
+    </div>
+
+    <Switch v-model="revokeOtherSessions" :disabled="changeMutation.isPending.value">
+      {{ t('settings.security.password.revokeOthers') }}
+    </Switch>
+
     <div class="flex justify-begin">
-      <Button type="button" class="w-full sm:w-auto" @click="isDialogOpen = true">
-        <Mail class="size-4" aria-hidden="true" />
+      <Button type="submit" class="w-full sm:w-auto" :disabled="!canSubmit">
+        <LoaderCircle
+          v-if="changeMutation.isPending.value"
+          class="size-4 animate-spin"
+          aria-hidden="true"
+        />
+        <Mail v-else class="size-4" aria-hidden="true" />
         <span>{{ t('settings.security.email.action') }}</span>
       </Button>
     </div>
-
-    <StepUpDialog
-      v-model:open="isDialogOpen"
-      :title="t('settings.security.email.dialogTitle')"
-      :description="t('settings.security.email.dialogDescription')"
-      :confirm-label="t('settings.security.email.confirm')"
-      :require-password="props.hasLocalPassword"
-      :require-mfa="props.mfaEnabled"
-      :extra-valid="isEmailValid"
-      :pending="changeMutation.isPending.value"
-      @confirm="onConfirm"
-    >
-      <div class="flex flex-col gap-1.5">
-        <Label for="change-email-new">{{ t('settings.security.email.new') }}</Label>
-        <Input
-          id="change-email-new"
-          v-model="newEmail"
-          type="email"
-          maxlength="250"
-          autocomplete="email"
-          :aria-invalid="showInvalid"
-          :disabled="changeMutation.isPending.value"
-          class="w-full"
-        />
-        <p v-if="showInvalid" class="text-hint text-destructive">{{ invalidMessage }}</p>
-      </div>
-      <Switch v-model="revokeOtherSessions" :disabled="changeMutation.isPending.value">
-        {{ t('settings.security.password.revokeOthers') }}
-      </Switch>
-    </StepUpDialog>
   </Card>
 </template>
