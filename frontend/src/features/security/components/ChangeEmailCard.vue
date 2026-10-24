@@ -76,12 +76,19 @@ function onConfirm(stepUp: StepUpInput): void {
       <p class="text-hint">{{ t('settings.security.email.subtitle') }}</p>
     </div>
 
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="min-w-0">
-        <p class="text-hint">{{ t('settings.security.email.current') }}</p>
-        <p class="truncate font-medium text-foreground">{{ props.email }}</p>
-      </div>
-      <Button variant="outline" @click="isDialogOpen = true">
+    <div class="flex flex-col gap-1.5">
+      <Label for="security-current-email">{{ t('settings.security.email.current') }}</Label>
+      <Input
+        id="security-current-email"
+        :model-value="props.email"
+        type="email"
+        disabled
+        readonly
+      />
+    </div>
+
+    <div class="flex justify-begin">
+      <Button type="button" class="w-full sm:w-auto" @click="isDialogOpen = true">
         <Mail class="size-4" aria-hidden="true" />
         <span>{{ t('settings.security.email.action') }}</span>
       </Button>
