@@ -6,7 +6,6 @@ Thin HTTP adapter: authorization, storage naming and file cleanup live in
 
 from typing import Annotated
 
-import jasil.providers as platform_providers
 from fastapi import APIRouter, Depends, Request, Security, UploadFile, status
 
 import core.dependencies as core_dependencies
@@ -56,10 +55,7 @@ def create_activity_media(
     activity_id: activity_dependencies.ActivityId,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    storage: Annotated[
-        platform_providers.StorageProvider,
-        Depends(core_dependencies.get_storage),
-    ],
+    storage: core_dependencies.Storage,
 ) -> activity_media_schema.ActivityMediaRead:
     """Upload an image file to associate with an activity.
 
@@ -95,10 +91,7 @@ def delete_activity_media(
     media_id: core_dependencies.PositiveId,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    storage: Annotated[
-        platform_providers.StorageProvider,
-        Depends(core_dependencies.get_storage),
-    ],
+    storage: core_dependencies.Storage,
 ) -> None:
     """Delete an activity media record and remove its stored blob.
 

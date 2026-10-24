@@ -3,7 +3,6 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Annotated
 
-import jasil.providers as platform_providers
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Security, UploadFile, status
 from stravalib.exc import AccessUnauthorized
 
@@ -107,10 +106,7 @@ def strava_retrieve_activities_days(
     ],
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    storage: Annotated[
-        platform_providers.StorageProvider,
-        Depends(core_dependencies.get_storage),
-    ],
+    storage: core_dependencies.Storage,
 ) -> activity_ingestion_schema.ActivityIngestionJobRead:
     """Queue a Strava sync of an explicit date range.
 

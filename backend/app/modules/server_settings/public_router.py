@@ -1,9 +1,6 @@
 """Unauthenticated routes exposing the public subset of server settings."""
 
-from typing import Annotated
-
-import jasil.providers as platform_providers
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Request, Response, status
 
 import core.dependencies as core_dependencies
 import core.etag as core_etag
@@ -63,10 +60,7 @@ _LOGIN_PHOTO_CACHE_MAX_AGE = 300
 )
 def read_login_photo(
     request: Request,
-    storage: Annotated[
-        platform_providers.StorageProvider,
-        Depends(core_dependencies.get_storage),
-    ],
+    storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
 ) -> Response:
     """Serve the custom login page photo (unauthenticated).

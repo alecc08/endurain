@@ -1,10 +1,8 @@
 """Garmin Connect routes: account linking, MFA, and activity, gear and health sync."""
 
 from datetime import date
-from typing import Annotated
 
-import jasil.providers as platform_providers
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Request, status
 
 import core.dependencies as core_dependencies
 import core.rate_limit as core_rate_limit
@@ -79,10 +77,7 @@ def garminconnect_retrieve_activities_days(
     end_date: date,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    storage: Annotated[
-        platform_providers.StorageProvider,
-        Depends(core_dependencies.get_storage),
-    ],
+    storage: core_dependencies.Storage,
 ) -> activity_ingestion_schema.ActivityIngestionJobRead:
     """Queue a Garmin Connect sync of an explicit date range.
 

@@ -9,8 +9,7 @@ caller does not own.
 
 from typing import Annotated
 
-import jasil.providers as platform_providers
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Query, Response
 
 import core.dependencies as core_dependencies
 import modules.activities.activity.dependencies as activity_dependencies
@@ -31,10 +30,7 @@ def read_activity_media_file(
     media_id: core_dependencies.PositiveId,
     token: Annotated[str, Query(alias="t", description="Signed media access token")],
     db: core_dependencies.DbSession,
-    storage: Annotated[
-        platform_providers.StorageProvider,
-        Depends(core_dependencies.get_storage),
-    ],
+    storage: core_dependencies.Storage,
 ) -> Response:
     """Serve an activity media blob when the signed token is valid.
 

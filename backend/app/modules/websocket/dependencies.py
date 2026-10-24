@@ -1,16 +1,13 @@
 """FastAPI dependencies for the websocket routes."""
 
-from typing import Annotated
-
-from fastapi import Depends, WebSocket, WebSocketException, status
-from jasil.providers import StateProvider
+from fastapi import WebSocket, WebSocketException, status
 
 import core.dependencies as core_dependencies
 import modules.websocket.ticket_store as websocket_ticket_store
 
 
 def get_ws_ticket_store(
-    state: Annotated[StateProvider, Depends(core_dependencies.get_platform_state)],
+    state: core_dependencies.PlatformState,
 ) -> websocket_ticket_store.WsTicketStore:
     """Provide the ticket store over the platform state.
 

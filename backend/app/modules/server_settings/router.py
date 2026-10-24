@@ -105,10 +105,7 @@ def edit_server_settings(
 def upload_login_photo(
     request: Request,
     file: UploadFile,
-    storage: Annotated[
-        platform_providers.StorageProvider,
-        Depends(core_dependencies.get_storage),
-    ],
+    storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
 ) -> dict[str, str]:
     """Upload custom login page photo.
@@ -138,10 +135,7 @@ def upload_login_photo(
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def delete_login_photo(
     request: Request,
-    storage: Annotated[
-        platform_providers.StorageProvider,
-        Depends(core_dependencies.get_storage),
-    ],
+    storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
 ) -> None:
     """Delete custom login page photo.

@@ -3,7 +3,6 @@
 from typing import Annotated
 
 from fastapi import Depends
-from jasil.providers import StateProvider
 
 import core.dependencies as core_dependencies
 import modules.garmin.link_state_store as garmin_link_state_store
@@ -12,7 +11,7 @@ import modules.garmin.sync_state_store as garmin_sync_state_store
 
 
 def get_garmin_mfa_code_store(
-    state: Annotated[StateProvider, Depends(core_dependencies.get_platform_state)],
+    state: core_dependencies.PlatformState,
 ) -> garmin_mfa_code_store.GarminMFACodeStore:
     """Return the MFA code store over the platform state provider.
 
@@ -26,7 +25,7 @@ def get_garmin_mfa_code_store(
 
 
 def get_garmin_link_state_store(
-    state: Annotated[StateProvider, Depends(core_dependencies.get_platform_state)],
+    state: core_dependencies.PlatformState,
 ) -> garmin_link_state_store.GarminLinkStateStore:
     """Return the link state store over the platform state provider.
 
@@ -40,7 +39,7 @@ def get_garmin_link_state_store(
 
 
 def get_garmin_sync_state_store(
-    state: Annotated[StateProvider, Depends(core_dependencies.get_platform_state)],
+    state: core_dependencies.PlatformState,
 ) -> garmin_sync_state_store.GarminSyncStateStore:
     """Return the sync state store over the platform state provider.
 

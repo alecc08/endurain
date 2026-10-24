@@ -11,7 +11,6 @@ core router fully parser- and provider-agnostic (enforced by the import-linter c
 from functools import partial
 from typing import Annotated
 
-import jasil.providers as platform_providers
 from fastapi import (
     APIRouter,
     Depends,
@@ -60,10 +59,7 @@ def create_activity_with_uploaded_file(
     ],
     file: UploadFile,
     db: core_dependencies.DbSession,
-    storage: Annotated[
-        platform_providers.StorageProvider,
-        Depends(core_dependencies.get_storage),
-    ],
+    storage: core_dependencies.Storage,
     idempotency_key: Annotated[
         str | None,
         Header(
@@ -147,10 +143,7 @@ def create_bulk_import_from_archive(
     token_user_id: auth_dependencies.CurrentUserId,
     file: UploadFile,
     db: core_dependencies.DbSession,
-    storage: Annotated[
-        platform_providers.StorageProvider,
-        Depends(core_dependencies.get_storage),
-    ],
+    storage: core_dependencies.Storage,
     source: Annotated[
         str,
         Query(
@@ -191,10 +184,7 @@ def create_bulk_import_from_folder(
     request: Request,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    storage: Annotated[
-        platform_providers.StorageProvider,
-        Depends(core_dependencies.get_storage),
-    ],
+    storage: core_dependencies.Storage,
     source: Annotated[
         str,
         Query(
@@ -228,10 +218,7 @@ def refresh_activities(
     request: Request,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    storage: Annotated[
-        platform_providers.StorageProvider,
-        Depends(core_dependencies.get_storage),
-    ],
+    storage: core_dependencies.Storage,
 ) -> activity_ingestion_schema.ActivityIngestionJobRead:
     """Queue a sync of the last 24h from the linked providers (Strava/Garmin).
 

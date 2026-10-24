@@ -30,6 +30,10 @@ def get_storage() -> platform_providers.StorageProvider:
     return platform_runtime.get_active_platform().storage
 
 
+#: The active platform's blob-storage provider, injected into a route or dependency.
+Storage = Annotated[platform_providers.StorageProvider, Depends(get_storage)]
+
+
 def get_platform_state() -> platform_providers.StateProvider:
     """
     Return the active platform's ephemeral-state provider.
@@ -41,6 +45,10 @@ def get_platform_state() -> platform_providers.StateProvider:
         The state provider.
     """
     return platform_runtime.get_state()
+
+
+#: The active platform's ephemeral-state provider, injected into a route or dependency.
+PlatformState = Annotated[platform_providers.StateProvider, Depends(get_platform_state)]
 
 
 def get_mail() -> platform_providers.MailProvider:
