@@ -1,6 +1,5 @@
 """WebSocket routes: the ticket that authenticates a connection, and the connection itself."""
 
-from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Security, WebSocket, WebSocketException, status
@@ -16,12 +15,16 @@ import modules.websocket.ticket_store as websocket_ticket_store
 router = APIRouter()
 
 
-@router.post("/ticket", response_model=dict[str, str], status_code=201)
+@router.post(
+    "/ticket",
+    response_model=dict[str, str],
+    status_code=201,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["notifications:read"])],
+)
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def issue_ws_ticket(
     request: Request,
-    _check_scopes: Annotated[Callable, Security(auth_dependencies.check_scopes, scopes=["notifications:read"])],
-    user_id: Annotated[int, Depends(auth_dependencies.get_sub_from_access_token)],
+    user_id: auth_dependencies.CurrentUserId,
     ticket_store: Annotated[
         websocket_ticket_store.WsTicketStore,
         Depends(websocket_dependencies.get_ws_ticket_store),
@@ -36,7 +39,6 @@ def issue_ws_ticket(
 
     Args:
         request: The request, which the rate limiter keys on.
-        _check_scopes: Requires the scope that reads the notifications the hints announce.
         user_id: Authenticated user ID from auth dependency.
         ticket_store: WsTicketStore for issuing tickets.
 

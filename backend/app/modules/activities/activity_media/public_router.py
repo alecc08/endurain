@@ -11,9 +11,7 @@ from typing import Annotated
 
 import jasil.providers as platform_providers
 from fastapi import APIRouter, Depends, Query, Response
-from sqlalchemy.orm import Session
 
-import core.database as core_database
 import core.dependencies as core_dependencies
 import modules.activities.activity.dependencies as activity_dependencies
 import modules.activities.activity_media.service as activity_media_service
@@ -32,7 +30,7 @@ def read_activity_media_file(
     activity_id: activity_dependencies.ActivityId,
     media_id: core_dependencies.PositiveId,
     token: Annotated[str, Query(alias="t", description="Signed media access token")],
-    db: Annotated[Session, Depends(core_database.get_db)],
+    db: core_dependencies.DbSession,
     storage: Annotated[
         platform_providers.StorageProvider,
         Depends(core_dependencies.get_storage),

@@ -4,9 +4,7 @@ from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Security, status
-from sqlalchemy.orm import Session
 
-import core.database as core_database
 import core.dependencies as core_dependencies
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
@@ -22,20 +20,14 @@ router = APIRouter()
     "",
     response_model=health_steps_schema.HealthStepsListResponse,
     status_code=status.HTTP_200_OK,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:read"])],
 )
 def read_health_steps_all_pagination(
-    _check_scopes: Annotated[Callable, Security(auth_dependencies.check_scopes, scopes=["health:read"])],
     _validate_pagination_values_on_query: Annotated[
         Callable, Depends(core_dependencies.validate_pagination_values_on_query)
     ],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
     page_number: Annotated[
         int | None,
         Query(description="Pagination page number"),
@@ -55,8 +47,6 @@ def read_health_steps_all_pagination(
     filtering. Access is restricted to users with the 'health:read' scope.
 
     Args:
-        _check_scopes: Security dependency that validates the user has
-            'health:read' scope.
         _validate_pagination_values_on_query: Dependency that validates
             pagination parameters.
         token_user_id: The ID of the authenticated user extracted from the
@@ -85,20 +75,14 @@ def read_health_steps_all_pagination(
     "",
     response_model=health_steps_schema.HealthStepsRead,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def create_health_steps(
     request: Request,
     health_steps: health_steps_schema.HealthStepsCreate,
-    _check_scopes: Annotated[Callable, Security(auth_dependencies.check_scopes, scopes=["health:write"])],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> health_steps_schema.HealthStepsRead:
     """Create or update health steps data for a user.
 
@@ -110,8 +94,6 @@ def create_health_steps(
         request: The incoming request, read by the rate limiter.
         health_steps (health_steps_schema.HealthSteps): The health steps data to create
             or update, including the date and step count.
-        _check_scopes (Callable): Security dependency that verifies the user has
-            'health:write' scope.
         token_user_id (int): The ID of the authenticated user extracted from the
             access token.
         db (Session): Database session dependency for database operations.
@@ -127,20 +109,14 @@ def create_health_steps(
     "",
     response_model=health_steps_schema.HealthStepsRead,
     status_code=status.HTTP_200_OK,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_health_steps(
     request: Request,
     health_steps: health_steps_schema.HealthStepsUpdate,
-    _check_scopes: Annotated[Callable, Security(auth_dependencies.check_scopes, scopes=["health:write"])],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> health_steps_schema.HealthStepsRead:
     """Edit health steps data for a user.
 
@@ -151,8 +127,6 @@ def edit_health_steps(
         request: The incoming request, read by the rate limiter.
         health_steps (health_steps_schema.HealthSteps): The health steps data to be updated,
             containing the new values for the health steps record.
-        _check_scopes (Callable): Security dependency that verifies the user has 'health:write'
-            scope permission.
         token_user_id (int): The user ID extracted from the JWT access token, used to identify
             the user making the request.
         db (Session): Database session dependency for performing database operations.
@@ -169,20 +143,18 @@ def edit_health_steps(
     return health_steps_service.edit_health_steps(token_user_id, health_steps, db)
 
 
-@router.delete("/{health_steps_id}", response_model=None, status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{health_steps_id}",
+    response_model=None,
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:write"])],
+)
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def delete_health_steps(
     request: Request,
     health_steps_id: core_dependencies.PositiveId,
-    _check_scopes: Annotated[Callable, Security(auth_dependencies.check_scopes, scopes=["health:write"])],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> None:
     """Delete a health steps record for the authenticated user.
 
@@ -192,7 +164,6 @@ def delete_health_steps(
     Args:
         request: The incoming request, read by the rate limiter.
         health_steps_id (int): The unique identifier of the health steps record to delete.
-        _check_scopes (Callable): Security dependency that verifies the user has 'health:write' scope.
         token_user_id (int): The user ID extracted from the access token.
         db (Session): Database session dependency for executing the delete operation.
 

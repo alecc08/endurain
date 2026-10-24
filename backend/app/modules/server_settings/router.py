@@ -1,6 +1,5 @@
 """Admin routes for server settings, the login photo and the test email."""
 
-from collections.abc import Callable
 from typing import Annotated
 
 import jasil.providers as platform_providers
@@ -14,9 +13,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from sqlalchemy.orm import Session
 
-import core.database as core_database
 import core.dependencies as core_dependencies
 import core.etag as core_etag
 import core.exceptions as core_exceptions
@@ -34,16 +31,10 @@ router = APIRouter()
     "",
     response_model=server_settings_schema.ServerSettingsAdminRead,
     status_code=status.HTTP_200_OK,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:read"])],
 )
 def read_server_settings(
-    _check_scopes: Annotated[
-        Callable,
-        Security(auth_dependencies.check_scopes, scopes=["server_settings:read"]),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
     response: Response,
 ) -> server_settings_schema.ServerSettingsAdminRead:
     """Get current server settings.
@@ -68,19 +59,13 @@ def read_server_settings(
     "",
     response_model=server_settings_schema.ServerSettingsAdminRead,
     status_code=status.HTTP_200_OK,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_server_settings(
     request: Request,
     server_settings_attributes: server_settings_schema.ServerSettingsEdit,
-    _check_scopes: Annotated[
-        Callable,
-        Security(auth_dependencies.check_scopes, scopes=["server_settings:write"]),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
     response: Response,
     if_match: Annotated[str | None, Header(alias=core_etag.IF_MATCH_HEADER)] = None,
 ) -> server_settings_schema.ServerSettingsAdminRead:
@@ -114,23 +99,17 @@ def edit_server_settings(
     "/login-photo",
     response_model=dict[str, str],
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.UPLOAD)
 def upload_login_photo(
     request: Request,
     file: UploadFile,
-    _check_scopes: Annotated[
-        Callable,
-        Security(auth_dependencies.check_scopes, scopes=["server_settings:write"]),
-    ],
     storage: Annotated[
         platform_providers.StorageProvider,
         Depends(core_dependencies.get_storage),
     ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
 ) -> dict[str, str]:
     """Upload custom login page photo.
 
@@ -154,22 +133,16 @@ def upload_login_photo(
     "/login-photo",
     response_model=None,
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def delete_login_photo(
     request: Request,
-    _check_scopes: Annotated[
-        Callable,
-        Security(auth_dependencies.check_scopes, scopes=["server_settings:write"]),
-    ],
     storage: Annotated[
         platform_providers.StorageProvider,
         Depends(core_dependencies.get_storage),
     ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
 ) -> None:
     """Delete custom login page photo.
 
@@ -187,16 +160,10 @@ def delete_login_photo(
     "/email",
     response_model=server_settings_schema.EmailStatus,
     status_code=status.HTTP_200_OK,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:read"])],
 )
 def read_email_status(
-    _check_scopes: Annotated[
-        Callable,
-        Security(auth_dependencies.check_scopes, scopes=["server_settings:read"]),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
 ) -> server_settings_schema.EmailStatus:
     """Get whether outgoing email is usable.
 
@@ -215,16 +182,10 @@ def read_email_status(
     "/email/settings",
     response_model=server_settings_schema.MailSettingsAdminRead,
     status_code=status.HTTP_200_OK,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:read"])],
 )
 def read_mail_settings(
-    _check_scopes: Annotated[
-        Callable,
-        Security(auth_dependencies.check_scopes, scopes=["server_settings:read"]),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
     response: Response,
 ) -> server_settings_schema.MailSettingsAdminRead:
     """Get the mail server settings.
@@ -248,19 +209,13 @@ def read_mail_settings(
     "/email/settings",
     response_model=server_settings_schema.MailSettingsAdminRead,
     status_code=status.HTTP_200_OK,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_mail_settings(
     request: Request,
     mail_settings_attributes: server_settings_schema.MailSettingsEdit,
-    _check_scopes: Annotated[
-        Callable,
-        Security(auth_dependencies.check_scopes, scopes=["server_settings:write"]),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
     response: Response,
     if_match: Annotated[str | None, Header(alias=core_etag.IF_MATCH_HEADER)] = None,
 ) -> server_settings_schema.MailSettingsAdminRead:
@@ -295,23 +250,17 @@ def edit_mail_settings(
     "/email/test",
     response_model=dict[str, str],
     status_code=status.HTTP_200_OK,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def send_test_email(
     request: Request,
-    _check_scopes: Annotated[
-        Callable,
-        Security(auth_dependencies.check_scopes, scopes=["server_settings:write"]),
-    ],
-    token_user_id: Annotated[int, Depends(auth_dependencies.get_sub_from_access_token)],
+    token_user_id: auth_dependencies.CurrentUserId,
     mail: Annotated[
         platform_providers.MailProvider,
         Depends(core_dependencies.get_mail),
     ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
 ) -> dict[str, str]:
     """Send a test email to the requesting admin.
 

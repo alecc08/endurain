@@ -15,9 +15,7 @@ from fastapi import (
     Security,
     status,
 )
-from sqlalchemy.orm import Session
 
-import core.database as core_database
 import core.dependencies as core_dependencies
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
@@ -33,27 +31,20 @@ router = APIRouter()
     "",
     response_model=(health_poop_schema.HealthPoopListResponse),
     status_code=status.HTTP_200_OK,
-)
-def read_health_poop_all_pagination(
-    _check_scopes: Annotated[
-        Callable,
+    dependencies=[
         Security(
             auth_dependencies.check_scopes,
             scopes=["health:read"],
-        ),
+        )
     ],
+)
+def read_health_poop_all_pagination(
     _validate_pagination_values_on_query: Annotated[
         Callable,
         Depends(core_dependencies.validate_pagination_values_on_query),
     ],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
     page_number: Annotated[
         int | None,
         Query(description="Pagination page number"),
@@ -70,8 +61,6 @@ def read_health_poop_all_pagination(
     """Retrieve paginated poop records for the user.
 
     Args:
-        _check_scopes: Security dependency that validates the
-            user has 'health:read' scope.
         _validate_pagination_values_on_query: Dependency that
             validates pagination parameters.
         token_user_id: The ID of the authenticated user
@@ -96,30 +85,22 @@ def read_health_poop_all_pagination(
     "/{health_poop_id}",
     response_model=health_poop_schema.HealthPoopRead,
     status_code=status.HTTP_200_OK,
-)
-def read_health_poop_by_id(
-    health_poop_id: core_dependencies.PositiveId,
-    _check_scopes: Annotated[
-        Callable,
+    dependencies=[
         Security(
             auth_dependencies.check_scopes,
             scopes=["health:read"],
-        ),
+        )
     ],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+)
+def read_health_poop_by_id(
+    health_poop_id: core_dependencies.PositiveId,
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> health_poop_schema.HealthPoopRead:
     """Retrieve a specific poop record by ID.
 
     Args:
         health_poop_id: ID of the poop record.
-        _check_scopes: Security dependency for health:read.
         token_user_id: User ID from the access token.
         db: Database session dependency.
 
@@ -136,26 +117,19 @@ def read_health_poop_by_id(
     "",
     response_model=health_poop_schema.HealthPoopRead,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[
+        Security(
+            auth_dependencies.check_scopes,
+            scopes=["health:write"],
+        )
+    ],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def create_health_poop(
     request: Request,
     health_poop: health_poop_schema.HealthPoopCreate,
-    _check_scopes: Annotated[
-        Callable,
-        Security(
-            auth_dependencies.check_scopes,
-            scopes=["health:write"],
-        ),
-    ],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> health_poop_schema.HealthPoopRead:
     """Create a new poop record for the user.
 
@@ -165,7 +139,6 @@ def create_health_poop(
     Args:
         request: The incoming request, read by the rate limiter.
         health_poop: Poop data to create.
-        _check_scopes: Security dependency for health:write.
         token_user_id: User ID from the access token.
         db: Database session dependency.
 
@@ -179,33 +152,25 @@ def create_health_poop(
     "",
     response_model=health_poop_schema.HealthPoopRead,
     status_code=status.HTTP_200_OK,
+    dependencies=[
+        Security(
+            auth_dependencies.check_scopes,
+            scopes=["health:write"],
+        )
+    ],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_health_poop(
     request: Request,
     health_poop: health_poop_schema.HealthPoopUpdate,
-    _check_scopes: Annotated[
-        Callable,
-        Security(
-            auth_dependencies.check_scopes,
-            scopes=["health:write"],
-        ),
-    ],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> health_poop_schema.HealthPoopRead:
     """Edit an existing poop record.
 
     Args:
         request: The incoming request, read by the rate limiter.
         health_poop: Poop data to update.
-        _check_scopes: Security dependency for health:write.
         token_user_id: User ID from the access token.
         db: Database session dependency.
 
@@ -222,33 +187,25 @@ def edit_health_poop(
     "/{health_poop_id}",
     response_model=None,
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[
+        Security(
+            auth_dependencies.check_scopes,
+            scopes=["health:write"],
+        )
+    ],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def delete_health_poop(
     request: Request,
     health_poop_id: core_dependencies.PositiveId,
-    _check_scopes: Annotated[
-        Callable,
-        Security(
-            auth_dependencies.check_scopes,
-            scopes=["health:write"],
-        ),
-    ],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> None:
     """Delete a poop record for the authenticated user.
 
     Args:
         request: The incoming request, read by the rate limiter.
         health_poop_id: ID of the poop record to delete.
-        _check_scopes: Security dependency for health:write.
         token_user_id: User ID from the access token.
         db: Database session dependency.
 

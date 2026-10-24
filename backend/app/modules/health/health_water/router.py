@@ -15,9 +15,7 @@ from fastapi import (
     Security,
     status,
 )
-from sqlalchemy.orm import Session
 
-import core.database as core_database
 import core.dependencies as core_dependencies
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
@@ -33,27 +31,20 @@ router = APIRouter()
     "",
     response_model=(health_water_schema.HealthWaterListResponse),
     status_code=status.HTTP_200_OK,
-)
-def read_health_water_all_pagination(
-    _check_scopes: Annotated[
-        Callable,
+    dependencies=[
         Security(
             auth_dependencies.check_scopes,
             scopes=["health:read"],
-        ),
+        )
     ],
+)
+def read_health_water_all_pagination(
     _validate_pagination_values_on_query: Annotated[
         Callable,
         Depends(core_dependencies.validate_pagination_values_on_query),
     ],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
     page_number: Annotated[
         int | None,
         Query(description="Pagination page number"),
@@ -70,8 +61,6 @@ def read_health_water_all_pagination(
     """Retrieve paginated water intake records for the user.
 
     Args:
-        _check_scopes: Security dependency that validates the
-            user has 'health:read' scope.
         _validate_pagination_values_on_query: Dependency that
             validates pagination parameters.
         token_user_id: The ID of the authenticated user
@@ -96,26 +85,19 @@ def read_health_water_all_pagination(
     "",
     response_model=health_water_schema.HealthWaterRead,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[
+        Security(
+            auth_dependencies.check_scopes,
+            scopes=["health:write"],
+        )
+    ],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def create_health_water(
     request: Request,
     health_water: health_water_schema.HealthWaterCreate,
-    _check_scopes: Annotated[
-        Callable,
-        Security(
-            auth_dependencies.check_scopes,
-            scopes=["health:write"],
-        ),
-    ],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> health_water_schema.HealthWaterRead:
     """Create or update a water intake record for the user.
 
@@ -125,7 +107,6 @@ def create_health_water(
     Args:
         request: The incoming request, read by the rate limiter.
         health_water: Water intake data to create.
-        _check_scopes: Security dependency for health:write.
         token_user_id: User ID from the access token.
         db: Database session dependency.
 
@@ -140,33 +121,25 @@ def create_health_water(
     "",
     response_model=health_water_schema.HealthWaterRead,
     status_code=status.HTTP_200_OK,
+    dependencies=[
+        Security(
+            auth_dependencies.check_scopes,
+            scopes=["health:write"],
+        )
+    ],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_health_water(
     request: Request,
     health_water: health_water_schema.HealthWaterUpdate,
-    _check_scopes: Annotated[
-        Callable,
-        Security(
-            auth_dependencies.check_scopes,
-            scopes=["health:write"],
-        ),
-    ],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> health_water_schema.HealthWaterRead:
     """Edit an existing water intake record.
 
     Args:
         request: The incoming request, read by the rate limiter.
         health_water: Water intake data to update.
-        _check_scopes: Security dependency for health:write.
         token_user_id: User ID from the access token.
         db: Database session dependency.
 
@@ -183,33 +156,25 @@ def edit_health_water(
     "/{health_water_id}",
     response_model=None,
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[
+        Security(
+            auth_dependencies.check_scopes,
+            scopes=["health:write"],
+        )
+    ],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def delete_health_water(
     request: Request,
     health_water_id: core_dependencies.PositiveId,
-    _check_scopes: Annotated[
-        Callable,
-        Security(
-            auth_dependencies.check_scopes,
-            scopes=["health:write"],
-        ),
-    ],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> None:
     """Delete a water intake record for the authenticated user.
 
     Args:
         request: The incoming request, read by the rate limiter.
         health_water_id: ID of the water intake record.
-        _check_scopes: Security dependency for health:write.
         token_user_id: User ID from the access token.
         db: Database session dependency.
 

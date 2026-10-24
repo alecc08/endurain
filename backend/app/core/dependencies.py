@@ -4,11 +4,17 @@ from typing import Annotated
 
 import jasil.providers as platform_providers
 import jasil.runtime as platform_runtime
-from fastapi import HTTPException, Path, Query, status
+from fastapi import Depends, HTTPException, Path, Query, status
+from sqlalchemy.orm import Session
+
+import core.database as core_database
 
 #: A path-parameter id that must be positive. Declared on the parameter's type, so FastAPI rejects a
 #: bad value with the standard validation problem document and publishes the bound in OpenAPI.
 PositiveId = Annotated[int, Path(gt=0)]
+
+#: The request-scoped database session. Rolled back on an unhandled error and closed afterwards by ``get_db``.
+DbSession = Annotated[Session, Depends(core_database.get_db)]
 
 
 def get_storage() -> platform_providers.StorageProvider:

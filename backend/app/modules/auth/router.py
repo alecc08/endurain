@@ -13,9 +13,8 @@ from fastapi import (
     status,
 )
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
 
-import core.database as core_database
+import core.dependencies as core_dependencies
 import core.logger as core_logger
 import core.rate_limit as core_rate_limit
 import modules.auth._internal.internal_dependencies as auth_internal_dependencies
@@ -125,10 +124,7 @@ async def login_for_access_token(
         auth_token_manager.TokenManager,
         Depends(auth_token_manager.get_token_manager),
     ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
     code_challenge: Annotated[str | None, Query()] = None,
     code_challenge_method: Annotated[str | None, Query()] = None,
 ):
@@ -292,10 +288,7 @@ async def verify_mfa_and_login(
         auth_token_manager.TokenManager,
         Depends(auth_token_manager.get_token_manager),
     ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
     code_challenge: Annotated[str | None, Query()] = None,
     code_challenge_method: Annotated[str | None, Query()] = None,
 ):
@@ -461,10 +454,7 @@ async def refresh_token(
         auth_token_manager.TokenManager,
         Depends(auth_token_manager.get_token_manager),
     ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
     client_type: Annotated[str, Depends(auth_internal_dependencies.header_client_type_scheme)],
     x_csrf_token: Annotated[str | None, Depends(auth_internal_dependencies.header_csrf_token_scheme)] = None,
 ):
@@ -741,10 +731,7 @@ async def logout(
         auth_password_hasher.PasswordHasher,
         Depends(auth_password_hasher.get_password_hasher),
     ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
 ):
     """
     Log out a user by validating and deleting their session.

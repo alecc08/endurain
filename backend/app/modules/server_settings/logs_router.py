@@ -1,9 +1,8 @@
 """Admin routes for reading the server log."""
 
-from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Security, status
+from fastapi import APIRouter, Query, Request, Security, status
 from fastapi.responses import FileResponse
 
 import core.rate_limit as core_rate_limit
@@ -19,13 +18,9 @@ router = APIRouter()
     "/status",
     response_model=logs_schema.LogsStatus,
     status_code=status.HTTP_200_OK,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:logs"])],
 )
-def read_logs_status(
-    _check_scopes: Annotated[
-        Callable,
-        Security(auth_dependencies.check_scopes, scopes=["server_settings:logs"]),
-    ],
-) -> logs_schema.LogsStatus:
+def read_logs_status() -> logs_schema.LogsStatus:
     """Get whether the log viewer is available.
 
     Requires admin authentication with server_settings:logs scope.
@@ -40,12 +35,9 @@ def read_logs_status(
     "",
     response_model=logs_schema.LogPage,
     status_code=status.HTTP_200_OK,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:logs"])],
 )
 def read_logs(
-    _check_scopes: Annotated[
-        Callable,
-        Security(auth_dependencies.check_scopes, scopes=["server_settings:logs"]),
-    ],
     limit: Annotated[int, Query(ge=1, le=1000, description="Most records to return")] = 200,
     level: Annotated[logs_schema.LogLevel | None, Query(description="Lowest severity to include")] = None,
     search: Annotated[str | None, Query(max_length=200, description="Text a record must contain")] = None,
@@ -79,13 +71,9 @@ def read_logs(
     response_class=FileResponse,
     status_code=status.HTTP_200_OK,
     responses={status.HTTP_200_OK: {"content": {"text/plain": {}}, "description": "The current log file"}},
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:logs"])],
 )
-def download_logs(
-    _check_scopes: Annotated[
-        Callable,
-        Security(auth_dependencies.check_scopes, scopes=["server_settings:logs"]),
-    ],
-) -> FileResponse:
+def download_logs() -> FileResponse:
     """Download the current log file.
 
     Requires admin authentication with server_settings:logs scope. Rotated backups
@@ -108,15 +96,12 @@ def download_logs(
     "",
     response_model=None,
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:logs_clear"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def clear_logs(
     request: Request,
-    _check_scopes: Annotated[
-        Callable,
-        Security(auth_dependencies.check_scopes, scopes=["server_settings:logs_clear"]),
-    ],
-    token_user_id: Annotated[int, Depends(auth_dependencies.get_sub_from_access_token)],
+    token_user_id: auth_dependencies.CurrentUserId,
 ) -> None:
     """Empty the server log and delete its rotated backups.
 

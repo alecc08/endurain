@@ -1,12 +1,8 @@
 """FastAPI router for health targets endpoints."""
 
-from collections.abc import Callable
-from typing import Annotated
+from fastapi import APIRouter, Request, Security, status
 
-from fastapi import APIRouter, Depends, Request, Security, status
-from sqlalchemy.orm import Session
-
-import core.database as core_database
+import core.dependencies as core_dependencies
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
 import modules.health.health_targets.schema as health_targets_schema
@@ -20,17 +16,11 @@ router = APIRouter()
     "",
     response_model=health_targets_schema.HealthTargetsRead | None,
     status_code=status.HTTP_200_OK,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:read"])],
 )
 def read_health_targets_all(
-    _check_scopes: Annotated[Callable, Security(auth_dependencies.check_scopes, scopes=["health:read"])],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> health_targets_schema.HealthTargetsRead | None:
     """Retrieve all health targets for the authenticated user.
 
@@ -38,9 +28,6 @@ def read_health_targets_all(
     access token. It requires the 'health:read' scope for authorization.
 
     Args:
-        _check_scopes (Callable): Security dependency that verifies the user has the
-            required 'health:read' scope. The underscore prefix indicates this parameter
-            is injected by FastAPI's security system but not directly used in the function.
         token_user_id (int): The user ID extracted from the JWT access token, automatically
             injected by the authentication dependency.
         db (Session): SQLAlchemy database session dependency for executing database queries.
@@ -61,20 +48,14 @@ def read_health_targets_all(
     "",
     response_model=health_targets_schema.HealthTargetsRead,
     status_code=status.HTTP_200_OK,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def update_health_targets(
     request: Request,
     health_targets: health_targets_schema.HealthTargetsUpdate,
-    _check_scopes: Annotated[Callable, Security(auth_dependencies.check_scopes, scopes=["health:write"])],
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> health_targets_schema.HealthTargetsRead:
     """Update health targets for the authenticated user.
 
@@ -85,9 +66,6 @@ def update_health_targets(
         request: The incoming request, read by the rate limiter.
         health_targets: The health targets to update, containing the new values for
             the health metrics.
-        _check_scopes (Callable): Security dependency that
-            verifies the user has 'health:write' scope
-            permission.
         token_user_id (int): The authenticated user's ID
             extracted from the access token.
         db (Session): Database session dependency for database

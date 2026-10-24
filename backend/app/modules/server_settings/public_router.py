@@ -4,9 +4,7 @@ from typing import Annotated
 
 import jasil.providers as platform_providers
 from fastapi import APIRouter, Depends, Request, Response, status
-from sqlalchemy.orm import Session
 
-import core.database as core_database
 import core.dependencies as core_dependencies
 import core.etag as core_etag
 import core.exceptions as core_exceptions
@@ -19,10 +17,7 @@ router = APIRouter()
 
 @router.get("", response_model=server_settings_schema.ServerSettingsReadPublic)
 def read_public_server_settings(
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
 ) -> server_settings_schema.ServerSettingsReadPublic:
     """Get public server settings (unauthenticated).
 
@@ -72,10 +67,7 @@ def read_login_photo(
         platform_providers.StorageProvider,
         Depends(core_dependencies.get_storage),
     ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
 ) -> Response:
     """Serve the custom login page photo (unauthenticated).
 

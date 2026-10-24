@@ -37,7 +37,7 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-import core.database as core_database
+import core.dependencies as core_dependencies
 import core.logger as core_logger
 import core.network as core_network
 import modules.auth._internal.password_hasher as auth_password_hasher
@@ -1343,7 +1343,7 @@ class DefaultIdentityService:
 
 
 def get_identity_service(
-    db: Annotated[Session, Depends(core_database.get_db)],
+    db: core_dependencies.DbSession,
     token_manager: Annotated[
         auth_token_manager.TokenManager,
         Depends(auth_token_manager.get_token_manager),

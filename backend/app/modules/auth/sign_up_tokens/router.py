@@ -9,9 +9,8 @@ from fastapi import (
     Request,
     status,
 )
-from sqlalchemy.orm import Session
 
-import core.database as core_database
+import core.dependencies as core_dependencies
 import core.rate_limit as core_rate_limit
 import modules.auth.identity_service as auth_identity_service
 import modules.auth.sign_up_tokens.schema as sign_up_tokens_schema
@@ -39,10 +38,7 @@ def signup(
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
 ) -> sign_up_tokens_schema.SignUpResponse:
     """
     Handle user sign-up request.
@@ -105,10 +101,7 @@ def signup(
 def verify_email(
     request: Request,
     confirm_data: sign_up_tokens_schema.SignUpConfirm,
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
 ) -> sign_up_tokens_schema.SignUpResponse:
     """
     Verify user email via sign-up token.

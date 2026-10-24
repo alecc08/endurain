@@ -38,7 +38,7 @@ def _call(route, **overrides):
         "storage": "storage",
     }
     if route is strava_router.strava_retrieve_activities_days:
-        kwargs.update(_validate_access_token=None, _check_scopes=None)
+        kwargs.update(_validate_access_token=None)
     kwargs.update(overrides)
     return route(**kwargs)
 

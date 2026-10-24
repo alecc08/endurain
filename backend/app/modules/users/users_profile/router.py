@@ -22,9 +22,8 @@ from fastapi import (
     status,
 )
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
 
-import core.database as core_database
+import core.dependencies as core_dependencies
 import core.file_uploads as core_file_uploads
 import core.logger as core_logger
 import core.rate_limit as core_rate_limit
@@ -74,18 +73,12 @@ def _raise_mfa_secret_store_unavailable(
 
 @router.get("", status_code=status.HTTP_200_OK, response_model=users_schema.UsersMe)
 async def read_users_me(
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    db: core_dependencies.DbSession,
 ) -> users_schema.UsersMe:
     """
     Retrieve authenticated user profile with integrations.
@@ -170,10 +163,7 @@ async def read_users_me(
     response_model=list[auth_sessions_schema.UsersSessionsRead],
 )
 async def read_sessions_me(
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
@@ -202,10 +192,7 @@ async def generate_link_token(
     idp_id: int,
     link_request: idp_link_token_schema.IdpLinkTokenRequest,
     request: Request,
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
@@ -267,14 +254,8 @@ async def generate_link_token(
 )
 async def upload_profile_image(
     file: UploadFile,
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> str:
     """
     Upload user profile image with security validation.
@@ -296,14 +277,8 @@ async def upload_profile_image(
 @router.put("", status_code=status.HTTP_200_OK, response_model=dict)
 async def edit_user(
     user_attributtes: users_schema.ProfileUpdate,
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> dict:
     """
     Edit self-service profile fields for the authenticated user.
@@ -330,14 +305,8 @@ async def edit_user(
 @router.put("/privacy", status_code=status.HTTP_200_OK, response_model=dict)
 async def edit_profile_privacy_settings(
     user_privacy_settings: users_privacy_settings_schema.UsersPrivacySettingsUpdate,
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> dict:
     """
     Edit privacy settings for authenticated user.
@@ -360,10 +329,7 @@ async def edit_profile_privacy_settings(
 @router.put("/password", status_code=status.HTTP_200_OK, response_model=dict)
 async def edit_profile_password(
     user_attributtes: users_schema.UsersEditPassword,
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     token_session_id: Annotated[
         str,
         Depends(auth_dependencies.get_sid_from_access_token),
@@ -424,14 +390,8 @@ async def edit_profile_password(
 
 @router.put("/photo", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_profile_photo(
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> None:
     """
     Delete authenticated user's profile photo.
@@ -453,10 +413,7 @@ async def delete_profile_photo(
     response_model=None,
 )
 async def delete_profile_other_sessions(
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     token_session_id: Annotated[
         str,
         Depends(auth_dependencies.get_sid_from_access_token),
@@ -493,10 +450,7 @@ async def delete_profile_other_sessions(
 )
 async def delete_profile_session(
     session_id: str,
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
@@ -521,14 +475,8 @@ async def delete_profile_session(
 
 @router.get("/export", status_code=status.HTTP_200_OK, response_class=StreamingResponse)
 async def export_profile_data(
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[
-        Session,
-        Depends(core_database.get_db),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> StreamingResponse:
     """
     Export all profile data as ZIP archive.
@@ -607,11 +555,8 @@ async def export_profile_data(
 @router.post("/import", status_code=status.HTTP_201_CREATED, response_model=dict)
 async def import_profile_data(
     file: UploadFile,
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
-    db: Annotated[Session, Depends(core_database.get_db)],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> dict:
     """
     Import profile data from ZIP with security validation.
@@ -703,10 +648,7 @@ async def import_profile_data(
     response_model=mfa_schema.MFAStatusResponse,
 )
 async def get_mfa_status(
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
@@ -731,10 +673,7 @@ async def get_mfa_status(
     response_model=mfa_backup_codes_schema.MFABackupCodeStatus,
 )
 async def get_backup_code_status(
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
@@ -759,10 +698,7 @@ async def get_backup_code_status(
     response_model=mfa_schema.MFASetupResponse,
 )
 async def setup_mfa(
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
@@ -795,10 +731,7 @@ async def setup_mfa(
 @router.put("/mfa/enable", status_code=status.HTTP_200_OK, response_model=dict)
 async def enable_mfa(
     request: mfa_schema.MFASetupRequest,
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
@@ -856,10 +789,7 @@ async def enable_mfa(
 @router.put("/mfa/disable", status_code=status.HTTP_200_OK, response_model=dict)
 async def disable_mfa(
     request: mfa_schema.MFADisableRequest,
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
@@ -905,10 +835,7 @@ async def disable_mfa(
 @router.post("/mfa/verify", status_code=status.HTTP_200_OK, response_model=dict)
 async def verify_mfa(
     request: mfa_schema.MFARequest,
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
@@ -944,10 +871,7 @@ async def generate_mfa_backup_codes(
     response: Response,
     request: Request,
     step_up: users_schema.StepUpVerification,
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
@@ -994,10 +918,7 @@ async def generate_mfa_backup_codes(
     response_model=list[auth_identity_links_schema.UsersIdentityProviderResponse],
 )
 async def get_my_identity_providers(
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
@@ -1044,10 +965,7 @@ async def delete_my_identity_provider(
     idp_id: int,
     step_up: users_schema.StepUpVerification,
     request: Request,
-    token_user_id: Annotated[
-        int,
-        Depends(auth_dependencies.get_sub_from_access_token),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
