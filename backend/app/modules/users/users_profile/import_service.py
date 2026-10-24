@@ -49,7 +49,7 @@ import modules.users.users_goals.crud as user_goals_crud
 import modules.users.users_goals.schema as user_goals_schema
 import modules.users.users_integrations.crud as user_integrations_crud
 import modules.users.users_integrations.schema as users_integrations_schema
-import modules.users.users_privacy_settings.crud as users_privacy_settings_crud
+import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
 import modules.users.users_profile.utils as profile_utils
 from modules.users.users_profile.exceptions import (
@@ -663,7 +663,7 @@ class ImportService:
         privacy_data.pop("user_id", None)
 
         user_privacy_settings = users_privacy_settings_schema.UsersPrivacySettingsUpdate(**privacy_data)
-        users_privacy_settings_crud.edit_user_privacy_settings(self.user_id, user_privacy_settings, self.db)
+        users_privacy_settings_integration.edit_privacy_settings(self.user_id, user_privacy_settings, self.db)
         logger.info("Imported user privacy settings")
         self.counts["user_privacy_settings"] += 1
 

@@ -39,7 +39,7 @@ import modules.users.users.crud as users_crud
 import modules.users.users.schema as users_schema
 import modules.users.users.utils as users_utils
 import modules.users.users_integrations.crud as user_integrations_crud
-import modules.users.users_privacy_settings.crud as users_privacy_settings_crud
+import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
 import modules.users.users_profile.exceptions as profile_exceptions
 import modules.users.users_profile.export_service as profile_export_service
@@ -113,7 +113,7 @@ async def read_users_me(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user_privacy_settings = users_privacy_settings_crud.get_user_privacy_settings_by_user_id(user.id, db)
+    user_privacy_settings = users_privacy_settings_integration.get_privacy_settings(user.id, db)
 
     if user_privacy_settings is None:
         raise HTTPException(
@@ -320,7 +320,8 @@ async def edit_profile_privacy_settings(
         Success message.
     """
     # Edit the user privacy settings in the database
-    users_privacy_settings_crud.edit_user_privacy_settings(token_user_id, user_privacy_settings, db)
+    users_privacy_settings_integration.edit_privacy_settings(token_user_id, user_privacy_settings, db)
+    db.commit()
 
     # Return success message
     return {"message": f"User ID {token_user_id} privacy settings updated successfully"}

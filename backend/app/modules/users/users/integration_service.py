@@ -25,9 +25,6 @@ import modules.users.users.crud as users_crud
 import modules.users.users.schema as users_schema
 import modules.users.users.utils as users_utils
 import modules.users.users_default_gear.utils as users_default_gear_utils
-import modules.users.users_privacy_settings.crud as users_privacy_settings_crud
-import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
-import modules.users.users_privacy_settings.utils as users_privacy_settings_utils
 
 
 def get_user(user_id: int, db: Session) -> users_schema.UsersRead | None:
@@ -53,19 +50,6 @@ def list_admin_users(db: Session) -> list[users_schema.UsersRead]:
         The admin users, empty when there are none.
     """
     return users_crud.get_users_admin(db)
-
-
-def get_privacy_settings(user_id: int, db: Session) -> users_privacy_settings_schema.UsersPrivacySettingsRead | None:
-    """Return a user's privacy settings, or ``None`` when they have none.
-
-    Args:
-        user_id: The owner whose defaults to read.
-        db: Database session.
-
-    Returns:
-        The privacy settings, or ``None``.
-    """
-    return users_privacy_settings_crud.get_user_privacy_settings_by_user_id(user_id, db)
 
 
 def local_today(user_id: int, db: Session) -> date:
@@ -115,20 +99,6 @@ def timezone_or_default(timezone: str | None) -> str:
         An IANA timezone name.
     """
     return users_utils.timezone_or_default(timezone)
-
-
-def default_visibility_to_int(
-    visibility: str | users_privacy_settings_schema.ActivityVisibility | None,
-) -> int:
-    """Normalise a user's configured default activity visibility to its int code.
-
-    Args:
-        visibility: The stored privacy-settings visibility value.
-
-    Returns:
-        The integer visibility code (0=public, 1=followers, 2=private).
-    """
-    return users_privacy_settings_utils.visibility_to_int(visibility)
 
 
 def get_default_gear_for_activity_type(user_id: int, activity_type: int, db: Session) -> int | None:

@@ -20,9 +20,8 @@ import modules.strava.utils as strava_utils
 import modules.users.users.crud as users_crud
 import modules.users.users_default_gear.utils as user_default_gear_utils
 import modules.users.users_integrations.schema as user_integrations_schema
-import modules.users.users_privacy_settings.crud as users_privacy_settings_crud
+import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
-import modules.users.users_privacy_settings.utils as users_privacy_settings_utils
 from core.database import SessionLocal
 
 logger = core_logger.get_logger(__name__)
@@ -101,7 +100,7 @@ def fetch_and_process_activities(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
             )
-        user_privacy_settings = users_privacy_settings_crud.get_user_privacy_settings_by_user_id(user.id, db)
+        user_privacy_settings = users_privacy_settings_integration.get_privacy_settings(user.id, db)
 
     return [
         process_activity(
@@ -331,7 +330,9 @@ def parse_activity(
         gear_id=gear_id,
         strava_gear_id=detailed_activity.gear_id,
         strava_activity_id=int(activity.id),
-        visibility=users_privacy_settings_utils.visibility_to_int(user_privacy_settings.default_activity_visibility),
+        visibility=users_privacy_settings_integration.visibility_to_int(
+            user_privacy_settings.default_activity_visibility
+        ),
         hide_start_time=user_privacy_settings.hide_activity_start_time or False,
         hide_location=user_privacy_settings.hide_activity_location or False,
         hide_map=user_privacy_settings.hide_activity_map or False,

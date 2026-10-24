@@ -439,7 +439,7 @@ class TestExportServiceCollectUserSettings:
                     return_value=None,
                 ),
                 patch(
-                    "modules.users.users_profile.export_service.users_privacy_settings_crud.get_user_privacy_settings_by_user_id",
+                    "modules.users.users_profile.export_service.users_privacy_settings_integration.get_privacy_settings",
                     return_value=None,
                 ),
             ):
@@ -466,7 +466,7 @@ class TestExportServiceCollectUserSettings:
                     return_value=MagicMock(),
                 ),
                 patch(
-                    "modules.users.users_profile.export_service.users_privacy_settings_crud.get_user_privacy_settings_by_user_id",
+                    "modules.users.users_profile.export_service.users_privacy_settings_integration.get_privacy_settings",
                     return_value=MagicMock(),
                 ),
                 patch.object(profile_utils, "sqlalchemy_obj_to_dict", return_value={"id": 1}),
@@ -498,7 +498,7 @@ class TestExportServiceCollectUserSettings:
                     return_value=None,
                 ),
                 patch(
-                    "modules.users.users_profile.export_service.users_privacy_settings_crud.get_user_privacy_settings_by_user_id",
+                    "modules.users.users_profile.export_service.users_privacy_settings_integration.get_privacy_settings",
                     return_value=None,
                 ),
             ):
@@ -1189,7 +1189,7 @@ class TestExportServiceCollectUserSettingsEdgeCases:
                     side_effect=Exception("integrations fail"),
                 ),
                 patch(
-                    "modules.users.users_profile.export_service.users_privacy_settings_crud.get_user_privacy_settings_by_user_id",
+                    "modules.users.users_profile.export_service.users_privacy_settings_integration.get_privacy_settings",
                     side_effect=Exception("privacy fail"),
                 ),
                 patch.object(profile_utils, "write_json_to_zip"),

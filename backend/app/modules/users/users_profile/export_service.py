@@ -36,7 +36,7 @@ import modules.users.users_default_gear.crud as user_default_gear_crud
 import modules.users.users_default_gear.schema as user_default_gear_schema
 import modules.users.users_goals.crud as user_goals_crud
 import modules.users.users_integrations.crud as user_integrations_crud
-import modules.users.users_privacy_settings.crud as users_privacy_settings_crud
+import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 import modules.users.users_profile.utils as users_profile_utils
 from modules.users.users_profile.exceptions import (
     DatabaseConnectionError,
@@ -619,9 +619,7 @@ class ExportService:
 
             # Collect and write user privacy settings
             try:
-                user_privacy_settings = users_privacy_settings_crud.get_user_privacy_settings_by_user_id(
-                    self.user_id, self.db
-                )
+                user_privacy_settings = users_privacy_settings_integration.get_privacy_settings(self.user_id, self.db)
                 if user_privacy_settings:
                     privacy_dict = [users_profile_utils.sqlalchemy_obj_to_dict(user_privacy_settings)]
                     users_profile_utils.write_json_to_zip(

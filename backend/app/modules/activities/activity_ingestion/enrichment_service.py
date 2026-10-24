@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 import core.logger as core_logger
 import modules.activities.activity.contracts as activity_contracts
 import modules.users.users.integration_service as users_integration
+import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
 
 logger = core_logger.get_logger(__name__)
@@ -39,7 +40,7 @@ def build_activity_privacy_kwargs(
     """
     ups = user_privacy_settings
     return {
-        "visibility": users_integration.default_visibility_to_int(ups.default_activity_visibility),
+        "visibility": users_privacy_settings_integration.visibility_to_int(ups.default_activity_visibility),
         "hide_start_time": ups.hide_activity_start_time or False,
         "hide_location": ups.hide_activity_location or False,
         "hide_map": ups.hide_activity_map or False,

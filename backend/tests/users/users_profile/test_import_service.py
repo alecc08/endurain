@@ -474,7 +474,7 @@ class TestImportServiceUserData:
         )
 
         with patch(
-            "modules.users.users_profile.import_service.users_privacy_settings_crud.edit_user_privacy_settings",
+            "modules.users.users_profile.import_service.users_privacy_settings_integration.edit_privacy_settings",
         ):
             await service.collect_and_import_user_privacy_settings([{"hide_activity_map": True}])
 

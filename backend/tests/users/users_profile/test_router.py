@@ -123,7 +123,7 @@ def _make_idp_mock(idp_id: int = 1) -> MagicMock:
 class TestReadUsersMe:
     """Tests for GET /profile — read_users_me."""
 
-    @patch("modules.users.users_profile.router.users_privacy_settings_crud.get_user_privacy_settings_by_user_id")
+    @patch("modules.users.users_profile.router.users_privacy_settings_integration.get_privacy_settings")
     @patch("modules.users.users_profile.router.user_integrations_crud.get_user_integrations_by_user_id")
     @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
     def test_success(
@@ -151,7 +151,7 @@ class TestReadUsersMe:
         assert data["has_local_password"] is True
         assert data["mfa_enabled"] is True
 
-    @patch("modules.users.users_profile.router.users_privacy_settings_crud.get_user_privacy_settings_by_user_id")
+    @patch("modules.users.users_profile.router.users_privacy_settings_integration.get_privacy_settings")
     @patch("modules.users.users_profile.router.user_integrations_crud.get_user_integrations_by_user_id")
     @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
     def test_user_not_found(
@@ -169,7 +169,7 @@ class TestReadUsersMe:
         assert response.status_code == 404
         assert response.json()["detail"] == "User not found"
 
-    @patch("modules.users.users_profile.router.users_privacy_settings_crud.get_user_privacy_settings_by_user_id")
+    @patch("modules.users.users_profile.router.users_privacy_settings_integration.get_privacy_settings")
     @patch("modules.users.users_profile.router.user_integrations_crud.get_user_integrations_by_user_id")
     @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
     def test_integrations_not_found(
@@ -188,7 +188,7 @@ class TestReadUsersMe:
         assert response.status_code == 404
         assert response.json()["detail"] == "Could not validate credentials (user integrations not found)"
 
-    @patch("modules.users.users_profile.router.users_privacy_settings_crud.get_user_privacy_settings_by_user_id")
+    @patch("modules.users.users_profile.router.users_privacy_settings_integration.get_privacy_settings")
     @patch("modules.users.users_profile.router.user_integrations_crud.get_user_integrations_by_user_id")
     @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
     def test_privacy_not_found(
@@ -385,7 +385,7 @@ class TestEditUser:
 class TestEditProfilePrivacySettings:
     """Tests for PUT /profile/privacy — edit_profile_privacy_settings."""
 
-    @patch("modules.users.users_profile.router.users_privacy_settings_crud.edit_user_privacy_settings")
+    @patch("modules.users.users_profile.router.users_privacy_settings_integration.edit_privacy_settings")
     def test_success(self, mock_edit, profile_client):
         """Happy path: update privacy settings."""
         response = profile_client.put(

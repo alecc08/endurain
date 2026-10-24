@@ -26,9 +26,10 @@ def _privacy_settings() -> SimpleNamespace:
 
 
 class TestBuildActivityPrivacyKwargs:
+    @patch("modules.activities.activity_ingestion.enrichment_service.users_privacy_settings_integration")
     @patch("modules.activities.activity_ingestion.enrichment_service.users_integration")
-    def test_maps_privacy_fields(self, mock_users):
-        mock_users.default_visibility_to_int.return_value = 0
+    def test_maps_privacy_fields(self, mock_users, mock_privacy):
+        mock_privacy.visibility_to_int.return_value = 0
 
         kwargs = enrichment.build_activity_privacy_kwargs(_privacy_settings())
 
@@ -67,9 +68,10 @@ class TestResolveGearId:
 
 
 class TestEnrichParsedActivity:
+    @patch("modules.activities.activity_ingestion.enrichment_service.users_privacy_settings_integration")
     @patch("modules.activities.activity_ingestion.enrichment_service.users_integration")
-    def test_sets_privacy_and_gear_non_garmin(self, mock_users):
-        mock_users.default_visibility_to_int.return_value = 1
+    def test_sets_privacy_and_gear_non_garmin(self, mock_users, mock_privacy):
+        mock_privacy.visibility_to_int.return_value = 1
         mock_users.get_default_gear_for_activity_type.return_value = 12
         activity = SimpleNamespace(activity_type=4)
 
@@ -83,9 +85,10 @@ class TestEnrichParsedActivity:
         # Non-Garmin import leaves the provider ids untouched.
         assert not hasattr(activity, "garminconnect_activity_id")
 
+    @patch("modules.activities.activity_ingestion.enrichment_service.users_privacy_settings_integration")
     @patch("modules.activities.activity_ingestion.enrichment_service.users_integration")
-    def test_sets_garmin_ids_when_from_garmin(self, mock_users):
-        mock_users.default_visibility_to_int.return_value = 0
+    def test_sets_garmin_ids_when_from_garmin(self, mock_users, mock_privacy):
+        mock_privacy.visibility_to_int.return_value = 0
         mock_users.get_default_gear_for_activity_type.return_value = None
         activity = SimpleNamespace(activity_type=1)
 

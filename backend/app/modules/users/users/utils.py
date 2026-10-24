@@ -18,7 +18,7 @@ import modules.users.users.schema as users_schema
 import modules.users.users.signing as users_signing
 import modules.users.users_default_gear.crud as user_default_gear_crud
 import modules.users.users_integrations.crud as user_integrations_crud
-import modules.users.users_privacy_settings.crud as users_privacy_settings_crud
+import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 
 
 def get_user_by_id_or_404(user_id: int, db: Session) -> users_schema.UsersRead:
@@ -116,7 +116,7 @@ def create_user_default_data(
     user_integrations_crud.create_user_integrations(user_id, db)
 
     # Create the user privacy settings
-    users_privacy_settings_crud.create_user_privacy_settings(user_id, db)
+    users_privacy_settings_integration.create_privacy_settings(user_id, db)
 
     # Create the user health targets
     health_targets_integration.create_health_targets(user_id, db)

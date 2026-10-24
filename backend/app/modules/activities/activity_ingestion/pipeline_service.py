@@ -40,6 +40,7 @@ import modules.activities.activity_ingestion.contracts as activity_ingestion_con
 import modules.activities.activity_ingestion.enrichment_service as activity_ingestion_enrichment_service
 import modules.activities.contributor_registry as activities_contributor_registry
 import modules.users.users.integration_service as users_integration
+import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 
 logger = core_logger.get_logger(__name__)
 
@@ -192,7 +193,7 @@ def store_activities_from_file(
     if user is None:
         raise core_exceptions.NotFoundError("User not found")
 
-    user_privacy_settings = users_integration.get_privacy_settings(user.id, db)
+    user_privacy_settings = users_privacy_settings_integration.get_privacy_settings(user.id, db)
     if user_privacy_settings is None:
         raise core_exceptions.NotFoundError("User privacy settings not found")
 
