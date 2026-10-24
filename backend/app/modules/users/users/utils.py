@@ -17,7 +17,7 @@ import modules.users.users.crud as users_crud
 import modules.users.users.schema as users_schema
 import modules.users.users.signing as users_signing
 import modules.users.users_default_gear.integration_service as users_default_gear_integration
-import modules.users.users_integrations.crud as user_integrations_crud
+import modules.users.users_integrations.integration_service as user_integrations_integration
 import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 
 
@@ -113,7 +113,7 @@ def create_user_default_data(
         None
     """
     # Create the user integrations in the database
-    user_integrations_crud.create_user_integrations(user_id, db)
+    user_integrations_integration.create_integrations(user_id, db)
 
     # Create the user privacy settings
     users_privacy_settings_integration.create_privacy_settings(user_id, db)
@@ -124,6 +124,7 @@ def create_user_default_data(
 
     # Create the user default gear
     users_default_gear_integration.create_default_gear(user_id, db)
+    db.commit()
 
     # Create the user's MFA row (disabled by default) via the auth boundary.
     identity_service.initialize_user_mfa(user_id)

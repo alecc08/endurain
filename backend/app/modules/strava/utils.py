@@ -12,7 +12,7 @@ import core.cryptography as core_cryptography
 import core.logger as core_logger
 import modules.activities.activity.integration_service as activity_integration
 import modules.activities.activity.schema as activity_schema
-import modules.users.users_integrations.crud as user_integrations_crud
+import modules.users.users_integrations.integration_service as user_integrations_integration
 import modules.users.users_integrations.schema as user_integrations_schema
 from core.database import SessionLocal
 
@@ -150,7 +150,7 @@ def refresh_user_strava_token(user_id: int) -> None:
         return
 
     with SessionLocal() as db:
-        user_integrations = user_integrations_crud.get_user_integrations_by_user_id(user_id, db)
+        user_integrations = user_integrations_integration.get_user_integrations(user_id, db)
 
     if user_integrations is None:
         logger.info(f"User {user_id}: User integrations not found. Will skip processing")
@@ -188,7 +188,8 @@ def refresh_user_strava_token(user_id: int) -> None:
         return
 
     with SessionLocal() as db:
-        user_integrations_crud.link_strava_account(user_id, tokens, db)
+        user_integrations_integration.link_strava_account(user_id, tokens, db)
+        db.commit()
     logger.info(f"User {user_id}: Strava tokens refreshed")
 
 
@@ -211,7 +212,7 @@ def fetch_user_integrations_and_validate_token(
     user_id: int, db: Session
 ) -> user_integrations_schema.UsersIntegrationsRead | None:
     # Get the user integrations by user ID
-    user_integrations = user_integrations_crud.get_user_integrations_by_user_id(user_id, db)
+    user_integrations = user_integrations_integration.get_user_integrations(user_id, db)
 
     # Check if user integrations is None
     if user_integrations is None:

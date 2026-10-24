@@ -124,7 +124,7 @@ class TestReadUsersMe:
     """Tests for GET /profile — read_users_me."""
 
     @patch("modules.users.users_profile.router.users_privacy_settings_integration.get_privacy_settings")
-    @patch("modules.users.users_profile.router.user_integrations_crud.get_user_integrations_by_user_id")
+    @patch("modules.users.users_profile.router.user_integrations_integration.get_user_integrations")
     @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
     def test_success(
         self,
@@ -152,7 +152,7 @@ class TestReadUsersMe:
         assert data["mfa_enabled"] is True
 
     @patch("modules.users.users_profile.router.users_privacy_settings_integration.get_privacy_settings")
-    @patch("modules.users.users_profile.router.user_integrations_crud.get_user_integrations_by_user_id")
+    @patch("modules.users.users_profile.router.user_integrations_integration.get_user_integrations")
     @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
     def test_user_not_found(
         self,
@@ -170,7 +170,7 @@ class TestReadUsersMe:
         assert response.json()["detail"] == "User not found"
 
     @patch("modules.users.users_profile.router.users_privacy_settings_integration.get_privacy_settings")
-    @patch("modules.users.users_profile.router.user_integrations_crud.get_user_integrations_by_user_id")
+    @patch("modules.users.users_profile.router.user_integrations_integration.get_user_integrations")
     @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
     def test_integrations_not_found(
         self,
@@ -189,7 +189,7 @@ class TestReadUsersMe:
         assert response.json()["detail"] == "Could not validate credentials (user integrations not found)"
 
     @patch("modules.users.users_profile.router.users_privacy_settings_integration.get_privacy_settings")
-    @patch("modules.users.users_profile.router.user_integrations_crud.get_user_integrations_by_user_id")
+    @patch("modules.users.users_profile.router.user_integrations_integration.get_user_integrations")
     @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
     def test_privacy_not_found(
         self,

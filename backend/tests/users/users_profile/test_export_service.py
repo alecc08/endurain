@@ -435,7 +435,7 @@ class TestExportServiceCollectUserSettings:
                     return_value=[],
                 ),
                 patch(
-                    "modules.users.users_profile.export_service.user_integrations_crud.get_user_integrations_by_user_id",
+                    "modules.users.users_profile.export_service.user_integrations_integration.get_user_integrations",
                     return_value=None,
                 ),
                 patch(
@@ -462,7 +462,7 @@ class TestExportServiceCollectUserSettings:
                     return_value=[MagicMock()],
                 ),
                 patch(
-                    "modules.users.users_profile.export_service.user_integrations_crud.get_user_integrations_by_user_id",
+                    "modules.users.users_profile.export_service.user_integrations_integration.get_user_integrations",
                     return_value=MagicMock(),
                 ),
                 patch(
@@ -494,7 +494,7 @@ class TestExportServiceCollectUserSettings:
                     return_value=[],
                 ),
                 patch(
-                    "modules.users.users_profile.export_service.user_integrations_crud.get_user_integrations_by_user_id",
+                    "modules.users.users_profile.export_service.user_integrations_integration.get_user_integrations",
                     return_value=None,
                 ),
                 patch(
@@ -1185,7 +1185,7 @@ class TestExportServiceCollectUserSettingsEdgeCases:
                     side_effect=Exception("goals fail"),
                 ),
                 patch(
-                    "modules.users.users_profile.export_service.user_integrations_crud.get_user_integrations_by_user_id",
+                    "modules.users.users_profile.export_service.user_integrations_integration.get_user_integrations",
                     side_effect=Exception("integrations fail"),
                 ),
                 patch(

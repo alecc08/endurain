@@ -90,7 +90,7 @@ class TestCreateUserDefaultData:
         mock_identity = MagicMock()
 
         with (
-            patch("modules.users.users_integrations.crud.create_user_integrations") as mock_integrations,
+            patch("modules.users.users_integrations.integration_service.create_integrations") as mock_integrations,
             patch("modules.users.users_privacy_settings.integration_service.create_privacy_settings") as mock_privacy,
             patch("modules.health.health_targets.integration_service.create_health_targets") as mock_targets,
             patch("modules.users.users_default_gear.integration_service.create_default_gear") as mock_gear,

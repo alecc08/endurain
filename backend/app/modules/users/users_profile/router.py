@@ -38,7 +38,7 @@ import modules.auth.sessions.schema as auth_sessions_schema
 import modules.users.users.crud as users_crud
 import modules.users.users.schema as users_schema
 import modules.users.users.utils as users_utils
-import modules.users.users_integrations.crud as user_integrations_crud
+import modules.users.users_integrations.integration_service as user_integrations_integration
 import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
 import modules.users.users_profile.exceptions as profile_exceptions
@@ -104,7 +104,7 @@ async def read_users_me(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user_integrations = user_integrations_crud.get_user_integrations_by_user_id(user.id, db)
+    user_integrations = user_integrations_integration.get_user_integrations(user.id, db)
 
     if user_integrations is None:
         raise HTTPException(

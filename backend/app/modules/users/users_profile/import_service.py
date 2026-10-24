@@ -47,7 +47,7 @@ import modules.users.users_default_gear.integration_service as users_default_gea
 import modules.users.users_default_gear.schema as user_default_gear_schema
 import modules.users.users_goals.integration_service as users_goals_integration
 import modules.users.users_goals.schema as user_goals_schema
-import modules.users.users_integrations.crud as user_integrations_crud
+import modules.users.users_integrations.integration_service as user_integrations_integration
 import modules.users.users_integrations.schema as users_integrations_schema
 import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
@@ -622,7 +622,7 @@ class ImportService:
         integrations_data.pop("user_id", None)
 
         user_integrations = users_integrations_schema.UsersIntegrationsUpdate(**integrations_data)
-        user_integrations_crud.edit_user_integrations(user_integrations, self.user_id, self.db)
+        user_integrations_integration.edit_integrations(user_integrations, self.user_id, self.db)
         logger.info("Imported user integrations")
         self.counts["user_integrations"] += 1
 

@@ -446,7 +446,7 @@ class TestImportServiceUserData:
         )
 
         with patch(
-            "modules.users.users_profile.import_service.user_integrations_crud.edit_user_integrations",
+            "modules.users.users_profile.import_service.user_integrations_integration.edit_integrations",
         ):
             await service.collect_and_import_user_integrations([{"strava_sync_gear": True}])
 

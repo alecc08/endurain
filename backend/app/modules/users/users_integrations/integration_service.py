@@ -1,6 +1,7 @@
 """The operations other modules may call on a user's provider integrations.
 
-Everything here returns schemas or primitives; no ORM row crosses the boundary.
+Everything here returns schemas or primitives; no ORM row crosses the boundary. Writes
+stage; the caller owns the commit.
 """
 
 from sqlalchemy.orm import Session
@@ -23,7 +24,7 @@ def get_user_integrations(user_id: int, db: Session) -> user_integrations_schema
 
 
 def link_garminconnect_account(user_id: int, token: dict, db: Session) -> None:
-    """Store a user's Garmin Connect token; the caller commits.
+    """Store a user's Garmin Connect token.
 
     Args:
         user_id: The user linking Garmin Connect.
@@ -34,7 +35,7 @@ def link_garminconnect_account(user_id: int, token: dict, db: Session) -> None:
 
 
 def unlink_garminconnect_account(user_id: int, db: Session) -> None:
-    """Clear a user's Garmin Connect token and gear sync preference; the caller commits.
+    """Clear a user's Garmin Connect token and gear sync preference.
 
     Args:
         user_id: The user unlinking Garmin Connect.
@@ -44,7 +45,7 @@ def unlink_garminconnect_account(user_id: int, db: Session) -> None:
 
 
 def unlink_garminconnect_account_if_token(user_id: int, token: dict, db: Session) -> bool:
-    """Clear a user's Garmin Connect token only while it is still the given one; the caller commits.
+    """Clear a user's Garmin Connect token only while it is still the given one.
 
     Args:
         user_id: The user unlinking Garmin Connect.
@@ -58,7 +59,7 @@ def unlink_garminconnect_account_if_token(user_id: int, token: dict, db: Session
 
 
 def replace_garminconnect_token_if_token(user_id: int, old_token: dict, new_token: dict, db: Session) -> bool:
-    """Store a refreshed Garmin Connect token only while the stored one is still ``old_token``; the caller commits.
+    """Store a refreshed Garmin Connect token only while the stored one is still ``old_token``.
 
     Args:
         user_id: The user whose token to replace.
@@ -95,3 +96,139 @@ def list_user_ids_with_garminconnect_linked(after_id: int, limit: int, db: Sessi
         The linked user ids, ascending.
     """
     return user_integrations_crud.list_user_ids_with_garminconnect_linked(after_id, limit, db)
+
+
+def get_integrations_by_strava_state(
+    strava_state: str, db: Session
+) -> user_integrations_schema.UsersIntegrationsRead | None:
+    """Return the integrations holding a Strava OAuth state, or ``None`` when no user does.
+
+    Args:
+        strava_state: The OAuth state returned by Strava.
+        db: Database session.
+
+    Returns:
+        The matching user's integrations, or ``None``.
+    """
+    return user_integrations_crud.get_user_integrations_by_strava_state(strava_state, db)
+
+
+def create_integrations(user_id: int, db: Session) -> user_integrations_schema.UsersIntegrationsRead:
+    """Stage the default integrations row for a new user.
+
+    Args:
+        user_id: The user to create integrations for.
+        db: Database session.
+
+    Returns:
+        The created integrations.
+
+    Raises:
+        ConflictError: If the user already has integrations.
+    """
+    return user_integrations_crud.create_user_integrations(user_id, db)
+
+
+def edit_integrations(
+    user_integrations: user_integrations_schema.UsersIntegrationsUpdate,
+    user_id: int,
+    db: Session,
+) -> user_integrations_schema.UsersIntegrationsRead:
+    """Stage an update of a user's integrations.
+
+    Args:
+        user_integrations: The fields to change.
+        user_id: The user whose integrations to update.
+        db: Database session.
+
+    Returns:
+        The updated integrations.
+
+    Raises:
+        NotFoundError: If the user has no integrations.
+    """
+    return user_integrations_crud.edit_user_integrations(user_integrations, user_id, db)
+
+
+def link_strava_account(user_id: int, tokens: dict, db: Session) -> None:
+    """Store a user's Strava tokens (encrypted) and clear the pending OAuth state.
+
+    Args:
+        user_id: The user linking Strava.
+        tokens: The token response holding ``access_token``, ``refresh_token`` and ``expires_at``.
+        db: Database session.
+
+    Raises:
+        NotFoundError: If the user has no integrations.
+    """
+    user_integrations_crud.link_strava_account(user_id, tokens, db)
+
+
+def unlink_strava_account(user_id: int, db: Session) -> None:
+    """Clear a user's Strava tokens, credentials, state and gear sync preference.
+
+    Args:
+        user_id: The user unlinking Strava.
+        db: Database session.
+
+    Raises:
+        NotFoundError: If the user has no integrations.
+    """
+    user_integrations_crud.unlink_strava_account(user_id, db)
+
+
+def set_strava_client(user_id: int, client_id: str, client_secret: str, db: Session) -> None:
+    """Store a user's Strava client credentials (encrypted).
+
+    Args:
+        user_id: The user whose credentials to set.
+        client_id: The Strava client id.
+        client_secret: The Strava client secret.
+        db: Database session.
+
+    Raises:
+        NotFoundError: If the user has no integrations.
+    """
+    user_integrations_crud.set_user_strava_client(user_id, client_id, client_secret, db)
+
+
+def set_strava_state(user_id: int, state: str | None, db: Session) -> None:
+    """Set or clear a user's Strava OAuth state.
+
+    Args:
+        user_id: The user whose state to set.
+        state: The state to store, or ``None`` to clear it.
+        db: Database session.
+
+    Raises:
+        NotFoundError: If the user has no integrations.
+    """
+    user_integrations_crud.set_user_strava_state(user_id, state, db)
+
+
+def set_strava_sync_gear(user_id: int, sync_gear: bool, db: Session) -> None:
+    """Set whether a user's Strava gear is synchronised.
+
+    Args:
+        user_id: The user whose preference to set.
+        sync_gear: Whether to synchronise gear.
+        db: Database session.
+
+    Raises:
+        NotFoundError: If the user has no integrations.
+    """
+    user_integrations_crud.set_user_strava_sync_gear(user_id, sync_gear, db)
+
+
+def list_user_ids_with_strava_linked(after_id: int, limit: int, db: Session) -> list[int]:
+    """List the users who have linked Strava, ascending, a page at a time.
+
+    Args:
+        after_id: Return only users with an id greater than this.
+        limit: Maximum number of user ids to return.
+        db: Database session.
+
+    Returns:
+        The linked user ids, ascending.
+    """
+    return user_integrations_crud.list_user_ids_with_strava_linked(after_id, limit, db)

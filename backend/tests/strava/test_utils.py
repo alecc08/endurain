@@ -158,8 +158,8 @@ class TestRefreshUserStravaToken:
 
     def test_a_token_far_from_expiry_is_left_alone(self, monkeypatch):
         monkeypatch.setattr(
-            strava_utils.user_integrations_crud,
-            "get_user_integrations_by_user_id",
+            strava_utils.user_integrations_integration,
+            "get_user_integrations",
             Mock(return_value=self._integrations(expires_in_minutes=600)),
         )
         create_client = Mock()
@@ -171,8 +171,8 @@ class TestRefreshUserStravaToken:
 
     def test_an_expiring_token_is_refreshed_and_stored_with_no_session_open_for_the_call(self, monkeypatch):
         monkeypatch.setattr(
-            strava_utils.user_integrations_crud,
-            "get_user_integrations_by_user_id",
+            strava_utils.user_integrations_integration,
+            "get_user_integrations",
             Mock(return_value=self._integrations(expires_in_minutes=10)),
         )
         monkeypatch.setattr(strava_utils.core_cryptography, "decrypt_token_fernet", lambda value: value)
@@ -197,7 +197,7 @@ class TestRefreshUserStravaToken:
         )
         monkeypatch.setattr(strava_utils, "create_strava_client", Mock(return_value=client))
         link = Mock()
-        monkeypatch.setattr(strava_utils.user_integrations_crud, "link_strava_account", link)
+        monkeypatch.setattr(strava_utils.user_integrations_integration, "link_strava_account", link)
 
         strava_utils.refresh_user_strava_token(1)
 
@@ -206,8 +206,8 @@ class TestRefreshUserStravaToken:
 
     def test_a_rate_limited_refresh_marks_the_limit_and_returns(self, monkeypatch):
         monkeypatch.setattr(
-            strava_utils.user_integrations_crud,
-            "get_user_integrations_by_user_id",
+            strava_utils.user_integrations_integration,
+            "get_user_integrations",
             Mock(return_value=self._integrations(expires_in_minutes=10)),
         )
         monkeypatch.setattr(strava_utils.core_cryptography, "decrypt_token_fernet", lambda value: value)
@@ -215,7 +215,7 @@ class TestRefreshUserStravaToken:
         client.refresh_access_token.side_effect = RuntimeError("429 rate limit exceeded")
         monkeypatch.setattr(strava_utils, "create_strava_client", Mock(return_value=client))
         link = Mock()
-        monkeypatch.setattr(strava_utils.user_integrations_crud, "link_strava_account", link)
+        monkeypatch.setattr(strava_utils.user_integrations_integration, "link_strava_account", link)
 
         strava_utils.refresh_user_strava_token(1)
 
@@ -225,8 +225,8 @@ class TestRefreshUserStravaToken:
     def test_an_unexpected_failure_is_logged_not_raised(self, monkeypatch):
         """The sync that follows fails visibly if the token really is unusable."""
         monkeypatch.setattr(
-            strava_utils.user_integrations_crud,
-            "get_user_integrations_by_user_id",
+            strava_utils.user_integrations_integration,
+            "get_user_integrations",
             Mock(return_value=self._integrations(expires_in_minutes=10)),
         )
         monkeypatch.setattr(strava_utils.core_cryptography, "decrypt_token_fernet", lambda value: value)

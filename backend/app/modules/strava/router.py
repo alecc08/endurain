@@ -21,7 +21,7 @@ import modules.strava.gear_utils as strava_gear_utils
 import modules.strava.provider_registry as strava_provider_registry
 import modules.strava.schema as strava_schema
 import modules.strava.utils as strava_utils
-import modules.users.users_integrations.crud as user_integrations_crud
+import modules.users.users_integrations.integration_service as user_integrations_integration
 
 logger = core_logger.get_logger(__name__)
 
@@ -44,7 +44,7 @@ async def strava_link(
     db: core_dependencies.DbSession,
 ):
     # Get the user integrations by the state
-    user_integrations = user_integrations_crud.get_user_integrations_by_strava_state(state, db)
+    user_integrations = user_integrations_integration.get_integrations_by_strava_state(state, db)
 
     # The state must belong to the authenticated user
     if user_integrations is None or user_integrations.user_id != token_user_id:
@@ -72,7 +72,8 @@ async def strava_link(
         )
 
         # Update the user integrations with the tokens
-        user_integrations_crud.link_strava_account(user_integrations.user_id, tokens, db)
+        user_integrations_integration.link_strava_account(user_integrations.user_id, tokens, db)
+        db.commit()
 
         # Return success message
         return {"detail": f"Strava linked successfully for user {user_integrations.user_id}"}
@@ -80,7 +81,9 @@ async def strava_link(
         logger.error(f"Unable to link Strava account: {err}", exc_info=err)
 
         # Clean up by setting Strava
-        user_integrations_crud.unlink_strava_account(user_integrations.user_id, db)
+        db.rollback()
+        user_integrations_integration.unlink_strava_account(user_integrations.user_id, db)
+        db.commit()
 
         # Raise an HTTPException with appropriate status code
         raise HTTPException(
@@ -228,7 +231,8 @@ async def strava_set_user_client(
     db: core_dependencies.DbSession,
 ):
     # Set the user Strava client
-    user_integrations_crud.set_user_strava_client(token_user_id, client.client_id, client.client_secret, db)
+    user_integrations_integration.set_strava_client(token_user_id, client.client_id, client.client_secret, db)
+    db.commit()
 
     # Return success message
     return {f"Strava client for user {token_user_id} edited successfully"}
@@ -245,7 +249,8 @@ async def strava_set_user_unique_state(
     db: core_dependencies.DbSession,
 ):
     # Set the user Strava state
-    user_integrations_crud.set_user_strava_state(token_user_id, state, db)
+    user_integrations_integration.set_strava_state(token_user_id, state, db)
+    db.commit()
 
     # Return success message
     return {f"Strava state for user {token_user_id} edited successfully"}
@@ -281,8 +286,9 @@ def strava_unlink(
     # delete all strava activities for user
     activity_integration.delete_all_strava_activities(token_user_id, db)
 
-    # unlink strava account; this commits the staged gear and activity deletions with it
-    user_integrations_crud.unlink_strava_account(token_user_id, db)
+    # unlink strava account; the commit covers the staged gear and activity deletions with it
+    user_integrations_integration.unlink_strava_account(token_user_id, db)
+    db.commit()
 
     # Return success message
     return {"detail": f"Strava unlinked for user {token_user_id} successfully"}

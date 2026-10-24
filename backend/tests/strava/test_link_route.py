@@ -13,10 +13,10 @@ def _link(token_user_id: int, owner_id: int = 1):
     integrations = SimpleNamespace(user_id=owner_id, strava_client_id="id", strava_client_secret="secret")
     with (
         patch.object(
-            strava_router.user_integrations_crud, "get_user_integrations_by_strava_state", return_value=integrations
+            strava_router.user_integrations_integration, "get_integrations_by_strava_state", return_value=integrations
         ),
-        patch.object(strava_router.user_integrations_crud, "link_strava_account") as link,
-        patch.object(strava_router.user_integrations_crud, "unlink_strava_account") as unlink,
+        patch.object(strava_router.user_integrations_integration, "link_strava_account") as link,
+        patch.object(strava_router.user_integrations_integration, "unlink_strava_account") as unlink,
         patch.object(strava_router.strava_utils, "create_strava_client"),
         patch.object(strava_router.core_cryptography, "decrypt_token_fernet", return_value="x"),
     ):
