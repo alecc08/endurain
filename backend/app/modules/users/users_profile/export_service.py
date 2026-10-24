@@ -32,7 +32,7 @@ import modules.gears.gear_components.integration_service as gear_components_inte
 import modules.health.health_targets.integration_service as health_targets_integration
 import modules.health.health_weight.integration_service as health_weight_integration
 import modules.users.users.signing as users_signing
-import modules.users.users_default_gear.crud as user_default_gear_crud
+import modules.users.users_default_gear.integration_service as users_default_gear_integration
 import modules.users.users_default_gear.schema as user_default_gear_schema
 import modules.users.users_goals.crud as user_goals_crud
 import modules.users.users_integrations.crud as user_integrations_crud
@@ -572,7 +572,7 @@ class ExportService:
             # Collect and write user default gear
             try:
                 user_default_gear: user_default_gear_schema.UsersDefaultGearRead | None = (
-                    user_default_gear_crud.get_user_default_gear_by_user_id(self.user_id, self.db)
+                    users_default_gear_integration.get_default_gear(self.user_id, self.db)
                 )
                 if user_default_gear:
                     default_gear_dict = [user_default_gear.model_dump(mode="json")]

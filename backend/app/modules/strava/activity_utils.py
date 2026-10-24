@@ -18,7 +18,7 @@ import modules.activities.computation as activities_computation
 import modules.gears.gear.integration_service as gears_integration
 import modules.strava.utils as strava_utils
 import modules.users.users.crud as users_crud
-import modules.users.users_default_gear.utils as user_default_gear_utils
+import modules.users.users_default_gear.integration_service as users_default_gear_integration
 import modules.users.users_integrations.schema as user_integrations_schema
 import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
@@ -290,7 +290,7 @@ def parse_activity(
 
     if gear_id is None:
         with SessionLocal() as db:
-            gear_id = user_default_gear_utils.get_user_default_gear_by_activity_type(user_id, activity_type, db)
+            gear_id = users_default_gear_integration.get_default_gear_for_activity_type(user_id, activity_type, db)
 
     if activity_type != 3 and activity_type != 7 and is_lat_lon_set:
         timezone = core_timezone.from_lat_lon(

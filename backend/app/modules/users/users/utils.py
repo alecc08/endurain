@@ -16,7 +16,7 @@ import modules.health.health_targets.integration_service as health_targets_integ
 import modules.users.users.crud as users_crud
 import modules.users.users.schema as users_schema
 import modules.users.users.signing as users_signing
-import modules.users.users_default_gear.crud as user_default_gear_crud
+import modules.users.users_default_gear.integration_service as users_default_gear_integration
 import modules.users.users_integrations.crud as user_integrations_crud
 import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 
@@ -123,7 +123,7 @@ def create_user_default_data(
     db.commit()
 
     # Create the user default gear
-    user_default_gear_crud.create_user_default_gear(user_id, db)
+    users_default_gear_integration.create_default_gear(user_id, db)
 
     # Create the user's MFA row (disabled by default) via the auth boundary.
     identity_service.initialize_user_mfa(user_id)

@@ -21,7 +21,7 @@ def _build_app(mock_db):
 
 
 class TestReadUserDefaultGear:
-    @patch("modules.users.users_default_gear.router.user_default_gear_crud.get_user_default_gear_by_user_id")
+    @patch("modules.users.users_default_gear.router.user_default_gear_service.get_default_gear")
     def test_read_success(self, mock_get, mock_db):
         from modules.users.users_default_gear.schema import UsersDefaultGearRead
 
@@ -33,7 +33,7 @@ class TestReadUserDefaultGear:
 
 
 class TestEditUserDefaultGear:
-    @patch("modules.users.users_default_gear.router.user_default_gear_crud.edit_user_default_gear")
+    @patch("modules.users.users_default_gear.router.user_default_gear_service.edit_default_gear")
     def test_edit_success(self, mock_edit, mock_db):
         from modules.users.users_default_gear.schema import UsersDefaultGearRead
 

@@ -328,13 +328,13 @@ class TestImportServiceUserData:
         )
         with (
             patch(
-                "modules.users.users_profile.import_service.user_default_gear_crud.get_user_default_gear_by_user_id",
+                "modules.users.users_profile.import_service.users_default_gear_integration.get_default_gear",
                 return_value=None,
             ),
             patch(
-                "modules.users.users_profile.import_service.user_default_gear_crud.create_user_default_gear"
+                "modules.users.users_profile.import_service.users_default_gear_integration.create_default_gear"
             ) as mock_create,
-            patch("modules.users.users_profile.import_service.user_default_gear_crud.edit_user_default_gear"),
+            patch("modules.users.users_profile.import_service.users_default_gear_integration.edit_default_gear"),
         ):
             mock_create.return_value.id = 99
             await service.collect_and_import_user_default_gear([{"run_gear_id": 5}], {5: 10})
@@ -351,10 +351,10 @@ class TestImportServiceUserData:
         mock_existing.id = 99
         with (
             patch(
-                "modules.users.users_profile.import_service.user_default_gear_crud.get_user_default_gear_by_user_id",
+                "modules.users.users_profile.import_service.users_default_gear_integration.get_default_gear",
                 return_value=mock_existing,
             ),
-            patch("modules.users.users_profile.import_service.user_default_gear_crud.edit_user_default_gear"),
+            patch("modules.users.users_profile.import_service.users_default_gear_integration.edit_default_gear"),
         ):
             await service.collect_and_import_user_default_gear(
                 [{"run_gear_id": 5, "ride_gear_id": 7}],

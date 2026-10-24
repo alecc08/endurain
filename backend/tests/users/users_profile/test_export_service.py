@@ -427,7 +427,7 @@ class TestExportServiceCollectUserSettings:
 
             with (
                 patch(
-                    "modules.users.users_profile.export_service.user_default_gear_crud.get_user_default_gear_by_user_id",
+                    "modules.users.users_profile.export_service.users_default_gear_integration.get_default_gear",
                     return_value=None,
                 ),
                 patch(
@@ -454,7 +454,7 @@ class TestExportServiceCollectUserSettings:
 
             with (
                 patch(
-                    "modules.users.users_profile.export_service.user_default_gear_crud.get_user_default_gear_by_user_id",
+                    "modules.users.users_profile.export_service.users_default_gear_integration.get_default_gear",
                     return_value=MagicMock(),
                 ),
                 patch(
@@ -486,7 +486,7 @@ class TestExportServiceCollectUserSettings:
 
             with (
                 patch(
-                    "modules.users.users_profile.export_service.user_default_gear_crud.get_user_default_gear_by_user_id",
+                    "modules.users.users_profile.export_service.users_default_gear_integration.get_default_gear",
                     return_value=None,
                 ),
                 patch(
@@ -517,7 +517,7 @@ class TestExportServiceCollectUserSettings:
 
             with (
                 patch(
-                    "modules.users.users_profile.export_service.user_default_gear_crud.get_user_default_gear_by_user_id",
+                    "modules.users.users_profile.export_service.users_default_gear_integration.get_default_gear",
                     side_effect=Exception("fail"),
                 ),
                 pytest.raises(DataCollectionError),
@@ -1177,7 +1177,7 @@ class TestExportServiceCollectUserSettingsEdgeCases:
 
             with (
                 patch(
-                    "modules.users.users_profile.export_service.user_default_gear_crud.get_user_default_gear_by_user_id",
+                    "modules.users.users_profile.export_service.users_default_gear_integration.get_default_gear",
                     side_effect=Exception("gear fail"),
                 ),
                 patch(
@@ -1207,7 +1207,7 @@ class TestExportServiceCollectUserSettingsEdgeCases:
 
             with (
                 patch(
-                    "modules.users.users_profile.export_service.user_default_gear_crud.get_user_default_gear_by_user_id",
+                    "modules.users.users_profile.export_service.users_default_gear_integration.get_default_gear",
                     side_effect=SQLAlchemyError("db down"),
                 ),
                 pytest.raises(DataCollectionError),

@@ -24,7 +24,6 @@ from sqlalchemy.orm import Session
 import modules.users.users.crud as users_crud
 import modules.users.users.schema as users_schema
 import modules.users.users.utils as users_utils
-import modules.users.users_default_gear.utils as users_default_gear_utils
 
 
 def get_user(user_id: int, db: Session) -> users_schema.UsersRead | None:
@@ -99,17 +98,3 @@ def timezone_or_default(timezone: str | None) -> str:
         An IANA timezone name.
     """
     return users_utils.timezone_or_default(timezone)
-
-
-def get_default_gear_for_activity_type(user_id: int, activity_type: int, db: Session) -> int | None:
-    """Return the user's default gear id for an activity type, if they set one.
-
-    Args:
-        user_id: The owning user.
-        activity_type: The numeric sport type.
-        db: Database session.
-
-    Returns:
-        The gear id, or ``None`` when the user has no default for this type.
-    """
-    return users_default_gear_utils.get_user_default_gear_by_activity_type(user_id, activity_type, db)

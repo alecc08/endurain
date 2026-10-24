@@ -93,7 +93,7 @@ class TestCreateUserDefaultData:
             patch("modules.users.users_integrations.crud.create_user_integrations") as mock_integrations,
             patch("modules.users.users_privacy_settings.integration_service.create_privacy_settings") as mock_privacy,
             patch("modules.health.health_targets.integration_service.create_health_targets") as mock_targets,
-            patch("modules.users.users_default_gear.crud.create_user_default_gear") as mock_gear,
+            patch("modules.users.users_default_gear.integration_service.create_default_gear") as mock_gear,
         ):
             create_user_default_data(1, mock_identity, mock_db)
 

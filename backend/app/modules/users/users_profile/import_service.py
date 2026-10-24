@@ -43,7 +43,7 @@ import modules.health.health_weight.schema as health_weight_schema
 import modules.users.users.crud as users_crud
 import modules.users.users.schema as users_schema
 import modules.users.users.signing as users_signing
-import modules.users.users_default_gear.crud as user_default_gear_crud
+import modules.users.users_default_gear.integration_service as users_default_gear_integration
 import modules.users.users_default_gear.schema as user_default_gear_schema
 import modules.users.users_goals.crud as user_goals_crud
 import modules.users.users_goals.schema as user_goals_schema
@@ -568,11 +568,11 @@ class ImportService:
             logger.info("No user default gear data to import")
             return
 
-        current_user_default_gear = user_default_gear_crud.get_user_default_gear_by_user_id(self.user_id, self.db)
+        current_user_default_gear = users_default_gear_integration.get_default_gear(self.user_id, self.db)
 
         if current_user_default_gear is None:
             logger.info("No existing user default gear, creating new record")
-            current_user_default_gear = user_default_gear_crud.create_user_default_gear(self.user_id, self.db)
+            current_user_default_gear = users_default_gear_integration.create_default_gear(self.user_id, self.db)
 
         gear_data = user_default_gear_data[0]
         gear_data["id"] = current_user_default_gear.id
@@ -602,7 +602,7 @@ class ImportService:
             gear_data[field] = gears_id_mapping.get(old_gear_id)
 
         user_default_gear = user_default_gear_schema.UsersDefaultGearUpdate(**gear_data)
-        user_default_gear_crud.edit_user_default_gear(user_default_gear, self.user_id, self.db)
+        users_default_gear_integration.edit_default_gear(user_default_gear, self.user_id, self.db)
         logger.info("Imported user default gear")
         self.counts["user_default_gear"] += 1
 

@@ -4,8 +4,8 @@ from fastapi import APIRouter, status
 
 import core.dependencies as core_dependencies
 import modules.auth.dependencies as auth_dependencies
-import modules.users.users_default_gear.crud as user_default_gear_crud
 import modules.users.users_default_gear.schema as user_default_gear_schema
+import modules.users.users_default_gear.service as user_default_gear_service
 
 # Define the API router
 router = APIRouter()
@@ -30,7 +30,7 @@ async def read_user_default_gear(
     Returns:
         User default gear settings.
     """
-    return user_default_gear_crud.get_user_default_gear_by_user_id(token_user_id, db)
+    return user_default_gear_service.get_default_gear(token_user_id, db)
 
 
 @router.put(
@@ -54,4 +54,4 @@ async def edit_user_default_gear(
     Returns:
         Updated user default gear settings.
     """
-    return user_default_gear_crud.edit_user_default_gear(user_default_gear, token_user_id, db)
+    return user_default_gear_service.edit_default_gear(user_default_gear, token_user_id, db)
