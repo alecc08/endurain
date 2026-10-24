@@ -207,6 +207,7 @@ async function submitForm(values: SleepFormValues): Promise<void> {
     if (props.entry) {
       await updateMutation.mutateAsync({
         id: props.entry.id,
+        version: props.entry.version,
         input,
       })
       emit('success', t('health.sleep.form.updateSuccess'))

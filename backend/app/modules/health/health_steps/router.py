@@ -2,9 +2,10 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Security, status
+from fastapi import APIRouter, Depends, Query, Request, Response, Security, status
 
 import core.dependencies as core_dependencies
+import core.etag as core_etag
 import core.pagination as core_pagination
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
@@ -95,6 +96,8 @@ def edit_health_steps(
     health_steps: health_steps_schema.HealthStepsUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
+    if_match: core_dependencies.IfMatch,
 ) -> health_steps_schema.HealthStepsRead:
     """Edit health steps data for a user.
 
@@ -109,6 +112,8 @@ def edit_health_steps(
         token_user_id (int): The user ID extracted from the JWT access token, used to identify
             the user making the request.
         db (Session): Database session dependency for performing database operations.
+        response: The response, which carries the new ETag.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         health_steps_schema.HealthSteps: The updated health steps record with the new values
@@ -119,7 +124,11 @@ def edit_health_steps(
             found, or database operations fail.
     """
     # Updates the health_steps in the database and returns it
-    return health_steps_service.edit_health_steps(token_user_id, health_steps_id, health_steps, db)
+    updated = health_steps_service.edit_health_steps(
+        token_user_id, health_steps_id, health_steps, db, if_match=if_match
+    )
+    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    return updated
 
 
 @router.delete(

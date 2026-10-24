@@ -9,3 +9,14 @@
 export function ifMatchHeaders(version: number): { 'If-Match': string } {
   return { 'If-Match': `"${version}"` }
 }
+
+/**
+ * Reads the version a record was served at. The backend always sends it. A missing one becomes 0,
+ * which no stored version equals, so the write is refused with 412 instead of overwriting.
+ *
+ * @param version - The `version` field of a record payload.
+ * @returns The version to send back in `If-Match`.
+ */
+export function rowVersion(version: number | null | undefined): number {
+  return version ?? 0
+}

@@ -25,6 +25,7 @@ def passthrough_serializers():
 def _row(record_id: int = 1) -> MagicMock:
     row = MagicMock(spec=health_poop_models.HealthPoop)
     row.id = record_id
+    row.version = 1
     row.user_id = 1
     row.date_time = datetime(2024, 1, 15, 10, 0, 0)
     return row
@@ -109,7 +110,7 @@ class TestEditHealthPoop:
         _returns_one(mock_db, row)
         update = health_poop_schema.HealthPoopUpdate(notes="ok")
 
-        health_poop_crud.edit_health_poop(1, 1, update, mock_db)
+        health_poop_crud.edit_health_poop(1, 1, update, mock_db, if_match="*")
 
         assert row.notes == "ok"
         mock_db.flush.assert_called_once()
@@ -120,7 +121,7 @@ class TestEditHealthPoop:
         update = health_poop_schema.HealthPoopUpdate(notes="ok")
 
         with pytest.raises(core_exceptions.NotFoundError, match="Health poop not found"):
-            health_poop_crud.edit_health_poop(1, 9, update, mock_db)
+            health_poop_crud.edit_health_poop(1, 9, update, mock_db, if_match="*")
 
 
 class TestDeleteHealthPoop:

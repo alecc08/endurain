@@ -8,7 +8,9 @@ transaction boundary. What other modules may consume lives in
 from datetime import date as date_type
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.pagination as core_pagination
@@ -65,7 +67,12 @@ def list_health_sleep(
 
 
 def stage_edit_health_sleep(
-    user_id: int, health_sleep_id: int, health_sleep: health_sleep_schema.HealthSleepUpdate, db: Session
+    user_id: int,
+    health_sleep_id: int,
+    health_sleep: health_sleep_schema.HealthSleepUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_sleep_schema.HealthSleepRead:
     """Stage an update to a sleep record.
 
@@ -74,14 +81,16 @@ def stage_edit_health_sleep(
         health_sleep_id: The record to change.
         health_sleep: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    return health_sleep_crud.edit_health_sleep(user_id, health_sleep_id, health_sleep, db)
+    return health_sleep_crud.edit_health_sleep(user_id, health_sleep_id, health_sleep, db, if_match=if_match)
 
 
 def stage_upsert_health_sleep(
@@ -120,9 +129,19 @@ def stage_upsert_health_sleep(
             )
             if existing is None:
                 raise
-    return stage_edit_health_sleep(
-        user_id, existing.id, health_sleep_schema.HealthSleepUpdate(**health_sleep.model_dump()), db
-    )
+    update = health_sleep_schema.HealthSleepUpdate(**health_sleep.model_dump())
+    for attempt in range(health_constants.UPSERT_ATTEMPTS):
+        try:
+            with db.begin_nested():
+                return stage_edit_health_sleep(user_id, existing.id, update, db, if_match="*")
+        except StaleDataError:
+            # Another writer changed the row between this read and the flush: read it again and apply on top.
+            existing = health_sleep_crud.get_health_sleep_by_date_and_user_id(
+                user_id, health_sleep.date.isoformat(), db
+            )
+            if existing is None or attempt == health_constants.UPSERT_ATTEMPTS - 1:
+                raise
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 def create_health_sleep(
@@ -151,7 +170,12 @@ def create_health_sleep(
 
 
 def edit_health_sleep(
-    user_id: int, health_sleep_id: int, health_sleep: health_sleep_schema.HealthSleepUpdate, db: Session
+    user_id: int,
+    health_sleep_id: int,
+    health_sleep: health_sleep_schema.HealthSleepUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_sleep_schema.HealthSleepRead:
     """Score and update a sleep record, and commit.
 
@@ -160,16 +184,24 @@ def edit_health_sleep(
         health_sleep_id: The record to change.
         health_sleep: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
     health_sleep_sleep_scoring.calculate_and_set_sleep_scores(health_sleep)
-    updated = stage_edit_health_sleep(user_id, health_sleep_id, health_sleep, db)
-    db.commit()
+    with core_etag.refuse_stale_write(
+        db,
+        "sleep record",
+        lambda: health_sleep_crud.health_sleep_exists(health_sleep_id, user_id, db),
+        "Sleep record not found",
+    ):
+        updated = stage_edit_health_sleep(user_id, health_sleep_id, health_sleep, db, if_match=if_match)
+        db.commit()
     logger.debug("Edited a sleep record", extra=core_logger.context(user_id=user_id))
     return updated
 

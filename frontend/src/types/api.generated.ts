@@ -1451,6 +1451,8 @@ export interface paths {
          *         health_fasting: Fasting data to update.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         Updated HealthFastingRead record.
@@ -1587,6 +1589,8 @@ export interface paths {
          *         health_poop: Poop data to update.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         Updated HealthPoopRead record.
@@ -1696,6 +1700,8 @@ export interface paths {
          *         token_user_id (int): The user ID extracted from the JWT access token, used to identify
          *             the user making the request.
          *         db (Session): Database session dependency for performing database operations.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         health_sleep_schema.HealthSleepRead: The updated health sleep record with the new values
@@ -1844,6 +1850,8 @@ export interface paths {
          *         token_user_id (int): The user ID extracted from the JWT access token, used to identify
          *             the user making the request.
          *         db (Session): Database session dependency for performing database operations.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         health_steps_schema.HealthSteps: The updated health steps record with the new values
@@ -1885,6 +1893,11 @@ export interface paths {
          *         HTTPException: May raise 403 Forbidden if the user lacks the required 'health:read' scope.
          */
         get: operations["read_health_targets_all_api_v1_health_targets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         /**
          * Update Health Targets
          * @description Update health targets for the authenticated user.
@@ -1900,6 +1913,8 @@ export interface paths {
          *             extracted from the access token.
          *         db (Session): Database session dependency for database
          *             operations.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         health_targets_schema.HealthTargetsRead: The updated
@@ -1911,12 +1926,7 @@ export interface paths {
          *             lacks proper permissions or if the token is invalid.
          *         HTTPException: May raise database-related errors if the update operation fails.
          */
-        put: operations["update_health_targets_api_v1_health_targets_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
+        patch: operations["update_health_targets_api_v1_health_targets_patch"];
         trace?: never;
     };
     "/api/v1/health/water": {
@@ -2002,6 +2012,8 @@ export interface paths {
          *         health_water: Water intake data to update.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         Updated HealthWaterRead record.
@@ -2108,6 +2120,8 @@ export interface paths {
          *         token_user_id (int): The ID of the authenticated user extracted from the
          *             access token.
          *         db (Session): Database session dependency for executing database operations.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         The updated health weight record from the database.
@@ -6780,6 +6794,12 @@ export interface components {
              * @description Foreign key reference to the user
              */
             user_id: number;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * HealthFastingStatsResponse
@@ -6938,6 +6958,12 @@ export interface components {
              * @description Foreign key reference to the user
              */
             user_id: number;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * HealthPoopUpdate
@@ -7362,6 +7388,12 @@ export interface components {
              * @description Foreign key reference to the user
              */
             user_id: number;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * HealthSleepStage
@@ -7640,6 +7672,12 @@ export interface components {
              * @description Foreign key reference to the user
              */
             user_id: number;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * HealthStepsUpdate
@@ -7669,6 +7707,7 @@ export interface components {
          *     Attributes:
          *         id: Unique identifier for the health target record.
          *         user_id: Foreign key reference to the user.
+         *         version: Optimistic-concurrency counter, also sent as the ETag.
          */
         HealthTargetsRead: {
             /**
@@ -7702,6 +7741,12 @@ export interface components {
              */
             user_id: number;
             /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
+            /**
              * Water Ml
              * @description Target daily water intake in milliliters
              */
@@ -7714,10 +7759,10 @@ export interface components {
         };
         /**
          * HealthTargetsUpdate
-         * @description Schema for updating health targets.
+         * @description Schema for the fields a PATCH changes on a user's health targets.
          *
-         *     Inherits all validation from HealthTargetsRead.
-         *     All fields are optional for partial updates.
+         *     The targets belong to the caller, so the body carries neither an id nor an owner; only the
+         *     fields present are changed.
          */
         HealthTargetsUpdate: {
             /**
@@ -7725,11 +7770,6 @@ export interface components {
              * @description Target fasting duration in seconds (max 72h)
              */
             fasting?: number | null;
-            /**
-             * Id
-             * @description Unique identifier for the health target
-             */
-            id: number;
             /**
              * Poop Count
              * @description Target daily bowel movement count
@@ -7745,11 +7785,6 @@ export interface components {
              * @description Target daily steps count
              */
             steps?: number | null;
-            /**
-             * User Id
-             * @description Foreign key reference to the user
-             */
-            user_id: number;
             /**
              * Water Ml
              * @description Target daily water intake in milliliters
@@ -7826,6 +7861,12 @@ export interface components {
              * @description Foreign key reference to the user
              */
             user_id: number;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * HealthWaterUpdate
@@ -7992,6 +8033,12 @@ export interface components {
              * @description Foreign key reference to the user
              */
             user_id: number;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
             /**
              * Visceral Fat
              * @description Visceral fat
@@ -14978,7 +15025,9 @@ export interface operations {
     edit_health_fasting_api_v1_health_fasting__health_fasting_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path: {
                 health_fasting_id: number;
             };
@@ -15229,7 +15278,9 @@ export interface operations {
     edit_health_poop_api_v1_health_poop__health_poop_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path: {
                 health_poop_id: number;
             };
@@ -15396,7 +15447,9 @@ export interface operations {
     edit_health_sleep_api_v1_health_sleep__health_sleep_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path: {
                 health_sleep_id: number;
             };
@@ -15592,7 +15645,9 @@ export interface operations {
     edit_health_steps_api_v1_health_steps__health_steps_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path: {
                 health_steps_id: number;
             };
@@ -15662,10 +15717,12 @@ export interface operations {
             };
         };
     };
-    update_health_targets_api_v1_health_targets_put: {
+    update_health_targets_api_v1_health_targets_patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -15830,7 +15887,9 @@ export interface operations {
     edit_health_water_api_v1_health_water__health_water_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path: {
                 health_water_id: number;
             };
@@ -15997,7 +16056,9 @@ export interface operations {
     edit_health_weight_api_v1_health_weight__health_weight_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path: {
                 health_weight_id: number;
             };

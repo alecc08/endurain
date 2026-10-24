@@ -103,7 +103,9 @@ class TestEditHealthPoop:
     def test_edit_success(self, mock_edit, mock_db):
         mock_edit.return_value = HealthPoopRead(id=1, user_id=1)
 
-        response = TestClient(_build_app(mock_db)).patch("/health_poop/1", json={}, headers=_HEADERS)
+        response = TestClient(_build_app(mock_db)).patch(
+            "/health_poop/1", json={}, headers={**_HEADERS, "If-Match": "*"}
+        )
 
         assert response.status_code == 200
 

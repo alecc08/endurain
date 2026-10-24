@@ -57,8 +57,7 @@ function targetToMl(raw: string): number | null {
 async function submitForm(values: TargetFormValues): Promise<void> {
   try {
     await updateTargetMutation.mutateAsync({
-      id: props.targets.id,
-      userId: props.targets.userId,
+      version: props.targets.version,
       waterMl: targetToMl(values.amount),
     })
     emit('success', t('health.water.target.saveSuccess'))

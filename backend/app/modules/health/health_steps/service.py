@@ -8,7 +8,9 @@ boundary. What other modules may consume lives in
 from datetime import date as date_type
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.pagination as core_pagination
@@ -64,7 +66,12 @@ def list_health_steps(
 
 
 def stage_edit_health_steps(
-    user_id: int, health_steps_id: int, health_steps: health_steps_schema.HealthStepsUpdate, db: Session
+    user_id: int,
+    health_steps_id: int,
+    health_steps: health_steps_schema.HealthStepsUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_steps_schema.HealthStepsRead:
     """Stage an update to a steps record.
 
@@ -73,14 +80,16 @@ def stage_edit_health_steps(
         health_steps_id: The record to change.
         health_steps: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    return health_steps_crud.edit_health_steps(user_id, health_steps_id, health_steps, db)
+    return health_steps_crud.edit_health_steps(user_id, health_steps_id, health_steps, db, if_match=if_match)
 
 
 def stage_upsert_health_steps(
@@ -117,9 +126,19 @@ def stage_upsert_health_steps(
             )
             if existing is None:
                 raise
-    return stage_edit_health_steps(
-        user_id, existing.id, health_steps_schema.HealthStepsUpdate(**health_steps.model_dump()), db
-    )
+    update = health_steps_schema.HealthStepsUpdate(**health_steps.model_dump())
+    for attempt in range(health_constants.UPSERT_ATTEMPTS):
+        try:
+            with db.begin_nested():
+                return stage_edit_health_steps(user_id, existing.id, update, db, if_match="*")
+        except StaleDataError:
+            # Another writer changed the row between this read and the flush: read it again and apply on top.
+            existing = health_steps_crud.get_health_steps_by_date_and_user_id(
+                user_id, health_steps.date.isoformat(), db
+            )
+            if existing is None or attempt == health_constants.UPSERT_ATTEMPTS - 1:
+                raise
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 def create_health_steps(
@@ -147,7 +166,12 @@ def create_health_steps(
 
 
 def edit_health_steps(
-    user_id: int, health_steps_id: int, health_steps: health_steps_schema.HealthStepsUpdate, db: Session
+    user_id: int,
+    health_steps_id: int,
+    health_steps: health_steps_schema.HealthStepsUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_steps_schema.HealthStepsRead:
     """Update a steps record and commit.
 
@@ -156,15 +180,23 @@ def edit_health_steps(
         health_steps_id: The record to change.
         health_steps: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    updated = stage_edit_health_steps(user_id, health_steps_id, health_steps, db)
-    db.commit()
+    with core_etag.refuse_stale_write(
+        db,
+        "steps record",
+        lambda: health_steps_crud.health_steps_exists(health_steps_id, user_id, db),
+        "Steps record not found",
+    ):
+        updated = stage_edit_health_steps(user_id, health_steps_id, health_steps, db, if_match=if_match)
+        db.commit()
     logger.debug("Edited a steps record", extra=core_logger.context(user_id=user_id))
     return updated
 

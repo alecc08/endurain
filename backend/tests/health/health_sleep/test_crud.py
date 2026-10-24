@@ -24,6 +24,7 @@ def passthrough_serializers():
 def _row(record_id: int = 1, seconds: int = 28800) -> MagicMock:
     row = MagicMock(spec=health_sleep_models.HealthSleep)
     row.id = record_id
+    row.version = 1
     row.user_id = 1
     row.total_sleep_seconds = seconds
     return row
@@ -107,7 +108,7 @@ class TestEditHealthSleep:
         _returns_one(mock_db, row)
         update = health_sleep_schema.HealthSleepUpdate(date=datetime_date(2024, 1, 15), total_sleep_seconds=32400)
 
-        health_sleep_crud.edit_health_sleep(1, 1, update, mock_db)
+        health_sleep_crud.edit_health_sleep(1, 1, update, mock_db, if_match="*")
 
         assert row.total_sleep_seconds == 32400
         mock_db.flush.assert_called_once()
@@ -118,7 +119,7 @@ class TestEditHealthSleep:
         update = health_sleep_schema.HealthSleepUpdate(date=datetime_date(2024, 1, 15), total_sleep_seconds=32400)
 
         with pytest.raises(core_exceptions.NotFoundError, match="Health sleep not found"):
-            health_sleep_crud.edit_health_sleep(1, 9, update, mock_db)
+            health_sleep_crud.edit_health_sleep(1, 9, update, mock_db, if_match="*")
 
 
 class TestDeleteHealthSleep:

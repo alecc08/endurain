@@ -2,6 +2,7 @@ from datetime import date as datetime_date
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.orm.exc import StaleDataError
 
 import core.exceptions as core_exceptions
 import modules.health.constants as health_constants
@@ -16,9 +17,9 @@ class TestStageEdit:
     def test_stages_without_committing(self, mock_edit, mock_db):
         record = health_steps_schema.HealthStepsUpdate(date=datetime_date(2024, 1, 15), steps=1)
 
-        health_steps_service.stage_edit_health_steps(1, 7, record, mock_db)
+        health_steps_service.stage_edit_health_steps(1, 7, record, mock_db, if_match="*")
 
-        mock_edit.assert_called_once_with(1, 7, record, mock_db)
+        mock_edit.assert_called_once_with(1, 7, record, mock_db, if_match="*")
         mock_db.commit.assert_not_called()
 
 
@@ -56,7 +57,8 @@ class TestRaceForTheDate:
         health_steps_service.stage_upsert_health_steps(1, record, mock_db)
 
         assert mock_edit.call_args.args[1] == 7
-        mock_db.begin_nested.assert_called_once()
+        # One savepoint for the create that lost the race, one for the edit that follows it.
+        assert mock_db.begin_nested.call_count == 2
 
     @patch(f"{_PREFIX}.health_steps_crud.create_health_steps", side_effect=core_exceptions.ConflictError("duplicate"))
     @patch(f"{_PREFIX}.health_steps_crud.get_health_steps_by_date_and_user_id", return_value=None)
@@ -68,6 +70,31 @@ class TestRaceForTheDate:
 
 
 class TestUpsertHealthSteps:
+    @patch(f"{_PREFIX}.health_steps_crud.edit_health_steps")
+    @patch(f"{_PREFIX}.health_steps_crud.get_health_steps_by_date_and_user_id")
+    def test_a_writer_that_changed_the_row_first_is_retried_against_its_version(
+        self, mock_get_by_date, mock_edit, mock_db
+    ):
+        mock_get_by_date.return_value = MagicMock(id=7)
+        mock_edit.side_effect = [StaleDataError("moved"), "stored"]
+        record = health_steps_schema.HealthStepsCreate(date=datetime_date(2024, 1, 15), steps=9000)
+
+        result = health_steps_service.stage_upsert_health_steps(1, record, mock_db)
+
+        assert result == "stored"
+        assert mock_edit.call_count == 2
+
+    @patch(f"{_PREFIX}.health_steps_crud.edit_health_steps", side_effect=StaleDataError("moved"))
+    @patch(f"{_PREFIX}.health_steps_crud.get_health_steps_by_date_and_user_id")
+    def test_a_row_that_keeps_moving_is_given_up_on(self, mock_get_by_date, mock_edit, mock_db):
+        mock_get_by_date.return_value = MagicMock(id=7)
+        record = health_steps_schema.HealthStepsCreate(date=datetime_date(2024, 1, 15), steps=9000)
+
+        with pytest.raises(StaleDataError):
+            health_steps_service.stage_upsert_health_steps(1, record, mock_db)
+
+        assert mock_edit.call_count == health_constants.UPSERT_ATTEMPTS
+
     @patch(f"{_PREFIX}.health_steps_crud.edit_health_steps")
     @patch(f"{_PREFIX}.health_steps_crud.get_health_steps_by_date_and_user_id")
     def test_updates_the_existing_record_of_the_date(self, mock_get_by_date, mock_edit, mock_db):
@@ -86,7 +113,7 @@ class TestEditAndDelete:
     def test_edit_commits(self, mock_edit, mock_db):
         record = health_steps_schema.HealthStepsUpdate(date=datetime_date(2024, 1, 15), steps=1)
 
-        health_steps_service.edit_health_steps(1, 7, record, mock_db)
+        health_steps_service.edit_health_steps(1, 7, record, mock_db, if_match="*")
 
         mock_db.commit.assert_called_once()
 

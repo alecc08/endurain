@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import modules.health.health_targets.models as health_targets_models
 import modules.health.health_targets.schema as health_targets_schema
@@ -57,6 +58,8 @@ def edit_health_target(
     health_target: health_targets_schema.HealthTargetsUpdate,
     user_id: int,
     db: Session,
+    *,
+    if_match: str,
 ) -> health_targets_schema.HealthTargetsRead:
     """Stage an update to a user's health targets.
 
@@ -64,18 +67,21 @@ def edit_health_target(
         health_target: Schema with the fields to update.
         user_id: The ID of the user to update targets for.
         db: SQLAlchemy database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated targets.
 
     Raises:
         NotFoundError: If the user has no targets.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
     stmt = select(health_targets_models.HealthTargets).where(health_targets_models.HealthTargets.user_id == user_id)
     db_health_target = db.execute(stmt).scalar_one_or_none()
 
     if db_health_target is None:
         raise core_exceptions.NotFoundError("Health targets not found")
+    core_etag.require_if_match(if_match, db_health_target.version, "health targets")
 
     for key, value in health_target.model_dump(exclude_unset=True).items():
         setattr(db_health_target, key, value)
@@ -84,3 +90,21 @@ def edit_health_target(
     db.refresh(db_health_target)
 
     return health_targets_serializers.to_read_schema(db_health_target)
+
+
+def health_targets_exist(user_id: int, db: Session) -> bool:
+    """Report whether a user has health targets.
+
+    Args:
+        user_id: The targets' owner.
+        db: Database session.
+
+    Returns:
+        True when the user has targets.
+    """
+    stmt = select(
+        select(health_targets_models.HealthTargets.id)
+        .where(health_targets_models.HealthTargets.user_id == user_id)
+        .exists()
+    )
+    return bool(db.execute(stmt).scalar())

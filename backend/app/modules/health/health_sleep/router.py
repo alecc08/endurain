@@ -2,9 +2,10 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Security, status
+from fastapi import APIRouter, Depends, Query, Request, Response, Security, status
 
 import core.dependencies as core_dependencies
+import core.etag as core_etag
 import core.pagination as core_pagination
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
@@ -95,6 +96,8 @@ def edit_health_sleep(
     health_sleep: health_sleep_schema.HealthSleepUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
+    if_match: core_dependencies.IfMatch,
 ) -> health_sleep_schema.HealthSleepRead:
     """Edit health sleep data for a user.
 
@@ -109,6 +112,8 @@ def edit_health_sleep(
         token_user_id (int): The user ID extracted from the JWT access token, used to identify
             the user making the request.
         db (Session): Database session dependency for performing database operations.
+        response: The response, which carries the new ETag.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         health_sleep_schema.HealthSleepRead: The updated health sleep record with the new values
@@ -118,7 +123,11 @@ def edit_health_sleep(
         HTTPException: May raise various HTTP exceptions if authorization fails, user is not
             found, or database operations fail.
     """
-    return health_sleep_service.edit_health_sleep(token_user_id, health_sleep_id, health_sleep, db)
+    updated = health_sleep_service.edit_health_sleep(
+        token_user_id, health_sleep_id, health_sleep, db, if_match=if_match
+    )
+    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    return updated
 
 
 @router.delete(

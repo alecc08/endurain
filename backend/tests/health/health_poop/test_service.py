@@ -43,7 +43,7 @@ class TestWrites:
 
     @patch(f"{_PREFIX}.health_poop_crud.edit_health_poop")
     def test_edit_commits(self, mock_edit, mock_db):
-        health_poop_service.edit_health_poop(1, 7, health_poop_schema.HealthPoopUpdate(), mock_db)
+        health_poop_service.edit_health_poop(1, 7, health_poop_schema.HealthPoopUpdate(), mock_db, if_match="*")
 
         mock_db.commit.assert_called_once()
 

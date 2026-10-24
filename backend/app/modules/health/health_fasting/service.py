@@ -10,6 +10,7 @@ from datetime import date as date_type
 
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.pagination as core_pagination
@@ -157,7 +158,12 @@ def create_health_fasting(
 
 
 def edit_health_fasting(
-    user_id: int, health_fasting_id: int, health_fasting: health_fasting_schema.HealthFastingUpdate, db: Session
+    user_id: int,
+    health_fasting_id: int,
+    health_fasting: health_fasting_schema.HealthFastingUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_fasting_schema.HealthFastingRead:
     """Update a fasting record, and commit.
 
@@ -166,15 +172,25 @@ def edit_health_fasting(
         health_fasting_id: The record to change.
         health_fasting: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    updated = health_fasting_crud.edit_health_fasting(user_id, health_fasting_id, health_fasting, db)
-    db.commit()
+    with core_etag.refuse_stale_write(
+        db,
+        "fasting session record",
+        lambda: health_fasting_crud.health_fasting_exists(health_fasting_id, user_id, db),
+        "Fasting session record not found",
+    ):
+        updated = health_fasting_crud.edit_health_fasting(
+            user_id, health_fasting_id, health_fasting, db, if_match=if_match
+        )
+        db.commit()
     logger.debug("Edited a fasting session", extra=core_logger.context(user_id=user_id))
     return updated
 

@@ -54,7 +54,9 @@ class TestCreateHealthFasting:
 class TestEditAndDelete:
     @patch(f"{_CRUD}.edit_health_fasting")
     def test_edit_commits(self, _edit, mock_db):
-        health_fasting_service.edit_health_fasting(1, 7, health_fasting_schema.HealthFastingUpdate(), mock_db)
+        health_fasting_service.edit_health_fasting(
+            1, 7, health_fasting_schema.HealthFastingUpdate(), mock_db, if_match="*"
+        )
 
         mock_db.commit.assert_called_once()
 

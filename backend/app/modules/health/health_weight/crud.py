@@ -6,6 +6,7 @@ from sqlalchemy import desc, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import modules.health.health_weight.models as health_weight_models
 import modules.health.health_weight.schema as health_weight_schema
@@ -36,6 +37,28 @@ def _get_model_by_id_and_user_id(health_weight_id: int, user_id: int, db: Sessio
         raise core_exceptions.NotFoundError("Health weight not found")
 
     return db_health_weight
+
+
+def health_weight_exists(health_weight_id: int, user_id: int, db: Session) -> bool:
+    """Report whether a user has a weight record.
+
+    Args:
+        health_weight_id: The record to look for.
+        user_id: The record's owner.
+        db: Database session.
+
+    Returns:
+        True when the user has such a record.
+    """
+    stmt = select(
+        select(health_weight_models.HealthWeight.id)
+        .where(
+            health_weight_models.HealthWeight.id == health_weight_id,
+            health_weight_models.HealthWeight.user_id == user_id,
+        )
+        .exists()
+    )
+    return bool(db.execute(stmt).scalar())
 
 
 def get_all_health_weight(db: Session) -> list[health_weight_schema.HealthWeightRead]:
@@ -204,6 +227,8 @@ def edit_health_weight(
     health_weight_id: int,
     health_weight: health_weight_schema.HealthWeightUpdate,
     db: Session,
+    *,
+    if_match: str,
 ) -> health_weight_schema.HealthWeightRead:
     """Stage an update to a user's weight record.
 
@@ -212,14 +237,17 @@ def edit_health_weight(
         health_weight_id: The record to change.
         health_weight: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
     db_health_weight = _get_model_by_id_and_user_id(health_weight_id, user_id, db)
+    core_etag.require_if_match(if_match, db_health_weight.version, "weight record")
 
     for key, value in health_weight.model_dump(exclude_unset=True).items():
         setattr(db_health_weight, key, value)
@@ -251,7 +279,7 @@ def recalculate_bmi_for_user(user_id: int, height_cm: float | None, db: Session)
     stmt = (
         update(health_weight_models.HealthWeight)
         .where(health_weight_models.HealthWeight.user_id == user_id)
-        .values(bmi=new_bmi)
+        .values(bmi=new_bmi, version=health_weight_models.HealthWeight.version + 1)
     )
     db.execute(stmt)
     db.flush()

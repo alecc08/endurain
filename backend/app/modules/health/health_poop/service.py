@@ -9,6 +9,7 @@ from datetime import date as date_type
 
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.pagination as core_pagination
@@ -122,7 +123,7 @@ def create_health_poop(
 
 
 def edit_health_poop(
-    user_id: int, health_poop_id: int, health_poop: health_poop_schema.HealthPoopUpdate, db: Session
+    user_id: int, health_poop_id: int, health_poop: health_poop_schema.HealthPoopUpdate, db: Session, *, if_match: str
 ) -> health_poop_schema.HealthPoopRead:
     """Update a poop record, and commit.
 
@@ -131,15 +132,23 @@ def edit_health_poop(
         health_poop_id: The record to change.
         health_poop: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    updated = health_poop_crud.edit_health_poop(user_id, health_poop_id, health_poop, db)
-    db.commit()
+    with core_etag.refuse_stale_write(
+        db,
+        "bowel movement record",
+        lambda: health_poop_crud.health_poop_exists(health_poop_id, user_id, db),
+        "Bowel movement record not found",
+    ):
+        updated = health_poop_crud.edit_health_poop(user_id, health_poop_id, health_poop, db, if_match=if_match)
+        db.commit()
     logger.debug("Edited a bowel movement record", extra=core_logger.context(user_id=user_id))
     return updated
 

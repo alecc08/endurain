@@ -11,11 +11,13 @@ from fastapi import (
     Depends,
     Query,
     Request,
+    Response,
     Security,
     status,
 )
 
 import core.dependencies as core_dependencies
+import core.etag as core_etag
 import core.pagination as core_pagination
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
@@ -151,6 +153,8 @@ def edit_health_poop(
     health_poop: health_poop_schema.HealthPoopUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
+    if_match: core_dependencies.IfMatch,
 ) -> health_poop_schema.HealthPoopRead:
     """Edit an existing poop record.
 
@@ -160,6 +164,8 @@ def edit_health_poop(
         health_poop: Poop data to update.
         token_user_id: User ID from the access token.
         db: Database session dependency.
+        response: The response, which carries the new ETag.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         Updated HealthPoopRead record.
@@ -167,7 +173,9 @@ def edit_health_poop(
     Raises:
         HTTPException: If record not found or unauthorized.
     """
-    return health_poop_service.edit_health_poop(token_user_id, health_poop_id, health_poop, db)
+    updated = health_poop_service.edit_health_poop(token_user_id, health_poop_id, health_poop, db, if_match=if_match)
+    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    return updated
 
 
 @router.delete(

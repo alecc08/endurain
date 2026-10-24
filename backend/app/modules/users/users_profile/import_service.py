@@ -1037,8 +1037,6 @@ class ImportService:
         # Import health targets
         if health_targets_data:
             for target_data in health_targets_data:
-                current_health_target = health_targets_integration.get_health_targets(self.user_id, self.db)
-
                 # Convert string numeric values to floats/ints
                 if isinstance(target_data.get("weight"), str):
                     try:
@@ -1054,14 +1052,12 @@ class ImportService:
                         except (ValueError, TypeError):
                             target_data[field] = None
 
-                target_data["user_id"] = self.user_id
-                if current_health_target is not None:
-                    target_data["id"] = current_health_target.id
-                else:
-                    target_data.pop("id", None)
-
+                # Only the editable fields: the export also carries the row's id, owner and version.
+                editable = health_targets_schema.HealthTargetsUpdate.model_fields
                 try:
-                    target = health_targets_schema.HealthTargetsUpdate(**target_data)
+                    target = health_targets_schema.HealthTargetsUpdate(
+                        **{key: value for key, value in target_data.items() if key in editable}
+                    )
                 except ValidationError:
                     logger.warning("Skipped invalid health targets")
                     continue

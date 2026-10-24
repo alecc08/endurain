@@ -6,7 +6,9 @@ consume lives in :mod:`modules.health.health_weight.integration_service`.
 """
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.pagination as core_pagination
@@ -115,7 +117,12 @@ def stage_create_health_weight(
 
 
 def stage_edit_health_weight(
-    user_id: int, health_weight_id: int, health_weight: health_weight_schema.HealthWeightUpdate, db: Session
+    user_id: int,
+    health_weight_id: int,
+    health_weight: health_weight_schema.HealthWeightUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_weight_schema.HealthWeightRead:
     """Stage an update to a weight record, deriving the BMI when it is not given.
 
@@ -124,16 +131,18 @@ def stage_edit_health_weight(
         health_weight_id: The record to change.
         health_weight: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
     if health_weight.bmi is None and health_weight.weight is not None:
         health_weight = _with_bmi(health_weight, user_id, db)
-    return health_weight_crud.edit_health_weight(user_id, health_weight_id, health_weight, db)
+    return health_weight_crud.edit_health_weight(user_id, health_weight_id, health_weight, db, if_match=if_match)
 
 
 def stage_upsert_health_weight(
@@ -170,9 +179,19 @@ def stage_upsert_health_weight(
             )
             if existing is None:
                 raise
-    return stage_edit_health_weight(
-        user_id, existing.id, health_weight_schema.HealthWeightUpdate(**health_weight.model_dump()), db
-    )
+    update = health_weight_schema.HealthWeightUpdate(**health_weight.model_dump())
+    for attempt in range(health_constants.UPSERT_ATTEMPTS):
+        try:
+            with db.begin_nested():
+                return stage_edit_health_weight(user_id, existing.id, update, db, if_match="*")
+        except StaleDataError:
+            # Another writer changed the row between this read and the flush: read it again and apply on top.
+            existing = health_weight_crud.get_health_weight_by_date_and_user_id(
+                user_id, health_weight.date.isoformat(), db
+            )
+            if existing is None or attempt == health_constants.UPSERT_ATTEMPTS - 1:
+                raise
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 def create_health_weight(
@@ -200,7 +219,12 @@ def create_health_weight(
 
 
 def edit_health_weight(
-    user_id: int, health_weight_id: int, health_weight: health_weight_schema.HealthWeightUpdate, db: Session
+    user_id: int,
+    health_weight_id: int,
+    health_weight: health_weight_schema.HealthWeightUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_weight_schema.HealthWeightRead:
     """Update a weight record and commit.
 
@@ -209,15 +233,23 @@ def edit_health_weight(
         health_weight_id: The record to change.
         health_weight: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    updated = stage_edit_health_weight(user_id, health_weight_id, health_weight, db)
-    db.commit()
+    with core_etag.refuse_stale_write(
+        db,
+        "weight record",
+        lambda: health_weight_crud.health_weight_exists(health_weight_id, user_id, db),
+        "Weight record not found",
+    ):
+        updated = stage_edit_health_weight(user_id, health_weight_id, health_weight, db, if_match=if_match)
+        db.commit()
     logger.debug("Edited a weight record", extra=core_logger.context(user_id=user_id))
     return updated
 

@@ -1,7 +1,7 @@
 import type { Schemas } from '@/types'
 
 import { apiFetch, HttpError } from '@/services/http'
-import { ifMatchHeaders } from '@/services/ifMatch'
+import { ifMatchHeaders, rowVersion } from '@/services/ifMatch'
 import { todayIsoDate } from '@/utils/datetime'
 
 /** Job handle returned by the refresh endpoint; polled via `fetchIngestionJob`. */
@@ -101,9 +101,7 @@ export function mapActivity(dto: ActivityDto): Activity {
     visibility: dto.visibility ?? 0,
     isHidden: dto.is_hidden,
     gearId: dto.gear_id ?? null,
-    // The backend always sends it. A missing one becomes 0, which no stored version equals, so the
-    // write is refused with 412 instead of overwriting.
-    version: dto.version ?? 0,
+    version: rowVersion(dto.version),
 
     // The UTC instant plus the recording timezone. Views localize for display
     // via `formatZonedDateTime`, so the athlete's own wall clock is shown to

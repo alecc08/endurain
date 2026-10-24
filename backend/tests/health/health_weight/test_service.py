@@ -2,6 +2,7 @@ from datetime import date as datetime_date
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.orm.exc import StaleDataError
 
 import core.exceptions as core_exceptions
 import modules.health.constants as health_constants
@@ -53,7 +54,7 @@ class TestStageEdit:
     def test_derives_bmi_when_weight_changes(self, _get_user, mock_edit, mock_db):
         record = health_weight_schema.HealthWeightUpdate(date=datetime_date(2024, 1, 15), weight=81.0)
 
-        health_weight_service.stage_edit_health_weight(1, 7, record, mock_db)
+        health_weight_service.stage_edit_health_weight(1, 7, record, mock_db, if_match="*")
 
         assert mock_edit.call_args.args[2].bmi == pytest.approx(81.0 / 1.8**2)
 
@@ -84,6 +85,31 @@ class TestCreateHealthWeight:
 class TestUpsertHealthWeight:
     @patch(f"{_PREFIX}.health_weight_crud.edit_health_weight")
     @patch(f"{_PREFIX}.health_weight_crud.get_health_weight_by_date_and_user_id")
+    def test_a_writer_that_changed_the_row_first_is_retried_against_its_version(
+        self, mock_get_by_date, mock_edit, mock_db
+    ):
+        mock_get_by_date.return_value = MagicMock(id=7)
+        mock_edit.side_effect = [StaleDataError("moved"), "stored"]
+        record = health_weight_schema.HealthWeightCreate(date=datetime_date(2024, 1, 15), weight=72.0, bmi=22.0)
+
+        result = health_weight_service.stage_upsert_health_weight(1, record, mock_db)
+
+        assert result == "stored"
+        assert mock_edit.call_count == 2
+
+    @patch(f"{_PREFIX}.health_weight_crud.edit_health_weight", side_effect=StaleDataError("moved"))
+    @patch(f"{_PREFIX}.health_weight_crud.get_health_weight_by_date_and_user_id")
+    def test_a_row_that_keeps_moving_is_given_up_on(self, mock_get_by_date, mock_edit, mock_db):
+        mock_get_by_date.return_value = MagicMock(id=7)
+        record = health_weight_schema.HealthWeightCreate(date=datetime_date(2024, 1, 15), weight=72.0, bmi=22.0)
+
+        with pytest.raises(StaleDataError):
+            health_weight_service.stage_upsert_health_weight(1, record, mock_db)
+
+        assert mock_edit.call_count == health_constants.UPSERT_ATTEMPTS
+
+    @patch(f"{_PREFIX}.health_weight_crud.edit_health_weight")
+    @patch(f"{_PREFIX}.health_weight_crud.get_health_weight_by_date_and_user_id")
     def test_updates_the_existing_record_of_the_date(self, mock_get_by_date, mock_edit, mock_db):
         mock_get_by_date.return_value = MagicMock(id=7)
         record = health_weight_schema.HealthWeightCreate(date=datetime_date(2024, 1, 15), weight=75.0, bmi=22.0)
@@ -100,7 +126,7 @@ class TestEditAndDelete:
     def test_edit_commits(self, mock_edit, mock_db):
         record = health_weight_schema.HealthWeightUpdate(date=datetime_date(2024, 1, 15), weight=75.0, bmi=22.0)
 
-        health_weight_service.edit_health_weight(1, 7, record, mock_db)
+        health_weight_service.edit_health_weight(1, 7, record, mock_db, if_match="*")
 
         mock_db.commit.assert_called_once()
 

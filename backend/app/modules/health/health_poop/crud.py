@@ -6,6 +6,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import modules.health.computation as health_computation
 import modules.health.health_poop.models as health_poop_models
@@ -37,6 +38,25 @@ def _get_model_by_id_and_user_id(health_poop_id: int, user_id: int, db: Session)
         raise core_exceptions.NotFoundError("Health poop not found")
 
     return db_health_poop
+
+
+def health_poop_exists(health_poop_id: int, user_id: int, db: Session) -> bool:
+    """Report whether a user has a bowel movement record.
+
+    Args:
+        health_poop_id: The record to look for.
+        user_id: The record's owner.
+        db: Database session.
+
+    Returns:
+        True when the user has such a record.
+    """
+    stmt = select(
+        select(health_poop_models.HealthPoop.id)
+        .where(health_poop_models.HealthPoop.id == health_poop_id, health_poop_models.HealthPoop.user_id == user_id)
+        .exists()
+    )
+    return bool(db.execute(stmt).scalar())
 
 
 def get_health_poop_number_by_user_id(user_id: int, db: Session, since: date_type | None = None) -> int:
@@ -176,7 +196,7 @@ def create_health_poop(
 
 
 def edit_health_poop(
-    user_id: int, health_poop_id: int, health_poop: health_poop_schema.HealthPoopUpdate, db: Session
+    user_id: int, health_poop_id: int, health_poop: health_poop_schema.HealthPoopUpdate, db: Session, *, if_match: str
 ) -> health_poop_schema.HealthPoopRead:
     """Stage an update to a user's poop record.
 
@@ -185,14 +205,17 @@ def edit_health_poop(
         health_poop_id: The record to change.
         health_poop: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
     db_health_poop = _get_model_by_id_and_user_id(health_poop_id, user_id, db)
+    core_etag.require_if_match(if_match, db_health_poop.version, "bowel movement record")
 
     for key, value in health_poop.model_dump(exclude_unset=True).items():
         setattr(db_health_poop, key, value)

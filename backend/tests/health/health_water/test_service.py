@@ -20,9 +20,9 @@ class TestStageEdit:
     def test_stages_without_committing(self, mock_edit, mock_db):
         record = _update()
 
-        health_water_service.stage_edit_health_water(1, 7, record, mock_db)
+        health_water_service.stage_edit_health_water(1, 7, record, mock_db, if_match="*")
 
-        mock_edit.assert_called_once_with(1, 7, record, mock_db)
+        mock_edit.assert_called_once_with(1, 7, record, mock_db, if_match="*")
         mock_db.commit.assert_not_called()
 
 
@@ -73,7 +73,7 @@ class TestCreateHealthWater:
 class TestEditAndDelete:
     @patch(f"{_PREFIX}.health_water_crud.edit_health_water")
     def test_edit_commits(self, mock_edit, mock_db):
-        health_water_service.edit_health_water(1, 7, _update(), mock_db)
+        health_water_service.edit_health_water(1, 7, _update(), mock_db, if_match="*")
 
         mock_db.commit.assert_called_once()
 

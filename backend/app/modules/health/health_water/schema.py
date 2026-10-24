@@ -83,6 +83,7 @@ class HealthWaterRead(HealthWaterBase):
         ...,
         description="Foreign key reference to the user",
     )
+    version: StrictInt = Field(default=1, ge=1, description="Optimistic-concurrency counter, also sent as the ETag")
 
 
 class HealthWaterUpdate(HealthWaterBase):

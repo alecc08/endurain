@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.pagination as core_pagination
@@ -65,7 +66,12 @@ def list_health_water(
 
 
 def stage_edit_health_water(
-    user_id: int, health_water_id: int, health_water: health_water_schema.HealthWaterUpdate, db: Session
+    user_id: int,
+    health_water_id: int,
+    health_water: health_water_schema.HealthWaterUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_water_schema.HealthWaterRead:
     """Stage an update to a water intake record.
 
@@ -74,14 +80,16 @@ def stage_edit_health_water(
         health_water_id: The record to change.
         health_water: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    return health_water_crud.edit_health_water(user_id, health_water_id, health_water, db)
+    return health_water_crud.edit_health_water(user_id, health_water_id, health_water, db, if_match=if_match)
 
 
 def stage_add_health_water(
@@ -146,7 +154,12 @@ def create_health_water(
 
 
 def edit_health_water(
-    user_id: int, health_water_id: int, health_water: health_water_schema.HealthWaterUpdate, db: Session
+    user_id: int,
+    health_water_id: int,
+    health_water: health_water_schema.HealthWaterUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_water_schema.HealthWaterRead:
     """Update a water intake record and commit.
 
@@ -155,15 +168,23 @@ def edit_health_water(
         health_water_id: The record to change.
         health_water: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    updated = stage_edit_health_water(user_id, health_water_id, health_water, db)
-    db.commit()
+    with core_etag.refuse_stale_write(
+        db,
+        "water intake record",
+        lambda: health_water_crud.health_water_exists(health_water_id, user_id, db),
+        "Water intake record not found",
+    ):
+        updated = stage_edit_health_water(user_id, health_water_id, health_water, db, if_match=if_match)
+        db.commit()
     logger.debug("Edited a water intake record", extra=core_logger.context(user_id=user_id))
     return updated
 

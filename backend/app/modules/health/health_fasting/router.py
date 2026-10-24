@@ -6,9 +6,10 @@ including CRUD operations, active fast tracking, and statistics.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Security, status
+from fastapi import APIRouter, Depends, Query, Request, Response, Security, status
 
 import core.dependencies as core_dependencies
+import core.etag as core_etag
 import core.pagination as core_pagination
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
@@ -168,6 +169,8 @@ def edit_health_fasting(
     health_fasting: health_fasting_schema.HealthFastingUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
+    if_match: core_dependencies.IfMatch,
 ) -> health_fasting_schema.HealthFastingRead:
     """Edit an existing fasting record.
 
@@ -177,11 +180,17 @@ def edit_health_fasting(
         health_fasting: Fasting data to update.
         token_user_id: User ID from the access token.
         db: Database session dependency.
+        response: The response, which carries the new ETag.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         Updated HealthFastingRead record.
     """
-    return health_fasting_service.edit_health_fasting(token_user_id, health_fasting_id, health_fasting, db)
+    updated = health_fasting_service.edit_health_fasting(
+        token_user_id, health_fasting_id, health_fasting, db, if_match=if_match
+    )
+    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    return updated
 
 
 @router.post(

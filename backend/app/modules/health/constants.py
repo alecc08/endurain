@@ -2,6 +2,10 @@
 
 from enum import Enum
 
+#: Times an upsert re-reads a day's record and applies again after another writer changed it first.
+#: Each round lets at least one writer through, so this serves up to that many concurrent writers of one day.
+UPSERT_ATTEMPTS = 5
+
 
 class Interval(Enum):
     """Enumeration of time intervals for health weight data queries.

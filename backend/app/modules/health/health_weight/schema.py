@@ -88,6 +88,7 @@ class HealthWeightRead(HealthWeightBase):
 
     id: StrictInt = Field(..., description="Unique identifier for the weight record to update")
     user_id: StrictInt = Field(..., description="Foreign key reference to the user")
+    version: StrictInt = Field(default=1, ge=1, description="Optimistic-concurrency counter, also sent as the ETag")
 
 
 class HealthWeightUpdate(HealthWeightBase):

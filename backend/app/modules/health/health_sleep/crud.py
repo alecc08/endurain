@@ -6,6 +6,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import modules.health.health_sleep.models as health_sleep_models
 import modules.health.health_sleep.schema as health_sleep_schema
@@ -36,6 +37,27 @@ def _get_model_by_id_and_user_id(health_sleep_id: int, user_id: int, db: Session
         raise core_exceptions.NotFoundError("Health sleep not found")
 
     return db_health_sleep
+
+
+def health_sleep_exists(health_sleep_id: int, user_id: int, db: Session) -> bool:
+    """Report whether a user has a sleep record.
+
+    Args:
+        health_sleep_id: The record to look for.
+        user_id: The record's owner.
+        db: Database session.
+
+    Returns:
+        True when the user has such a record.
+    """
+    stmt = select(
+        select(health_sleep_models.HealthSleep.id)
+        .where(
+            health_sleep_models.HealthSleep.id == health_sleep_id, health_sleep_models.HealthSleep.user_id == user_id
+        )
+        .exists()
+    )
+    return bool(db.execute(stmt).scalar())
 
 
 def get_health_sleep_number_by_user_id(user_id: int, db: Session, since: date_type | None = None) -> int:
@@ -148,7 +170,12 @@ def create_health_sleep(
 
 
 def edit_health_sleep(
-    user_id: int, health_sleep_id: int, health_sleep: health_sleep_schema.HealthSleepUpdate, db: Session
+    user_id: int,
+    health_sleep_id: int,
+    health_sleep: health_sleep_schema.HealthSleepUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_sleep_schema.HealthSleepRead:
     """Stage an update to a user's sleep record.
 
@@ -157,14 +184,17 @@ def edit_health_sleep(
         health_sleep_id: The record to change.
         health_sleep: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
     db_health_sleep = _get_model_by_id_and_user_id(health_sleep_id, user_id, db)
+    core_etag.require_if_match(if_match, db_health_sleep.version, "sleep record")
 
     for key, value in health_sleep.model_dump(exclude_unset=True, mode="json").items():
         setattr(db_health_sleep, key, value)

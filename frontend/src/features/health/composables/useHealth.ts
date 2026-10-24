@@ -117,6 +117,8 @@ interface UpdateEntryVariables<Input> {
   id: number
   /** Clean metric input. */
   input: Input
+  /** The row version the form was loaded at, for `If-Match`. */
+  version: number
 }
 
 /** Standard paginated query wrapper for health-history zones. */
@@ -166,11 +168,11 @@ function useCreateHealthEntryMutation<Entry, Input>(
 /** Standard update-entry mutation wrapper for health CRUD zones. */
 function useUpdateHealthEntryMutation<Entry, Input>(
   mutationKey: readonly unknown[],
-  updateEntry: (id: number, input: Input) => Promise<Entry>,
+  updateEntry: (id: number, input: Input, version: number) => Promise<Entry>,
 ) {
   return useInvalidatingMutation<Entry, UpdateEntryVariables<Input>>({
     mutationKey,
-    mutationFn: ({ id, input }) => updateEntry(id, input),
+    mutationFn: ({ id, input, version }) => updateEntry(id, input, version),
     invalidateKey: queryKeys.health.all(),
   })
 }
@@ -263,8 +265,8 @@ export function useDeleteWeightEntryMutation() {
  * @returns The TanStack Query mutation for updating the weight target.
  */
 export function useUpdateWeightTargetMutation() {
-  return useHealthTargetMutation<{ id: number; userId: number; weightKg: number | null }>(
-    ({ id, userId, weightKg }) => updateWeightTarget(id, userId, weightKg),
+  return useHealthTargetMutation<{ version: number; weightKg: number | null }>(
+    ({ version, weightKg }) => updateWeightTarget(version, weightKg),
   )
 }
 
@@ -327,8 +329,8 @@ export function useDeleteStepsEntryMutation() {
  * @returns The TanStack Query mutation for updating the steps target.
  */
 export function useUpdateStepsTargetMutation() {
-  return useHealthTargetMutation<{ id: number; userId: number; steps: number | null }>(
-    ({ id, userId, steps }) => updateStepsTarget(id, userId, steps),
+  return useHealthTargetMutation<{ version: number; steps: number | null }>(({ version, steps }) =>
+    updateStepsTarget(version, steps),
   )
 }
 
@@ -391,8 +393,8 @@ export function useDeleteWaterEntryMutation() {
  * @returns The TanStack Query mutation for updating the water target.
  */
 export function useUpdateWaterTargetMutation() {
-  return useHealthTargetMutation<{ id: number; userId: number; waterMl: number | null }>(
-    ({ id, userId, waterMl }) => updateWaterTarget(id, userId, waterMl),
+  return useHealthTargetMutation<{ version: number; waterMl: number | null }>(
+    ({ version, waterMl }) => updateWaterTarget(version, waterMl),
   )
 }
 
@@ -456,8 +458,8 @@ export function useDeletePoopEntryMutation() {
  * @returns The TanStack Query mutation for updating the poop target.
  */
 export function useUpdatePoopTargetMutation() {
-  return useHealthTargetMutation<{ id: number; userId: number; poopCount: number | null }>(
-    ({ id, userId, poopCount }) => updatePoopTarget(id, userId, poopCount),
+  return useHealthTargetMutation<{ version: number; poopCount: number | null }>(
+    ({ version, poopCount }) => updatePoopTarget(version, poopCount),
   )
 }
 
@@ -597,10 +599,9 @@ export function useDeleteFastingEntryMutation() {
  */
 export function useUpdateFastingTargetMutation() {
   return useHealthTargetMutation<{
-    id: number
-    userId: number
+    version: number
     fastingSeconds: number | null
-  }>(({ id, userId, fastingSeconds }) => updateFastingTarget(id, userId, fastingSeconds))
+  }>(({ version, fastingSeconds }) => updateFastingTarget(version, fastingSeconds))
 }
 
 /**
@@ -663,8 +664,7 @@ export function useDeleteSleepEntryMutation() {
  */
 export function useUpdateSleepTargetMutation() {
   return useHealthTargetMutation<{
-    id: number
-    userId: number
+    version: number
     sleepSeconds: number | null
-  }>(({ id, userId, sleepSeconds }) => updateSleepTarget(id, userId, sleepSeconds))
+  }>(({ version, sleepSeconds }) => updateSleepTarget(version, sleepSeconds))
 }

@@ -1,8 +1,9 @@
 """FastAPI router for health targets endpoints."""
 
-from fastapi import APIRouter, Request, Security, status
+from fastapi import APIRouter, Request, Response, Security, status
 
 import core.dependencies as core_dependencies
+import core.etag as core_etag
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
 import modules.health.health_targets.schema as health_targets_schema
@@ -44,7 +45,7 @@ def read_health_targets_all(
     return health_targets_service.get_health_targets(token_user_id, db)
 
 
-@router.put(
+@router.patch(
     "",
     response_model=health_targets_schema.HealthTargetsRead,
     status_code=status.HTTP_200_OK,
@@ -56,6 +57,8 @@ def update_health_targets(
     health_targets: health_targets_schema.HealthTargetsUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
+    if_match: core_dependencies.IfMatch,
 ) -> health_targets_schema.HealthTargetsRead:
     """Update health targets for the authenticated user.
 
@@ -70,6 +73,8 @@ def update_health_targets(
             extracted from the access token.
         db (Session): Database session dependency for database
             operations.
+        response: The response, which carries the new ETag.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         health_targets_schema.HealthTargetsRead: The updated
@@ -81,4 +86,6 @@ def update_health_targets(
             lacks proper permissions or if the token is invalid.
         HTTPException: May raise database-related errors if the update operation fails.
     """
-    return health_targets_service.update_health_targets(health_targets, token_user_id, db)
+    updated = health_targets_service.update_health_targets(health_targets, token_user_id, db, if_match=if_match)
+    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    return updated

@@ -2,6 +2,7 @@ from datetime import date as datetime_date
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.orm.exc import StaleDataError
 
 import core.exceptions as core_exceptions
 import modules.health.constants as health_constants
@@ -22,9 +23,9 @@ class TestStageEdit:
     def test_stages_without_scoring_or_committing(self, mock_edit, mock_scoring, mock_db):
         record = _update()
 
-        health_sleep_service.stage_edit_health_sleep(1, 7, record, mock_db)
+        health_sleep_service.stage_edit_health_sleep(1, 7, record, mock_db, if_match="*")
 
-        mock_edit.assert_called_once_with(1, 7, record, mock_db)
+        mock_edit.assert_called_once_with(1, 7, record, mock_db, if_match="*")
         mock_scoring.assert_not_called()
         mock_db.commit.assert_not_called()
 
@@ -56,6 +57,31 @@ class TestCreateHealthSleep:
 
 
 class TestUpsertHealthSleep:
+    @patch(f"{_PREFIX}.health_sleep_crud.edit_health_sleep")
+    @patch(f"{_PREFIX}.health_sleep_crud.get_health_sleep_by_date_and_user_id")
+    def test_a_writer_that_changed_the_row_first_is_retried_against_its_version(
+        self, mock_get_by_date, mock_edit, mock_db
+    ):
+        mock_get_by_date.return_value = MagicMock(id=7)
+        mock_edit.side_effect = [StaleDataError("moved"), "stored"]
+        record = health_sleep_schema.HealthSleepCreate(date=datetime_date(2024, 1, 15), total_sleep_seconds=28800)
+
+        result = health_sleep_service.stage_upsert_health_sleep(1, record, mock_db)
+
+        assert result == "stored"
+        assert mock_edit.call_count == 2
+
+    @patch(f"{_PREFIX}.health_sleep_crud.edit_health_sleep", side_effect=StaleDataError("moved"))
+    @patch(f"{_PREFIX}.health_sleep_crud.get_health_sleep_by_date_and_user_id")
+    def test_a_row_that_keeps_moving_is_given_up_on(self, mock_get_by_date, mock_edit, mock_db):
+        mock_get_by_date.return_value = MagicMock(id=7)
+        record = health_sleep_schema.HealthSleepCreate(date=datetime_date(2024, 1, 15), total_sleep_seconds=28800)
+
+        with pytest.raises(StaleDataError):
+            health_sleep_service.stage_upsert_health_sleep(1, record, mock_db)
+
+        assert mock_edit.call_count == health_constants.UPSERT_ATTEMPTS
+
     @patch(_SCORING)
     @patch(f"{_PREFIX}.health_sleep_crud.edit_health_sleep")
     @patch(f"{_PREFIX}.health_sleep_crud.get_health_sleep_by_date_and_user_id")
@@ -76,7 +102,7 @@ class TestEditAndDelete:
     def test_edit_rescores_and_commits(self, mock_edit, mock_scoring, mock_db):
         record = _update()
 
-        health_sleep_service.edit_health_sleep(1, 7, record, mock_db)
+        health_sleep_service.edit_health_sleep(1, 7, record, mock_db, if_match="*")
 
         mock_scoring.assert_called_once_with(record)
         mock_db.commit.assert_called_once()

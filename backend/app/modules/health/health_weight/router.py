@@ -2,9 +2,10 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Security, status
+from fastapi import APIRouter, Depends, Query, Request, Response, Security, status
 
 import core.dependencies as core_dependencies
+import core.etag as core_etag
 import core.pagination as core_pagination
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
@@ -94,6 +95,8 @@ def edit_health_weight(
     health_weight: health_weight_schema.HealthWeightUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
+    if_match: core_dependencies.IfMatch,
 ) -> health_weight_schema.HealthWeightRead:
     """Edit a health weight entry for the authenticated user.
 
@@ -108,6 +111,8 @@ def edit_health_weight(
         token_user_id (int): The ID of the authenticated user extracted from the
             access token.
         db (Session): Database session dependency for executing database operations.
+        response: The response, which carries the new ETag.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated health weight record from the database.
@@ -116,7 +121,11 @@ def edit_health_weight(
         PermissionDeniedError: If the record names another user.
         NotFoundError: If the entry doesn't exist.
     """
-    return health_weight_service.edit_health_weight(token_user_id, health_weight_id, health_weight, db)
+    updated = health_weight_service.edit_health_weight(
+        token_user_id, health_weight_id, health_weight, db, if_match=if_match
+    )
+    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    return updated
 
 
 @router.delete(

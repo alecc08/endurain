@@ -11,11 +11,13 @@ from fastapi import (
     Depends,
     Query,
     Request,
+    Response,
     Security,
     status,
 )
 
 import core.dependencies as core_dependencies
+import core.etag as core_etag
 import core.pagination as core_pagination
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
@@ -119,6 +121,8 @@ def edit_health_water(
     health_water: health_water_schema.HealthWaterUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
+    if_match: core_dependencies.IfMatch,
 ) -> health_water_schema.HealthWaterRead:
     """Edit an existing water intake record.
 
@@ -128,6 +132,8 @@ def edit_health_water(
         health_water: Water intake data to update.
         token_user_id: User ID from the access token.
         db: Database session dependency.
+        response: The response, which carries the new ETag.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         Updated HealthWaterRead record.
@@ -135,7 +141,11 @@ def edit_health_water(
     Raises:
         HTTPException: If record not found or unauthorized.
     """
-    return health_water_service.edit_health_water(token_user_id, health_water_id, health_water, db)
+    updated = health_water_service.edit_health_water(
+        token_user_id, health_water_id, health_water, db, if_match=if_match
+    )
+    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    return updated
 
 
 @router.delete(
