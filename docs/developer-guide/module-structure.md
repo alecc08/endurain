@@ -795,10 +795,10 @@ limitations rather than half-done:
   notification handlers live in `modules/notifications` and subscribe to
   `followers.events` (`TestLayerRules`). `strava` and
   `users.users_profile` still import another module's `utils`/`manager` directly.
-- **Forwarding surfaces on unconverted peers.** `garmin` reaches `users_integrations` and `users.users`
-  through small `integration_service.py` files that only forward to their `crud`. Those `crud` functions
-  still commit and raise `HTTPException`; the surfaces get their real shape when the owning modules are
-  converted. The `health_*` surfaces already have it: they stage, and `garmin` commits.
+- **Forwarding surfaces on unconverted peers.** `garmin` reaches `users.users` through a small
+  `integration_service.py` that only forwards to its `crud`. That `crud` still commits and raises
+  `HTTPException`; the surface gets its real shape when `users.users` is converted. The `health_*` and
+  `users_integrations` surfaces already have it: they stage, and `garmin` commits.
 - **Legacy model scan.** Converted modules declare their ORM module in
   `model_registry.py` and use scalar foreign keys with database `ON DELETE`
   behaviour. `app/model_registry.py` keeps a filesystem scan only for modules not
