@@ -389,6 +389,7 @@ def delete_profile_session(
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def delete_my_account(
     request: Request,
+    response: Response,
     step_up: users_schema.StepUpVerification,
     token_user_id: auth_dependencies.CurrentUserId,
     identity_service: Annotated[
@@ -405,10 +406,12 @@ def delete_my_account(
     """Delete the authenticated user's account and all of their data.
 
     Requires step-up verification: the current password, and an MFA code when MFA is enabled. The
-    deletion is permanent and cannot be undone. Export the profile first to keep a copy.
+    deletion is permanent and cannot be undone. Export the profile first to keep a copy. The browser's
+    refresh-token cookie is cleared on the response.
 
     Args:
         request: The incoming request, read by the rate limiter.
+        response: The response, which receives the cookie-deletion headers.
         step_up: Step-up verification payload.
         token_user_id: User ID from access token.
         identity_service: Identity service dependency.
@@ -417,6 +420,7 @@ def delete_my_account(
         db: Database session.
     """
     profile_service.delete_account(token_user_id, step_up, identity_service, step_up_store, storage, db)
+    identity_service.clear_session_cookies(response)
 
 
 @router.get("/export", status_code=status.HTTP_200_OK, response_class=StreamingResponse)

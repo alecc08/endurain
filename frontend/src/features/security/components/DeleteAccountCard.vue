@@ -29,13 +29,12 @@ const deleteMutation = useDeleteAccountMutation()
 
 const isDialogOpen = ref(false)
 
-/** Deletes the account after step-up, then leaves for the login screen. */
+/** Deletes the account after step-up, then leaves for the farewell page. */
 function onConfirm(input: StepUpInput): void {
   deleteMutation.mutate(input, {
     onSuccess: () => {
       isDialogOpen.value = false
-      toasts.success(t('settings.security.deleteAccount.success'))
-      void router.replace({ name: 'login' })
+      void router.replace({ name: 'account-deleted' })
     },
     onError: (error) => {
       if (error instanceof HttpError && error.status === 409) {

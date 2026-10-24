@@ -33,7 +33,7 @@ import hmac
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated, Protocol, runtime_checkable
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -624,6 +624,14 @@ class IdentityService(Protocol):
         Raises:
             HTTPException: If step-up fails, the IdP is missing/disabled, or
                 already linked.
+        """
+        ...
+
+    def clear_session_cookies(self, response: Response) -> None:
+        """Delete the browser's refresh-token cookies on a response.
+
+        Args:
+            response: Response that receives the cookie-deletion headers.
         """
         ...
 
@@ -1394,6 +1402,10 @@ class DefaultIdentityService:
             step_up_store,
             self._db,
         )
+
+    def clear_session_cookies(self, response: Response) -> None:
+        """Delete the browser's refresh-token cookies on a response."""
+        auth_utils.clear_refresh_token_cookies(response)
 
     def verify_step_up(
         self,

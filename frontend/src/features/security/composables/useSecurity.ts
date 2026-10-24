@@ -268,9 +268,9 @@ export function useDeleteApiKeyMutation() {
 }
 
 /**
- * Delete-my-account mutation. On success the account no longer exists, so the
- * local session is cleared (which also empties the Query cache) rather than
- * invalidating individual queries.
+ * Delete-my-account mutation. On success the account and its sessions no longer
+ * exist on the server, so only the local session is cleared (which also empties
+ * the Query cache); calling the logout endpoint would just fail.
  *
  * @returns The TanStack Query mutation for deleting the account.
  */
@@ -280,6 +280,6 @@ export function useDeleteAccountMutation() {
   return useMutation<void, Error, StepUpInput>({
     mutationKey: queryKeys.security.all(),
     mutationFn: (input) => deleteAccount(input),
-    onSuccess: () => authStore.logout(),
+    onSuccess: () => authStore.clearLocalSession(),
   })
 }

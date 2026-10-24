@@ -766,7 +766,6 @@
       "dialogTitle": "Delete your account?",
       "dialogDescription": "This permanently deletes your account and all of your data. Confirm your identity to continue.",
       "confirm": "Delete my account",
-      "success": "Your account and data were deleted",
       "error": "Couldn't delete your account. Please try again.",
       "onlyAdminError": "You are the only administrator. Make another user an administrator before deleting your account."
     },
