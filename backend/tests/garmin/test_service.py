@@ -116,3 +116,93 @@ def test_a_rejected_token_unlinks_the_account_it_was_stored_as():
         garmin_service.handle_rejected_token(1, session, garminconnect.GarminConnectAuthenticationError("401"))
 
     unlink.assert_called_once_with(1, {"di_token": "enc"}, session_local.return_value.__enter__.return_value)
+
+
+class TestUndecryptableToken:
+    """A key that cannot read the stored token says nothing about the token: the account stays linked."""
+
+    def test_a_sync_fails_and_the_account_stays_linked(self):
+        with (
+            patch.object(garmin_service, "unlink_expired_account") as unlink,
+            patch.object(
+                garmin_service.user_integrations_integration,
+                "get_user_integrations",
+                return_value=MagicMock(garminconnect_token={"di_token": "enc"}),
+            ),
+            patch.object(
+                garmin_service.garmin_token_utils,
+                "login_garminconnect_using_tokens",
+                side_effect=core_exceptions.UndecryptableError(),
+            ),
+            pytest.raises(core_exceptions.UndecryptableError),
+        ):
+            garmin_service.get_user_garminconnect_session(1, MagicMock())
+
+        unlink.assert_not_called()
+
+    def test_a_migration_gets_no_client_and_changes_nothing(self):
+        with (
+            patch.object(garmin_service, "unlink_expired_account") as unlink,
+            patch.object(
+                garmin_service.user_integrations_integration,
+                "get_user_integrations",
+                return_value=MagicMock(garminconnect_token={"di_token": "enc"}),
+            ),
+            patch.object(
+                garmin_service.garmin_token_utils,
+                "login_garminconnect_using_tokens",
+                side_effect=core_exceptions.UndecryptableError(),
+            ),
+        ):
+            client = garmin_service.get_user_garminconnect_client(1, MagicMock())
+
+        assert client is None
+        unlink.assert_not_called()
+
+
+class TestLinkedSession:
+    def test_an_unlinked_user_yields_no_session_and_stores_nothing(self):
+        with (
+            patch.object(garmin_service.core_database, "SessionLocal"),
+            patch.object(garmin_service, "get_user_garminconnect_session", return_value=None),
+            patch.object(garmin_service, "save_refreshed_token") as save,
+            garmin_service.linked_session(1) as session,
+        ):
+            assert session is None
+
+        save.assert_not_called()
+
+    def test_the_refreshed_token_is_stored_when_the_body_succeeds(self):
+        linked = garmin_service.GarminSession(MagicMock(), {"di_token": "enc"})
+        with (
+            patch.object(garmin_service.core_database, "SessionLocal"),
+            patch.object(garmin_service, "get_user_garminconnect_session", return_value=linked),
+            patch.object(garmin_service, "save_refreshed_token") as save,
+            garmin_service.linked_session(1) as session,
+        ):
+            assert session is linked
+
+        save.assert_called_once_with(1, linked)
+
+    def test_the_refreshed_token_is_stored_when_the_body_fails(self):
+        linked = garmin_service.GarminSession(MagicMock(), {"di_token": "enc"})
+        with (
+            patch.object(garmin_service.core_database, "SessionLocal"),
+            patch.object(garmin_service, "get_user_garminconnect_session", return_value=linked),
+            patch.object(garmin_service, "save_refreshed_token") as save,
+            pytest.raises(RuntimeError),
+            garmin_service.linked_session(1),
+        ):
+            raise RuntimeError("boom")
+
+        save.assert_called_once_with(1, linked)
+
+    def test_no_database_session_is_open_while_the_body_runs(self):
+        linked = garmin_service.GarminSession(MagicMock(), {"di_token": "enc"})
+        with (
+            patch.object(garmin_service.core_database, "SessionLocal") as session_local,
+            patch.object(garmin_service, "get_user_garminconnect_session", return_value=linked),
+            patch.object(garmin_service, "save_refreshed_token"),
+            garmin_service.linked_session(1),
+        ):
+            session_local.return_value.__exit__.assert_called_once()

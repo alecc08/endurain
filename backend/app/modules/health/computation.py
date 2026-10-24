@@ -1,4 +1,7 @@
-"""Utility functions for health-related operations."""
+"""Pure date and SQL helpers shared by the health packages.
+
+Owns no table and calls no module, so every health package can use it.
+"""
 
 from datetime import date, timedelta
 
@@ -6,8 +9,7 @@ from sqlalchemy import func
 
 
 def get_start_date_for_interval(interval: str, today: date) -> date:
-    """
-    Calculate the start date based on the specified time interval.
+    """Calculate the start date based on the specified time interval.
 
     Args:
         interval (str): The time interval for which to calculate the start date.

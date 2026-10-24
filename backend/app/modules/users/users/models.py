@@ -9,13 +9,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from core.database import Base
 
 if TYPE_CHECKING:
-    from modules.health.health_fasting.models import HealthFasting
-    from modules.health.health_poop.models import HealthPoop
-    from modules.health.health_sleep.models import HealthSleep
-    from modules.health.health_steps.models import HealthSteps
-    from modules.health.health_targets.models import HealthTargets
-    from modules.health.health_water.models import HealthWater
-    from modules.health.health_weight.models import HealthWeight
     from modules.users.users_default_gear.models import UsersDefaultGear
     from modules.users.users_goals.models import UsersGoal
     from modules.users.users_integrations.models import UsersIntegrations
@@ -173,34 +166,6 @@ class Users(Base):
         cascade="all, delete-orphan",
     )
     users_privacy_settings: Mapped[list["UsersPrivacySettings"]] = relationship(
-        back_populates="users",
-        cascade="all, delete-orphan",
-    )
-    health_sleep: Mapped[list["HealthSleep"]] = relationship(
-        back_populates="users",
-        cascade="all, delete-orphan",
-    )
-    health_weight: Mapped[list["HealthWeight"]] = relationship(
-        back_populates="users",
-        cascade="all, delete-orphan",
-    )
-    health_steps: Mapped[list["HealthSteps"]] = relationship(
-        back_populates="users",
-        cascade="all, delete-orphan",
-    )
-    health_targets: Mapped[list["HealthTargets"]] = relationship(
-        back_populates="users",
-        cascade="all, delete-orphan",
-    )
-    health_fasting: Mapped[list["HealthFasting"]] = relationship(
-        back_populates="users",
-        cascade="all, delete-orphan",
-    )
-    health_water: Mapped[list["HealthWater"]] = relationship(
-        back_populates="users",
-        cascade="all, delete-orphan",
-    )
-    health_poop: Mapped[list["HealthPoop"]] = relationship(
         back_populates="users",
         cascade="all, delete-orphan",
     )

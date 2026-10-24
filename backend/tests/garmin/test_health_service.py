@@ -26,18 +26,17 @@ def _sleep_payload(**dto_overrides) -> dict:
     return {"dailySleepDTO": dto}
 
 
-def _run(payload: dict, existing: MagicMock | None) -> tuple[int, MagicMock, MagicMock]:
-    """Sync one day and return the count with the edit and create mocks."""
+def _run(payload: dict, existing: MagicMock | None) -> tuple[int, MagicMock]:
+    """Sync one day and return the count with the upsert mock."""
     client = MagicMock()
     client.get_sleep_data.return_value = payload
     with (
-        patch.object(health_utils, "SessionLocal"),
+        patch.object(health_utils.core_database, "SessionLocal"),
         patch.object(health_utils.health_sleep_integration, "get_health_sleep_by_date", return_value=existing),
-        patch.object(health_utils.health_sleep_integration, "edit_health_sleep") as edit,
-        patch.object(health_utils.health_sleep_integration, "create_health_sleep") as create,
+        patch.object(health_utils.health_sleep_integration, "upsert_health_sleep") as upsert,
     ):
         count = health_utils.fetch_and_process_sleep_by_dates(client, DAY, DAY, 1)
-    return count, edit, create
+    return count, upsert
 
 
 def _existing(source, garminconnect_sleep_id) -> MagicMock:
@@ -52,43 +51,38 @@ class TestEmptySleepDay:
     """A DTO of nulls must be skipped like a missing DTO."""
 
     def test_dto_without_id_is_skipped(self):
-        existing = _existing(None, None)
-        count, edit, create = _run(_sleep_payload(id=None), existing)
+        count, upsert = _run(_sleep_payload(id=None), _existing(None, None))
         assert count == 0
-        edit.assert_not_called()
-        create.assert_not_called()
+        upsert.assert_not_called()
 
     def test_dto_without_sleep_time_is_skipped(self):
-        count, edit, create = _run(_sleep_payload(sleepTimeSeconds=None), None)
+        count, upsert = _run(_sleep_payload(sleepTimeSeconds=None), None)
         assert count == 0
-        edit.assert_not_called()
-        create.assert_not_called()
+        upsert.assert_not_called()
 
 
 class TestExistingRowOwnership:
     """The sync only overwrites rows that Garmin wrote."""
 
     def test_row_from_another_source_is_kept(self):
-        count, edit, create = _run(_sleep_payload(), _existing(None, None))
+        count, upsert = _run(_sleep_payload(), _existing(None, None))
         assert count == 0
-        edit.assert_not_called()
-        create.assert_not_called()
+        upsert.assert_not_called()
 
     def test_garmin_row_is_updated(self):
-        count, edit, _ = _run(_sleep_payload(), _existing(health_sleep_schema.Source.GARMIN, "123"))
+        count, upsert = _run(_sleep_payload(), _existing(health_sleep_schema.Source.GARMIN, "123"))
         assert count == 1
-        edit.assert_called_once()
+        upsert.assert_called_once()
 
     def test_legacy_row_with_garmin_sleep_id_is_updated(self):
-        count, edit, _ = _run(_sleep_payload(), _existing(None, "123"))
+        count, upsert = _run(_sleep_payload(), _existing(None, "123"))
         assert count == 1
-        edit.assert_called_once()
+        upsert.assert_called_once()
 
-    def test_missing_row_is_created(self):
-        count, edit, create = _run(_sleep_payload(), None)
+    def test_missing_row_is_stored(self):
+        count, upsert = _run(_sleep_payload(), None)
         assert count == 1
-        create.assert_called_once()
-        edit.assert_not_called()
+        upsert.assert_called_once()
 
 
 class TestNoSessionAcrossGarminCalls:
@@ -103,9 +97,9 @@ class TestNoSessionAcrossGarminCalls:
         session_factory = _CountingSessions()
 
         with (
-            patch.object(health_utils, "SessionLocal", session_factory),
+            patch.object(health_utils.core_database, "SessionLocal", session_factory),
             patch.object(health_utils.health_sleep_integration, "get_health_sleep_by_date", return_value=None),
-            patch.object(health_utils.health_sleep_integration, "create_health_sleep"),
+            patch.object(health_utils.health_sleep_integration, "upsert_health_sleep"),
         ):
             health_utils.fetch_and_process_sleep_by_dates(client, DAY, DAY, 1)
 
@@ -134,7 +128,7 @@ class TestExpiredToken:
 
         session = health_utils.garmin_service.GarminSession(client, {"di_token": "enc"})
         with (
-            patch.object(health_utils, "SessionLocal"),
+            patch.object(health_utils.core_database, "SessionLocal"),
             patch.object(health_utils.garmin_service, "get_user_garminconnect_session", return_value=session),
             patch.object(health_utils.garmin_service, "handle_rejected_token") as unlink,
         ):
@@ -145,7 +139,7 @@ class TestExpiredToken:
 
     def test_an_unlinked_user_is_skipped(self):
         with (
-            patch.object(health_utils, "SessionLocal"),
+            patch.object(health_utils.core_database, "SessionLocal"),
             patch.object(health_utils.garmin_service, "get_user_garminconnect_session", return_value=None),
             patch.object(health_utils, "fetch_and_process_bc_by_dates") as fetch,
         ):
@@ -158,7 +152,7 @@ class TestFailuresPropagate:
     def test_an_unexpected_failure_reaches_the_caller_so_a_worker_retries(self):
         session = health_utils.garmin_service.GarminSession(MagicMock(), {"di_token": "enc"})
         with (
-            patch.object(health_utils, "SessionLocal"),
+            patch.object(health_utils.core_database, "SessionLocal"),
             patch.object(health_utils.garmin_service, "get_user_garminconnect_session", return_value=session),
             patch.object(health_utils, "fetch_and_process_bc_by_dates", side_effect=RuntimeError("boom")),
             patch.object(health_utils.garmin_service, "save_refreshed_token") as save,
@@ -169,22 +163,155 @@ class TestFailuresPropagate:
         save.assert_called_once()
 
 
-class TestUpsert:
-    def test_an_existing_record_is_edited_and_a_missing_one_created(self):
+class TestStore:
+    def test_the_record_is_handed_to_the_upsert_and_committed(self):
         record = health_utils.health_steps_schema.HealthStepsBase(
             date="2026-09-29", steps=10, source=health_utils.health_steps_schema.Source.GARMIN
         )
-        edit, create = MagicMock(), MagicMock()
-        kwargs = {
-            "label": "Daily steps",
-            "edit": edit,
-            "create": create,
-            "update_schema": health_utils.health_steps_schema.HealthStepsUpdate,
-            "create_schema": health_utils.health_steps_schema.HealthStepsCreate,
-        }
-        with patch.object(health_utils, "SessionLocal"):
-            health_utils._upsert(1, record, get=lambda *_: MagicMock(id=7), **kwargs)
-            health_utils._upsert(1, record, get=lambda *_: None, **kwargs)
+        upsert = MagicMock()
+        with patch.object(health_utils.core_database, "SessionLocal") as session_local:
+            stored = health_utils._store(
+                1,
+                record,
+                label="Daily steps",
+                upsert=upsert,
+                create_schema=health_utils.health_steps_schema.HealthStepsCreate,
+            )
 
-        assert edit.call_args.args[1].id == 7
-        create.assert_called_once()
+        assert stored is True
+        assert upsert.call_args.args[0] == 1
+        assert upsert.call_args.args[1].steps == 10
+        session_local.return_value.__enter__.return_value.commit.assert_called_once()
+
+    def test_a_kept_record_is_not_written(self):
+        record = health_utils.health_steps_schema.HealthStepsBase(
+            date="2026-09-29", steps=10, source=health_utils.health_steps_schema.Source.GARMIN
+        )
+        upsert = MagicMock()
+        with patch.object(health_utils.core_database, "SessionLocal"):
+            stored = health_utils._store(
+                1,
+                record,
+                label="Daily steps",
+                upsert=upsert,
+                create_schema=health_utils.health_steps_schema.HealthStepsCreate,
+                keep_existing=lambda *_: True,
+            )
+
+        assert stored is False
+        upsert.assert_not_called()
+
+
+class TestBodyCompositionOwnership:
+    """A weight record the user entered, or another source wrote, is never replaced."""
+
+    @staticmethod
+    def _run(existing):
+        client = MagicMock()
+        client.get_body_composition.return_value = {
+            "dateWeightList": [
+                {
+                    "calendarDate": "2026-09-29",
+                    "weight": 70000,
+                    "bmi": 22.0,
+                    "bodyFat": 15.0,
+                    "bodyWater": 55.0,
+                    "boneMass": 3000,
+                    "muscleMass": 30000,
+                    "physiqueRating": None,
+                    "visceralFat": None,
+                }
+            ]
+        }
+        with (
+            patch.object(health_utils.core_database, "SessionLocal"),
+            patch.object(health_utils.health_weight_integration, "get_health_weight_by_date", return_value=existing),
+            patch.object(health_utils.health_weight_integration, "upsert_health_weight") as upsert,
+        ):
+            count = health_utils.fetch_and_process_bc_by_dates(client, DAY, DAY, 1)
+        return count, upsert
+
+    def test_a_manual_record_is_kept(self):
+        count, upsert = self._run(MagicMock(source=None))
+
+        assert count == 0
+        upsert.assert_not_called()
+
+    def test_a_garmin_record_is_updated(self):
+        count, upsert = self._run(MagicMock(source="garmin"))
+
+        assert count == 1
+        upsert.assert_called_once()
+
+    def test_a_missing_record_is_stored(self):
+        count, upsert = self._run(None)
+
+        assert count == 1
+        upsert.assert_called_once()
+
+
+class TestDailyStepsOwnership:
+    @staticmethod
+    def _run(existing):
+        client = MagicMock()
+        client.get_daily_steps.return_value = [{"calendarDate": "2026-09-29", "totalSteps": 500}]
+        with (
+            patch.object(health_utils.core_database, "SessionLocal"),
+            patch.object(health_utils.health_steps_integration, "get_health_steps_by_date", return_value=existing),
+            patch.object(health_utils.health_steps_integration, "upsert_health_steps") as upsert,
+        ):
+            count = health_utils.fetch_and_process_ds_by_dates(client, DAY, DAY, 1)
+        return count, upsert
+
+    def test_a_manual_record_is_kept(self):
+        count, upsert = self._run(MagicMock(source=None))
+
+        assert count == 0
+        upsert.assert_not_called()
+
+    def test_a_garmin_record_is_updated(self):
+        count, upsert = self._run(MagicMock(source="garmin"))
+
+        assert count == 1
+        upsert.assert_called_once()
+
+
+class TestDailySteps:
+    def test_a_zero_step_first_day_does_not_hide_the_rest_of_the_range(self):
+        client = MagicMock()
+        client.get_daily_steps.return_value = [
+            {"calendarDate": "2026-09-28", "totalSteps": 0},
+            {"calendarDate": "2026-09-29", "totalSteps": 500},
+        ]
+        with patch.object(health_utils, "_store", return_value=True) as upsert:
+            count = health_utils.fetch_and_process_ds_by_dates(client, DAY, DAY, 1)
+
+        assert count == 2
+        assert upsert.call_count == 2
+
+
+class TestFetchFailures:
+    def test_a_garmin_error_reaches_the_caller_instead_of_reading_as_no_data(self):
+        client = MagicMock()
+        client.get_body_composition.side_effect = RuntimeError("429")
+
+        with pytest.raises(RuntimeError):
+            health_utils.fetch_and_process_bc_by_dates(client, DAY, DAY, 1)
+
+    def test_a_sync_reports_whether_it_ran(self):
+        session = health_utils.garmin_service.GarminSession(MagicMock(), {"di_token": "enc"})
+        with (
+            patch.object(health_utils.core_database, "SessionLocal"),
+            patch.object(health_utils.garmin_service, "get_user_garminconnect_session", return_value=session),
+            patch.object(health_utils, "fetch_and_process_bc_by_dates", return_value=0),
+            patch.object(health_utils, "fetch_and_process_ds_by_dates", return_value=0),
+            patch.object(health_utils, "fetch_and_process_sleep_by_dates", return_value=0),
+            patch.object(health_utils.garmin_service, "save_refreshed_token"),
+        ):
+            assert health_utils.get_user_garminconnect_health_by_dates(DAY, DAY, 1) is True
+
+        with (
+            patch.object(health_utils.core_database, "SessionLocal"),
+            patch.object(health_utils.garmin_service, "get_user_garminconnect_session", return_value=None),
+        ):
+            assert health_utils.get_user_garminconnect_health_by_dates(DAY, DAY, 1) is False

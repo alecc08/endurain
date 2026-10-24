@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+import core.exceptions as core_exceptions
 import modules.auth._internal.internal_dependencies as auth_internal_dependencies
 import modules.auth._internal.password_hasher as auth_password_hasher
 import modules.auth._internal.security_stores as auth_security_stores
@@ -90,7 +91,10 @@ def mock_db() -> MagicMock:
     Returns:
         MagicMock: A mock object with the specification of a SQLAlchemy Session.
     """
-    return MagicMock(spec=Session)
+    db = MagicMock(spec=Session)
+    # A real savepoint rolls back and re-raises; a bare mock context manager would swallow the error.
+    db.begin_nested.return_value.__exit__.return_value = False
+    return db
 
 
 @pytest.fixture
@@ -222,6 +226,7 @@ def fast_api_app(password_hasher, token_manager, mock_db) -> FastAPI:
     """
 
     app = FastAPI()
+    core_exceptions.register_exception_handlers(app)
 
     # Include any routers you have configured
     for dotted in DEFAULT_ROUTER_MODULES:

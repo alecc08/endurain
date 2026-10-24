@@ -2,12 +2,14 @@
 
 from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime, timedelta
+from enum import Enum
 from typing import Any
 
 import garminconnect
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+import core.database as core_database
 import core.logger as core_logger
 import modules.garmin.service as garmin_service
 import modules.health.health_sleep.integration_service as health_sleep_integration
@@ -16,7 +18,6 @@ import modules.health.health_steps.integration_service as health_steps_integrati
 import modules.health.health_steps.schema as health_steps_schema
 import modules.health.health_weight.integration_service as health_weight_integration
 import modules.health.health_weight.schema as health_weight_schema
-from core.database import SessionLocal
 
 logger = core_logger.get_logger(__name__)
 
@@ -52,89 +53,66 @@ def _sleep_score(score: dict | None) -> health_sleep_schema.SleepScore | None:
     return health_sleep_schema.SleepScore(key) if key in health_sleep_schema.SleepScore._value2member_map_ else None
 
 
-def _fetch(
-    fetch: Callable[[], Any],
-    what: str,
-    user_id: int,
-    start_date: date,
-    end_date: date,
-) -> Any | None:
-    """Call Garmin Connect for one kind of health data, treating a failed call as no data.
-
-    Args:
-        fetch: The Garmin Connect call.
-        what: What is being fetched, for the log.
-        user_id: The data's owner.
-        start_date: First day requested.
-        end_date: Last day requested.
-
-    Returns:
-        The payload, or ``None`` when the call failed.
-
-    Raises:
-        GarminConnectAuthenticationError: When Garmin Connect rejects the session.
-    """
-    try:
-        return fetch()
-    except garminconnect.GarminConnectAuthenticationError:
-        raise
-    except Exception as err:
-        logger.error(
-            "Error fetching Garmin Connect health data for user",
-            exc_info=err,
-            extra=core_logger.context(user_id=user_id, what=what, start_date=start_date, end_date=end_date),
-        )
-        return None
-
-
-def _upsert(
+def _store(
     user_id: int,
     record: BaseModel,
     *,
     label: str,
-    get: Callable[[int, str, Session], Any],
-    edit: Callable[[int, Any, Session], Any],
-    create: Callable[[int, Any, Session], Any],
-    update_schema: type[BaseModel],
+    upsert: Callable[[int, Any, Session], Any],
     create_schema: type[BaseModel],
-    keep_existing: Callable[[Any], bool] | None = None,
+    keep_existing: Callable[[int, str, Session], bool] | None = None,
 ) -> bool:
-    """Store a health record in a short session of its own: edit the day's record, or create it.
+    """Store a health record in a short session of its own: create the day's record, or update it.
 
     Args:
         user_id: The record's owner.
         record: The record built from Garmin Connect, carrying its ``date``.
         label: The kind of record, for the log.
-        get: Reads the owner's record for a date.
-        edit: Edits an existing record.
-        create: Creates a record.
-        update_schema: The schema ``edit`` takes.
-        create_schema: The schema ``create`` takes.
-        keep_existing: Tells whether an existing record must be left as it is.
+        upsert: Stages the record, or an update to the owner's record for its date.
+        create_schema: The schema ``upsert`` takes.
+        keep_existing: Tells whether the owner's record for a date must be left as it is.
 
     Returns:
         True when the record was stored, False when an existing one was kept.
     """
     fields = record.model_dump()
-    with SessionLocal() as db:
-        existing = get(user_id, str(fields["date"]), db)
-        if existing and keep_existing is not None and keep_existing(existing):
-            logger.info(
+    with core_database.SessionLocal() as db:
+        if keep_existing is not None and keep_existing(user_id, str(fields["date"]), db):
+            logger.debug(
                 "Keeping existing non-Garmin health record",
                 extra=core_logger.context(user_id=user_id, record=label, date=fields["date"]),
             )
             return False
-        if existing:
-            edit(user_id, update_schema(id=existing.id, user_id=user_id, **fields), db)
-            outcome = "edited"
-        else:
-            create(user_id, create_schema(**fields), db)
-            outcome = "created"
-    logger.info(
+        upsert(user_id, create_schema(**fields), db)
+        db.commit()
+    logger.debug(
         "Garmin Connect health record stored",
-        extra=core_logger.context(user_id=user_id, record=label, outcome=outcome, date=fields["date"]),
+        extra=core_logger.context(user_id=user_id, record=label, date=fields["date"]),
     )
     return True
+
+
+def _keep_other_source(
+    get_by_date: Callable[[int, str, Session], Any], garmin_source: Enum
+) -> Callable[[int, str, Session], bool]:
+    """Build the check that leaves a day's record alone unless Garmin Connect wrote it.
+
+    A record the user entered, or another source wrote, is theirs: a sync neither replaces it nor
+    blanks its fields.
+
+    Args:
+        get_by_date: Returns the owner's record for a date, or ``None``.
+        garmin_source: The record type's Garmin Connect ``Source``.
+
+    Returns:
+        A ``keep_existing`` callable for :func:`_store`.
+    """
+
+    def keep(user_id: int, date: str, db: Session) -> bool:
+        existing = get_by_date(user_id, date, db)
+        return existing is not None and existing.source != garmin_source.value
+
+    return keep
 
 
 def fetch_and_process_bc_by_dates(
@@ -152,15 +130,9 @@ def fetch_and_process_bc_by_dates(
         user_id: The records' owner.
 
     Returns:
-        Number of body composition records processed.
+        Number of body composition records stored; a day whose record another source wrote is skipped.
     """
-    garmin_bc = _fetch(
-        lambda: garminconnect_client.get_body_composition(str(start_date.date()), str(end_date.date())),
-        "body composition",
-        user_id,
-        start_date.date(),
-        end_date.date(),
-    )
+    garmin_bc = garminconnect_client.get_body_composition(str(start_date.date()), str(end_date.date()))
 
     if not garmin_bc or not garmin_bc.get("dateWeightList"):
         logger.info(
@@ -169,6 +141,9 @@ def fetch_and_process_bc_by_dates(
         )
         return 0
 
+    keep_existing = _keep_other_source(
+        health_weight_integration.get_health_weight_by_date, health_weight_schema.Source.GARMIN
+    )
     count_processed = 0
     for bc in garmin_bc["dateWeightList"]:
         # A metabolic age outside 1-150 years is a bad reading
@@ -189,17 +164,15 @@ def fetch_and_process_bc_by_dates(
             metabolic_age=metabolic_age,
             source=health_weight_schema.Source.GARMIN,
         )
-        _upsert(
+        stored = _store(
             user_id,
             health_weight,
             label="Body composition",
-            get=health_weight_integration.get_health_weight_by_date,
-            edit=health_weight_integration.edit_health_weight,
-            create=health_weight_integration.create_health_weight,
-            update_schema=health_weight_schema.HealthWeightUpdate,
+            upsert=health_weight_integration.upsert_health_weight,
             create_schema=health_weight_schema.HealthWeightCreate,
+            keep_existing=keep_existing,
         )
-        count_processed += 1
+        count_processed += stored
     return count_processed
 
 
@@ -218,23 +191,20 @@ def fetch_and_process_ds_by_dates(
         user_id: The records' owner.
 
     Returns:
-        Number of daily steps records processed.
+        Number of daily steps records stored; a day whose record another source wrote is skipped.
     """
-    garmin_ds = _fetch(
-        lambda: garminconnect_client.get_daily_steps(str(start_date.date()), str(end_date.date())),
-        "daily steps",
-        user_id,
-        start_date.date(),
-        end_date.date(),
-    )
+    garmin_ds = garminconnect_client.get_daily_steps(str(start_date.date()), str(end_date.date()))
 
-    if not garmin_ds or not garmin_ds[0].get("totalSteps"):
+    if not garmin_ds:
         logger.info(
             "No new Garmin Connect daily steps found",
             extra=core_logger.context(user_id=user_id, start_date=start_date.date(), end_date=end_date.date()),
         )
         return 0
 
+    keep_existing = _keep_other_source(
+        health_steps_integration.get_health_steps_by_date, health_steps_schema.Source.GARMIN
+    )
     count_processed = 0
     for ds in garmin_ds:
         if ds["totalSteps"] is None:
@@ -245,17 +215,15 @@ def fetch_and_process_ds_by_dates(
             steps=ds["totalSteps"],
             source=health_steps_schema.Source.GARMIN,
         )
-        _upsert(
+        stored = _store(
             user_id,
             health_steps,
             label="Daily steps",
-            get=health_steps_integration.get_health_steps_by_date,
-            edit=health_steps_integration.edit_health_steps,
-            create=health_steps_integration.create_health_steps,
-            update_schema=health_steps_schema.HealthStepsUpdate,
+            upsert=health_steps_integration.upsert_health_steps,
             create_schema=health_steps_schema.HealthStepsCreate,
+            keep_existing=keep_existing,
         )
-        count_processed += 1
+        count_processed += stored
     return count_processed
 
 
@@ -366,12 +334,17 @@ def _build_sleep(garmin_sleep: dict, sleep_dto: dict) -> health_sleep_schema.Hea
     )
 
 
-def _is_other_source_sleep(existing: Any) -> bool:
-    """Tell whether a stored sleep record came from another source than Garmin Connect.
+def _is_other_source_sleep(user_id: int, date: str, db: Session) -> bool:
+    """Tell whether the stored sleep record of a date came from another source than Garmin Connect.
 
     Rows created before ``source`` was stored are recognised by their Garmin sleep id.
     """
-    return existing.source != health_sleep_schema.Source.GARMIN and not existing.garminconnect_sleep_id
+    existing = health_sleep_integration.get_health_sleep_by_date(user_id, date, db)
+    return (
+        existing is not None
+        and existing.source != health_sleep_schema.Source.GARMIN
+        and not existing.garminconnect_sleep_id
+    )
 
 
 def fetch_and_process_sleep_by_dates(
@@ -395,13 +368,7 @@ def fetch_and_process_sleep_by_dates(
 
     # get_sleep_data only supports a single date
     for day in _each_day(start_date, end_date):
-        garmin_sleep = _fetch(
-            lambda day=day: garminconnect_client.get_sleep_data(day.isoformat()),
-            "sleep data",
-            user_id,
-            day,
-            day,
-        )
+        garmin_sleep = garminconnect_client.get_sleep_data(day.isoformat())
 
         sleep_dto = garmin_sleep.get("dailySleepDTO") if garmin_sleep else None
         # For a date without sleep Garmin still returns a DTO whose fields are all null
@@ -412,14 +379,11 @@ def fetch_and_process_sleep_by_dates(
             )
             continue
 
-        stored = _upsert(
+        stored = _store(
             user_id,
             _build_sleep(garmin_sleep, sleep_dto),
             label="Sleep data",
-            get=health_sleep_integration.get_health_sleep_by_date,
-            edit=health_sleep_integration.edit_health_sleep,
-            create=health_sleep_integration.create_health_sleep,
-            update_schema=health_sleep_schema.HealthSleepUpdate,
+            upsert=health_sleep_integration.upsert_health_sleep,
             create_schema=health_sleep_schema.HealthSleepCreate,
             keep_existing=_is_other_source_sleep,
         )
@@ -432,7 +396,7 @@ def get_user_garminconnect_health_by_dates(
     start_date: datetime,
     end_date: datetime,
     user_id: int,
-) -> None:
+) -> bool:
     """Fetch and store one user's Garmin Connect health data for a window.
 
     No session is open while Garmin is being called; each record is stored in its own short
@@ -443,51 +407,48 @@ def get_user_garminconnect_health_by_dates(
         start_date: Start of the window.
         end_date: End of the window.
         user_id: The user to sync.
-    """
-    session = None
-    try:
-        with SessionLocal() as db:
-            session = garmin_service.get_user_garminconnect_session(user_id, db)
 
+    Returns:
+        True when the data was synced, False when the account is not linked or Garmin Connect
+        rejected its token.
+    """
+    with garmin_service.linked_session(user_id) as session:
         if session is None:
-            return
-        garminconnect_client = session.client
+            return False
 
         logger.info(
             "Started Garmin Connect health processing for date range",
             extra=core_logger.context(user_id=user_id, start_date=start_date.date(), end_date=end_date.date()),
         )
+        try:
+            for what, fetch in (
+                ("body composition", fetch_and_process_bc_by_dates),
+                ("daily steps", fetch_and_process_ds_by_dates),
+                ("sleep data", fetch_and_process_sleep_by_dates),
+            ):
+                count = fetch(session.client, start_date, end_date, user_id)
+                logger.info(
+                    "Garmin Connect health data processed",
+                    extra=core_logger.context(user_id=user_id, what=what, count=count),
+                )
+        except garminconnect.GarminConnectAuthenticationError as err:
+            garmin_service.handle_rejected_token(user_id, session, err)
+            return False
+    return True
 
-        for what, fetch in (
-            ("body composition", fetch_and_process_bc_by_dates),
-            ("daily steps", fetch_and_process_ds_by_dates),
-            ("sleep data", fetch_and_process_sleep_by_dates),
-        ):
-            count = fetch(garminconnect_client, start_date, end_date, user_id)
-            logger.info(
-                "Garmin Connect health data processed",
-                extra=core_logger.context(user_id=user_id, what=what, count=count),
-            )
-    except garminconnect.GarminConnectAuthenticationError as err:
-        garmin_service.handle_rejected_token(user_id, session, err)
-    finally:
-        if session is not None:
-            garmin_service.save_refreshed_token(user_id, session)
 
-
-def sync_health_for_dates(start_date: date, end_date: date, user_id: int) -> None:
+def sync_health_for_dates(start_date: date, end_date: date, user_id: int) -> bool:
     """Fetch and store one user's Garmin Connect health data for whole days.
 
     Args:
         start_date: First day to fetch.
         end_date: Last day to fetch, inclusive.
         user_id: The user to sync.
+
+    Returns:
+        True when the data was synced, False when the account is not linked or was rejected.
     """
-    logger.info(
-        "Garmin Connect health data will be processed in the background",
-        extra=core_logger.context(user_id=user_id),
-    )
-    get_user_garminconnect_health_by_dates(
+    return get_user_garminconnect_health_by_dates(
         datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
         datetime.combine(end_date, datetime.max.time(), tzinfo=UTC),
         user_id,

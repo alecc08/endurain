@@ -1,15 +1,18 @@
+"""FastAPI router for health steps endpoints."""
+
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
+from fastapi import APIRouter, Depends, Query, Request, Security, status
 from sqlalchemy.orm import Session
 
 import core.database as core_database
 import core.dependencies as core_dependencies
+import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
 import modules.health.constants as health_constants
-import modules.health.health_steps.crud as health_steps_crud
 import modules.health.health_steps.schema as health_steps_schema
+import modules.health.health_steps.service as health_steps_service
 
 # Define the API router
 router = APIRouter()
@@ -46,8 +49,7 @@ def read_health_steps_all_pagination(
         Query(description="Filter by goal interval"),
     ] = None,
 ) -> health_steps_schema.HealthStepsListResponse:
-    """
-    Retrieve paginated health steps records for the authenticated user.
+    """Retrieve paginated health steps records for the authenticated user.
 
     This endpoint fetches health steps data with optional pagination and
     filtering. Access is restricted to users with the 'health:read' scope.
@@ -76,17 +78,7 @@ def read_health_steps_all_pagination(
         HTTPException: If the user lacks required 'health:read' scope or if
             pagination values are invalid.
     """
-    # Get the total count and paginated records from the database
-    total = health_steps_crud.get_health_steps_number_by_user_id(token_user_id, db, interval)
-    records = health_steps_crud.get_health_steps_by_user_id(token_user_id, db, page_number, num_records, interval)
-
-    # Pydantic will convert ORM models to HealthStepsRead via from_attributes=True
-    return health_steps_schema.HealthStepsListResponse(
-        total=total,
-        num_records=num_records,
-        page_number=page_number,
-        records=records,
-    )
+    return health_steps_service.list_health_steps(token_user_id, db, page_number, num_records, interval)
 
 
 @router.post(
@@ -94,7 +86,9 @@ def read_health_steps_all_pagination(
     response_model=health_steps_schema.HealthStepsRead,
     status_code=status.HTTP_201_CREATED,
 )
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def create_health_steps(
+    request: Request,
     health_steps: health_steps_schema.HealthStepsCreate,
     _check_scopes: Annotated[Callable, Security(auth_dependencies.check_scopes, scopes=["health:write"])],
     token_user_id: Annotated[
@@ -106,14 +100,14 @@ def create_health_steps(
         Depends(core_database.get_db),
     ],
 ) -> health_steps_schema.HealthStepsRead:
-    """
-    Create or update health steps data for a user.
+    """Create or update health steps data for a user.
 
     This endpoint creates new health steps data or updates existing data if an entry
     for the specified date already exists. The operation is determined automatically
     based on whether steps data exists for the given date.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         health_steps (health_steps_schema.HealthSteps): The health steps data to create
             or update, including the date and step count.
         _check_scopes (Callable): Security dependency that verifies the user has
@@ -125,28 +119,8 @@ def create_health_steps(
     Returns:
         health_steps_schema.HealthSteps: The created or updated health steps data.
 
-    Raises:
-        HTTPException: 400 error if the date field is not provided in the request.
     """
-    if not health_steps.date:
-        raise HTTPException(status_code=400, detail="Date field is required.")
-
-    # Convert date to string format for CRUD function
-    date_str = health_steps.date.isoformat()
-
-    # Check if health_steps for this date already exists
-    steps_for_date = health_steps_crud.get_health_steps_by_date_and_user_id(token_user_id, date_str, db)
-
-    if steps_for_date:
-        # Convert to update schema with the existing ID and user_id
-        health_steps_update = health_steps_schema.HealthStepsUpdate(
-            id=steps_for_date.id, user_id=token_user_id, **health_steps.model_dump()
-        )
-        # Updates the health_steps in the database and returns it
-        return health_steps_crud.edit_health_steps(token_user_id, health_steps_update, db)
-    else:
-        # Creates the health_steps in the database and returns it
-        return health_steps_crud.create_health_steps(token_user_id, health_steps, db)
+    return health_steps_service.create_health_steps(token_user_id, health_steps, db)
 
 
 @router.put(
@@ -154,7 +128,9 @@ def create_health_steps(
     response_model=health_steps_schema.HealthStepsRead,
     status_code=status.HTTP_200_OK,
 )
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_health_steps(
+    request: Request,
     health_steps: health_steps_schema.HealthStepsUpdate,
     _check_scopes: Annotated[Callable, Security(auth_dependencies.check_scopes, scopes=["health:write"])],
     token_user_id: Annotated[
@@ -166,13 +142,13 @@ def edit_health_steps(
         Depends(core_database.get_db),
     ],
 ) -> health_steps_schema.HealthStepsRead:
-    """
-    Edit health steps data for a user.
+    """Edit health steps data for a user.
 
     This endpoint updates existing health steps records in the database for the authenticated user.
     Requires 'health:write' scope for authorization.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         health_steps (health_steps_schema.HealthSteps): The health steps data to be updated,
             containing the new values for the health steps record.
         _check_scopes (Callable): Security dependency that verifies the user has 'health:write'
@@ -190,12 +166,14 @@ def edit_health_steps(
             found, or database operations fail.
     """
     # Updates the health_steps in the database and returns it
-    return health_steps_crud.edit_health_steps(token_user_id, health_steps, db)
+    return health_steps_service.edit_health_steps(token_user_id, health_steps, db)
 
 
 @router.delete("/{health_steps_id}", response_model=None, status_code=status.HTTP_204_NO_CONTENT)
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def delete_health_steps(
-    health_steps_id: int,
+    request: Request,
+    health_steps_id: core_dependencies.PositiveId,
     _check_scopes: Annotated[Callable, Security(auth_dependencies.check_scopes, scopes=["health:write"])],
     token_user_id: Annotated[
         int,
@@ -206,13 +184,13 @@ def delete_health_steps(
         Depends(core_database.get_db),
     ],
 ) -> None:
-    """
-    Delete a health steps record for the authenticated user.
+    """Delete a health steps record for the authenticated user.
 
     This endpoint removes a specific health steps entry from the database for the user
     identified by the access token. The user must have 'health:write' scope permission.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         health_steps_id (int): The unique identifier of the health steps record to delete.
         _check_scopes (Callable): Security dependency that verifies the user has 'health:write' scope.
         token_user_id (int): The user ID extracted from the access token.
@@ -228,4 +206,4 @@ def delete_health_steps(
             - The health steps record doesn't exist or doesn't belong to the user
     """
     # Deletes entry from database
-    health_steps_crud.delete_health_steps(token_user_id, health_steps_id, db)
+    health_steps_service.delete_health_steps(token_user_id, health_steps_id, db)

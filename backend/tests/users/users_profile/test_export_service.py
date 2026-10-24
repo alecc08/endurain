@@ -368,11 +368,11 @@ class TestExportServiceCollectHealthWeight:
 
             with (
                 patch(
-                    "modules.users.users_profile.export_service.health_weight_crud.get_all_health_weight_by_user_id",
+                    "modules.users.users_profile.export_service.health_weight_integration.list_health_weight",
                     return_value=mock_health,
                 ),
                 patch(
-                    "modules.users.users_profile.export_service.health_targets_crud.get_health_targets_by_user_id",
+                    "modules.users.users_profile.export_service.health_targets_integration.get_health_targets",
                     return_value=MagicMock(),
                 ),
                 patch.object(profile_utils, "sqlalchemy_obj_to_dict", return_value={"id": 1}),
@@ -390,7 +390,7 @@ class TestExportServiceCollectHealthWeight:
 
             with (
                 patch(
-                    "modules.users.users_profile.export_service.health_weight_crud.get_all_health_weight_by_user_id",
+                    "modules.users.users_profile.export_service.health_weight_integration.list_health_weight",
                     side_effect=Exception("unexpected"),
                 ),
                 pytest.raises(DataCollectionError),
@@ -406,11 +406,11 @@ class TestExportServiceCollectHealthWeight:
 
             with (
                 patch(
-                    "modules.users.users_profile.export_service.health_weight_crud.get_all_health_weight_by_user_id",
+                    "modules.users.users_profile.export_service.health_weight_integration.list_health_weight",
                     return_value=[],
                 ),
                 patch(
-                    "modules.users.users_profile.export_service.health_targets_crud.get_health_targets_by_user_id",
+                    "modules.users.users_profile.export_service.health_targets_integration.get_health_targets",
                     return_value=None,
                 ),
             ):
@@ -1156,7 +1156,7 @@ class TestExportServiceDbErrorWrapsDataCollectionError:
             service.performance_config.enable_memory_monitoring = False
             with (
                 patch(
-                    "modules.users.users_profile.export_service.health_weight_crud.get_all_health_weight_by_user_id",
+                    "modules.users.users_profile.export_service.health_weight_integration.list_health_weight",
                     side_effect=SQLAlchemyError("db down"),
                 ),
                 pytest.raises(DataCollectionError),

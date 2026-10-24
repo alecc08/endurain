@@ -1,9 +1,13 @@
-"""The operations other modules may call on health steps records."""
+"""The operations other modules may call on health steps records.
+
+The writes stage; the caller owns the unit of work and commits.
+"""
 
 from sqlalchemy.orm import Session
 
 import modules.health.health_steps.crud as health_steps_crud
 import modules.health.health_steps.schema as health_steps_schema
+import modules.health.health_steps.service as health_steps_service
 
 
 def get_health_steps_by_date(user_id: int, date: str, db: Session) -> health_steps_schema.HealthStepsRead | None:
@@ -20,33 +24,20 @@ def get_health_steps_by_date(user_id: int, date: str, db: Session) -> health_ste
     return health_steps_crud.get_health_steps_by_date_and_user_id(user_id, date, db)
 
 
-def create_health_steps(
+def upsert_health_steps(
     user_id: int, health_steps: health_steps_schema.HealthStepsCreate, db: Session
 ) -> health_steps_schema.HealthStepsRead:
-    """Create a steps record for a user.
+    """Stage a steps record for a user, or an update to their record for the same date.
 
     Args:
         user_id: The record's owner.
-        health_steps: The record to create.
+        health_steps: The record to store.
         db: Database session.
 
     Returns:
-        The created record.
+        The staged record.
+
+    Raises:
+        ConflictError: If the date's record cannot be created or found.
     """
-    return health_steps_crud.create_health_steps(user_id, health_steps, db)
-
-
-def edit_health_steps(
-    user_id: int, health_steps: health_steps_schema.HealthStepsUpdate, db: Session
-) -> health_steps_schema.HealthStepsRead:
-    """Edit a user's steps record.
-
-    Args:
-        user_id: The record's owner.
-        health_steps: The record with its changes.
-        db: Database session.
-
-    Returns:
-        The edited record.
-    """
-    return health_steps_crud.edit_health_steps(user_id, health_steps, db)
+    return health_steps_service.stage_upsert_health_steps(user_id, health_steps, db)

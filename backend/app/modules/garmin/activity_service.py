@@ -6,6 +6,7 @@ from datetime import datetime
 
 import garminconnect
 
+import core.database as core_database
 import core.file_uploads as file_uploads
 import core.logger as core_logger
 import modules.activities.activity.integration_service as activity_integration
@@ -13,7 +14,6 @@ import modules.activities.activity.schema as activity_schema
 import modules.activities.activity_ingestion.integration_service as activity_ingestion_integration
 import modules.garmin.gear_service as garmin_gear_service
 import modules.garmin.service as garmin_service
-from core.database import SessionLocal
 
 logger = core_logger.get_logger(__name__)
 
@@ -82,7 +82,7 @@ def _download_and_ingest_activity(
             return stored
 
         for full_file_path in extracted_paths:
-            with SessionLocal() as db:
+            with core_database.SessionLocal() as db:
                 parsed_result = activity_ingestion_integration.ingest_activity_file(
                     user_id=user_id,
                     file_path=str(full_file_path),
@@ -96,13 +96,9 @@ def _download_and_ingest_activity(
                         activity_name=activity_name,
                     ),
                 )
+            # Ingestion logs a file it could not store and answers None, so the window moves on.
             if parsed_result:
                 stored.extend(parsed_result)
-            else:
-                logger.warning(
-                    "Failed to parse Garmin activity file",
-                    extra=core_logger.context(user_id=user_id, activity_id=activity_id, file_name=full_file_path.name),
-                )
     return stored
 
 
@@ -115,8 +111,10 @@ def fetch_and_process_activities_by_dates(
     """Fetch a user's Garmin Connect activities in a window and store the new ones.
 
     Runs on a worker thread. Garmin round trips run with no session open; the
-    duplicate check and the store each open a short one. One activity failing is
-    logged and skipped, so it does not stop the rest of the window.
+    duplicate check and the store each open a short one. An activity failing does
+    not stop the rest of the window, but the first failure is raised once the
+    window is done, so the refresh job fails and is retried, as for any provider. A file ingestion
+    could not store is logged by ingestion and skipped, and does not fail the window.
 
     Args:
         session: The user's authenticated Garmin Connect session.
@@ -126,6 +124,9 @@ def fetch_and_process_activities_by_dates(
 
     Returns:
         The stored activities, or ``None`` when there were none.
+
+    Raises:
+        Exception: The first failure of the window fetch or of an activity.
     """
     garminconnect_client = session.client
     try:
@@ -136,13 +137,6 @@ def fetch_and_process_activities_by_dates(
     except garminconnect.GarminConnectAuthenticationError as err:
         garmin_service.handle_rejected_token(user_id, session, err)
         return None
-    except Exception as err:
-        logger.error(
-            "Error fetching activities for user",
-            exc_info=err,
-            extra=core_logger.context(user_id=user_id, start_date=start_date.date(), end_date=end_date.date()),
-        )
-        return None
 
     if garmin_activities is None:
         logger.info(
@@ -152,19 +146,20 @@ def fetch_and_process_activities_by_dates(
         return None
 
     parsed_activities: list[activity_schema.ActivityRead] = []
+    first_failure: Exception | None = None
     for activity in garmin_activities:
         activity_id = activity["activityId"]
 
-        with SessionLocal() as db:
+        with core_database.SessionLocal() as db:
             already_stored = activity_integration.get_activity_by_garminconnect_id(activity_id, user_id, db)
         if already_stored:
-            logger.info(
+            logger.debug(
                 "Activity already stored in the database",
                 extra=core_logger.context(user_id=user_id, activity_id=activity_id),
             )
             continue
 
-        logger.info(
+        logger.debug(
             "Processing activity",
             extra=core_logger.context(user_id=user_id, activity_id=activity_id),
         )
@@ -174,12 +169,15 @@ def fetch_and_process_activities_by_dates(
             garmin_service.handle_rejected_token(user_id, session, err)
             break
         except Exception as err:
-            logger.error(
+            logger.warning(
                 "Error processing Garmin Connect activity",
                 exc_info=err,
                 extra=core_logger.context(user_id=user_id, activity_id=activity_id),
             )
+            first_failure = first_failure or err
 
+    if first_failure is not None:
+        raise first_failure
     return parsed_activities if parsed_activities else None
 
 
@@ -198,12 +196,11 @@ def get_user_garminconnect_activities_by_dates(
     Returns:
         The stored activities, or ``None`` when Garmin Connect is not linked or
         nothing new came back.
-    """
-    session = None
-    try:
-        with SessionLocal() as db:
-            session = garmin_service.get_user_garminconnect_session(user_id, db)
 
+    Raises:
+        Exception: Whatever the sync raised, so the refresh job fails and is retried.
+    """
+    with garmin_service.linked_session(user_id) as session:
         if session is None:
             return None
 
@@ -217,12 +214,3 @@ def get_user_garminconnect_activities_by_dates(
             extra=core_logger.context(user_id=user_id, count=len(processed) if processed else 0),
         )
         return processed
-    except Exception as err:
-        logger.error(
-            "Error in get_user_garminconnect_activities_by_dates",
-            exc_info=err,
-        )
-        return None
-    finally:
-        if session is not None:
-            garmin_service.save_refreshed_token(user_id, session)

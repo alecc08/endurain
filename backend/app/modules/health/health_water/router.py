@@ -1,5 +1,4 @@
-"""
-FastAPI router for health water intake endpoints.
+"""FastAPI router for health water intake endpoints.
 
 This module defines the API endpoints for managing water intake
 records, including CRUD operations with pagination and filtering.
@@ -11,8 +10,8 @@ from typing import Annotated
 from fastapi import (
     APIRouter,
     Depends,
-    HTTPException,
     Query,
+    Request,
     Security,
     status,
 )
@@ -20,10 +19,11 @@ from sqlalchemy.orm import Session
 
 import core.database as core_database
 import core.dependencies as core_dependencies
+import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
 import modules.health.constants as health_constants
-import modules.health.health_water.crud as health_water_crud
 import modules.health.health_water.schema as health_water_schema
+import modules.health.health_water.service as health_water_service
 
 # Define the API router
 router = APIRouter()
@@ -67,8 +67,7 @@ def read_health_water_all_pagination(
         Query(description="Filter by goal interval"),
     ] = None,
 ) -> health_water_schema.HealthWaterListResponse:
-    """
-    Retrieve paginated water intake records for the user.
+    """Retrieve paginated water intake records for the user.
 
     Args:
         _check_scopes: Security dependency that validates the
@@ -90,21 +89,7 @@ def read_health_water_all_pagination(
         HTTPException: If the user lacks required scope or
             pagination values are invalid.
     """
-    total = health_water_crud.get_health_water_number_by_user_id(token_user_id, db, interval)
-    records = health_water_crud.get_health_water_by_user_id(
-        token_user_id,
-        db,
-        page_number,
-        num_records,
-        interval,
-    )
-
-    return health_water_schema.HealthWaterListResponse(
-        total=total,
-        num_records=num_records,
-        page_number=page_number,
-        records=records,
-    )
+    return health_water_service.list_health_water(token_user_id, db, page_number, num_records, interval)
 
 
 @router.post(
@@ -112,7 +97,9 @@ def read_health_water_all_pagination(
     response_model=health_water_schema.HealthWaterRead,
     status_code=status.HTTP_201_CREATED,
 )
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def create_health_water(
+    request: Request,
     health_water: health_water_schema.HealthWaterCreate,
     _check_scopes: Annotated[
         Callable,
@@ -130,13 +117,13 @@ def create_health_water(
         Depends(core_database.get_db),
     ],
 ) -> health_water_schema.HealthWaterRead:
-    """
-    Create or update a water intake record for the user.
+    """Create or update a water intake record for the user.
 
     If a record already exists for the given date, it will be
     updated instead of creating a duplicate.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         health_water: Water intake data to create.
         _check_scopes: Security dependency for health:write.
         token_user_id: User ID from the access token.
@@ -145,31 +132,8 @@ def create_health_water(
     Returns:
         Created or updated HealthWaterRead record.
 
-    Raises:
-        HTTPException: 400 if date field is not provided.
     """
-    if not health_water.date:
-        raise HTTPException(
-            status_code=400,
-            detail="Date field is required.",
-        )
-
-    date_str = health_water.date.isoformat()
-
-    water_for_date = health_water_crud.get_health_water_by_date_and_user_id(token_user_id, date_str, db)
-
-    if water_for_date:
-        accumulated_ml = (water_for_date.amount_ml or 0) + (health_water.amount_ml or 0)
-        health_water_update = health_water_schema.HealthWaterUpdate(
-            id=water_for_date.id,
-            user_id=token_user_id,
-            amount_ml=accumulated_ml,
-            date=health_water.date,
-            source=health_water.source,
-        )
-        return health_water_crud.edit_health_water(token_user_id, health_water_update, db)
-    else:
-        return health_water_crud.create_health_water(token_user_id, health_water, db)
+    return health_water_service.create_health_water(token_user_id, health_water, db)
 
 
 @router.put(
@@ -177,7 +141,9 @@ def create_health_water(
     response_model=health_water_schema.HealthWaterRead,
     status_code=status.HTTP_200_OK,
 )
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_health_water(
+    request: Request,
     health_water: health_water_schema.HealthWaterUpdate,
     _check_scopes: Annotated[
         Callable,
@@ -195,10 +161,10 @@ def edit_health_water(
         Depends(core_database.get_db),
     ],
 ) -> health_water_schema.HealthWaterRead:
-    """
-    Edit an existing water intake record.
+    """Edit an existing water intake record.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         health_water: Water intake data to update.
         _check_scopes: Security dependency for health:write.
         token_user_id: User ID from the access token.
@@ -210,7 +176,7 @@ def edit_health_water(
     Raises:
         HTTPException: If record not found or unauthorized.
     """
-    return health_water_crud.edit_health_water(token_user_id, health_water, db)
+    return health_water_service.edit_health_water(token_user_id, health_water, db)
 
 
 @router.delete(
@@ -218,8 +184,10 @@ def edit_health_water(
     response_model=None,
     status_code=status.HTTP_204_NO_CONTENT,
 )
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def delete_health_water(
-    health_water_id: int,
+    request: Request,
+    health_water_id: core_dependencies.PositiveId,
     _check_scopes: Annotated[
         Callable,
         Security(
@@ -236,10 +204,10 @@ def delete_health_water(
         Depends(core_database.get_db),
     ],
 ) -> None:
-    """
-    Delete a water intake record for the authenticated user.
+    """Delete a water intake record for the authenticated user.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         health_water_id: ID of the water intake record.
         _check_scopes: Security dependency for health:write.
         token_user_id: User ID from the access token.
@@ -248,4 +216,4 @@ def delete_health_water(
     Raises:
         HTTPException: If record not found or unauthorized.
     """
-    health_water_crud.delete_health_water(token_user_id, health_water_id, db)
+    health_water_service.delete_health_water(token_user_id, health_water_id, db)

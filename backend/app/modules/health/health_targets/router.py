@@ -1,13 +1,16 @@
+"""FastAPI router for health targets endpoints."""
+
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Security, status
+from fastapi import APIRouter, Depends, Request, Security, status
 from sqlalchemy.orm import Session
 
 import core.database as core_database
+import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
-import modules.health.health_targets.crud as health_targets_crud
 import modules.health.health_targets.schema as health_targets_schema
+import modules.health.health_targets.service as health_targets_service
 
 # Define the API router
 router = APIRouter()
@@ -29,8 +32,7 @@ def read_health_targets_all(
         Depends(core_database.get_db),
     ],
 ) -> health_targets_schema.HealthTargetsRead | None:
-    """
-    Retrieve all health targets for the authenticated user.
+    """Retrieve all health targets for the authenticated user.
 
     This endpoint fetches all health targets associated with the user identified by the
     access token. It requires the 'health:read' scope for authorization.
@@ -52,8 +54,7 @@ def read_health_targets_all(
         HTTPException: May raise 401 Unauthorized if the token is invalid or expired.
         HTTPException: May raise 403 Forbidden if the user lacks the required 'health:read' scope.
     """
-    # Get the health_targets from the database
-    return health_targets_crud.get_health_targets_by_user_id(token_user_id, db)
+    return health_targets_service.get_health_targets(token_user_id, db)
 
 
 @router.put(
@@ -61,7 +62,9 @@ def read_health_targets_all(
     response_model=health_targets_schema.HealthTargetsRead,
     status_code=status.HTTP_200_OK,
 )
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def update_health_targets(
+    request: Request,
     health_targets: health_targets_schema.HealthTargetsUpdate,
     _check_scopes: Annotated[Callable, Security(auth_dependencies.check_scopes, scopes=["health:write"])],
     token_user_id: Annotated[
@@ -73,17 +76,15 @@ def update_health_targets(
         Depends(core_database.get_db),
     ],
 ) -> health_targets_schema.HealthTargetsRead:
-    """
-    Update health targets for the authenticated user.
+    """Update health targets for the authenticated user.
 
     This endpoint allows users to modify their health-related targets such as
     weight goals, activity targets, or other health metrics.
 
     Args:
-        health_targets (
-            health_targets_schema.HealthTargetsUpdate): The
-            health targets data to be updated, containing the
-            new values for various health metrics.
+        request: The incoming request, read by the rate limiter.
+        health_targets: The health targets to update, containing the new values for
+            the health metrics.
         _check_scopes (Callable): Security dependency that
             verifies the user has 'health:write' scope
             permission.
@@ -102,5 +103,4 @@ def update_health_targets(
             lacks proper permissions or if the token is invalid.
         HTTPException: May raise database-related errors if the update operation fails.
     """
-    # Update the health_targets in the database
-    return health_targets_crud.edit_health_target(health_targets, token_user_id, db)
+    return health_targets_service.update_health_targets(health_targets, token_user_id, db)
