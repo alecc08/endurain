@@ -5,9 +5,9 @@ Writes stage; the caller owns the commit.
 
 from sqlalchemy.orm import Session
 
+import modules.users.users_privacy_settings.constants as users_privacy_settings_constants
 import modules.users.users_privacy_settings.crud as users_privacy_settings_crud
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
-import modules.users.users_privacy_settings.utils as users_privacy_settings_utils
 
 
 def get_privacy_settings(user_id: int, db: Session) -> users_privacy_settings_schema.UsersPrivacySettingsRead | None:
@@ -69,6 +69,10 @@ def visibility_to_int(
         visibility: Visibility as string, enum, or None.
 
     Returns:
-        Integer representation (0=public, 1=followers, 2=private).
+        Integer representation (0=public, 1=followers, 2=private). An unset or unrecognized
+        value resolves to private, never to public.
     """
-    return users_privacy_settings_utils.visibility_to_int(visibility)
+    value = visibility.value if isinstance(visibility, users_privacy_settings_schema.ActivityVisibility) else visibility
+    return users_privacy_settings_constants.VISIBILITY_LEVELS.get(
+        value, users_privacy_settings_constants.FALLBACK_VISIBILITY_LEVEL
+    )

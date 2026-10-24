@@ -23,7 +23,7 @@ router = APIRouter()
     "",
     status_code=status.HTTP_200_OK,
     response_model=users_schema.UsersListResponse,
-    dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read"])],
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read_all"])],
 )
 def read_users_all_pagination(
     _validate_pagination_values_on_query: Annotated[
@@ -62,6 +62,10 @@ def read_users_all_pagination(
         bool | None,
         Query(description="Filter by local authentication status"),
     ] = None,
+    username: Annotated[
+        str | None,
+        Query(description="Keep only users whose username contains this text"),
+    ] = None,
 ) -> users_schema.UsersListResponse:
     """Retrieve paginated list of all users.
 
@@ -76,6 +80,7 @@ def read_users_all_pagination(
         show_pending_approval: Optional filter by pending approval status.
         show_external_auth: Optional filter by external authentication status.
         show_local_auth: Optional filter by local authentication status.
+        username: Optional text the username must contain.
 
     Returns:
         Paginated list of users with total count.
@@ -90,36 +95,37 @@ def read_users_all_pagination(
         show_pending_approval=show_pending_approval,
         show_external_auth=show_external_auth,
         show_local_auth=show_local_auth,
+        username=username,
     )
 
 
 @router.get(
     "/username/contains/{username}",
     status_code=status.HTTP_200_OK,
-    response_model=list[users_schema.UsersRead] | None,
+    response_model=list[users_schema.UserPublicRead],
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read"])],
 )
 def read_users_contain_username(
     username: users_dependencies.Username,
     db: core_dependencies.DbSession,
-) -> list[users_schema.UsersRead] | users_schema.UsersRead | None:
-    """Search users by partial username match.
+) -> list[users_schema.UserPublicRead]:
+    """Search active users by partial username match.
 
     Args:
         username: Partial username to search for.
         db: Database session dependency.
 
     Returns:
-        List of users matching the search.
+        The matching users' public projections.
     """
-    return users_service.search_users_by_username(username, db)
+    return users_service.search_public_users(username, db)
 
 
 @router.get(
     "/username/{username}",
     status_code=status.HTTP_200_OK,
     response_model=users_schema.UsersRead | None,
-    dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read"])],
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read_all"])],
 )
 def read_users_username(
     username: users_dependencies.Username,
@@ -141,7 +147,7 @@ def read_users_username(
     "/email/{email}",
     status_code=status.HTTP_200_OK,
     response_model=users_schema.UsersRead | None,
-    dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read"])],
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read_all"])],
 )
 def read_users_email(
     email: users_dependencies.Email,
@@ -162,21 +168,43 @@ def read_users_email(
 @router.get(
     "/id/{user_id}",
     status_code=status.HTTP_200_OK,
-    response_model=users_schema.UsersRead | None,
+    response_model=users_schema.UserPublicRead | None,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read"])],
 )
 def read_users_id(
     user_id: core_dependencies.PositiveId,
     db: core_dependencies.DbSession,
-) -> users_schema.UsersRead | None:
-    """Get user by ID.
+) -> users_schema.UserPublicRead | None:
+    """Get a user's public projection by ID.
 
     Args:
         user_id: User ID to retrieve.
         db: Database session dependency.
 
     Returns:
-        User if found, None otherwise.
+        The public projection if the user exists and is active, None otherwise.
+    """
+    return users_service.get_public_profile(user_id, db)
+
+
+@router.get(
+    "/{user_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=users_schema.UsersRead | None,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read_all"])],
+)
+def read_users_full(
+    user_id: core_dependencies.PositiveId,
+    db: core_dependencies.DbSession,
+) -> users_schema.UsersRead | None:
+    """Get a user's full record by ID (admin operation).
+
+    Args:
+        user_id: User ID to retrieve.
+        db: Database session dependency.
+
+    Returns:
+        The full record if the user exists, None otherwise.
     """
     return users_service.get_user(user_id, db)
 
@@ -211,7 +239,7 @@ def create_user(
 @router.post(
     "/{user_id}/image",
     status_code=status.HTTP_201_CREATED,
-    response_model=str,
+    response_model=str | None,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.UPLOAD)
@@ -235,8 +263,7 @@ def upload_user_image(
         Path to uploaded image.
     """
     users_photo_service.upload_photo(user_id, file, storage, db)
-    user: users_schema.UsersRead | None = users_service.get_user(user_id, db)
-    return user.photo_path if user and user.photo_path else None
+    return users_service.require_user(user_id, db).photo_path
 
 
 @router.put(

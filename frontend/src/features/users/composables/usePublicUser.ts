@@ -6,7 +6,7 @@ import type { PublicUser } from '@/features/users/types'
 
 import { queryKeys } from '@/services/queryKeys'
 import { useAuthStore } from '@/features/auth/stores/auth'
-import { fetchPublicUser } from '@/features/users/services/publicUsers'
+import { fetchPublicUser, searchPublicUsers } from '@/features/users/services/publicUsers'
 
 /** Resolves a reactive user id to a positive number, or `0` when unavailable. */
 function resolveUserId(userId: MaybeRefOrGetter<number | null>): number {
@@ -31,5 +31,24 @@ export function usePublicUserQuery(userId: MaybeRefOrGetter<number | null>) {
     queryFn: ({ signal }) => fetchPublicUser(id.value, signal),
     enabled: computed(() => isAuthenticated.value && id.value > 0),
     staleTime: 5 * 60_000,
+  })
+}
+
+/**
+ * Username "contains" search over active users. Enabled only once the
+ * (debounced) term is non-empty so an empty box never fires a request; gated on
+ * authentication.
+ *
+ * @param term - The reactive (debounced) search term.
+ * @returns The TanStack Query result for the matching users.
+ */
+export function useUserSearchQuery(term: MaybeRefOrGetter<string>) {
+  const { isAuthenticated } = storeToRefs(useAuthStore())
+  const trimmed = computed(() => toValue(term).trim())
+
+  return useQuery<PublicUser[]>({
+    queryKey: computed(() => queryKeys.users.search(trimmed.value)),
+    queryFn: ({ signal }) => searchPublicUsers(trimmed.value, signal),
+    enabled: computed(() => isAuthenticated.value && trimmed.value.length > 0),
   })
 }

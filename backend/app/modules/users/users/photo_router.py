@@ -33,6 +33,7 @@ _CACHE_MAX_AGE = 3600
 def read_user_photo(
     user_id: core_dependencies.PositiveId,
     storage: core_dependencies.Storage,
+    db: core_dependencies.DbSession,
     token: Annotated[str, Query(alias="t", description="Signed photo access token")],
 ) -> Response:
     """Serve a user's profile photo when the signed token is valid.
@@ -40,12 +41,13 @@ def read_user_photo(
     Args:
         user_id: The user whose photo to serve.
         storage: The platform storage provider.
+        db: Database session dependency.
         token: The signed access token (``?t=``) minted at serialization time.
 
     Returns:
         The image bytes.
     """
-    data, content_type = users_photo_service.read_photo(user_id, token, storage)
+    data, content_type = users_photo_service.read_photo(user_id, token, storage, db)
     return Response(
         content=data,
         media_type=content_type,

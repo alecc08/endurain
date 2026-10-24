@@ -14,6 +14,7 @@ import type {
 import { queryKeys } from '@/services/queryKeys'
 import { useAuthStore } from '@/features/auth/stores/auth'
 import {
+  changeEmail,
   changePassword,
   createApiKey,
   deleteAccount,
@@ -281,5 +282,24 @@ export function useDeleteAccountMutation() {
     mutationKey: queryKeys.security.all(),
     mutationFn: (input) => deleteAccount(input),
     onSuccess: () => authStore.clearLocalSession(),
+  })
+}
+
+/**
+ * Change-email mutation, run after step-up. The address is shown by the profile and the app
+ * shell, so both are refetched.
+ *
+ * @returns The TanStack Query mutation for changing the account email.
+ */
+export function useChangeEmailMutation() {
+  const client = useQueryClient()
+
+  return useMutation<void, Error, { email: string; stepUp: StepUpInput }>({
+    mutationKey: queryKeys.security.all(),
+    mutationFn: ({ email, stepUp }) => changeEmail(email, stepUp),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.profile.all() })
+      void client.invalidateQueries({ queryKey: queryKeys.currentUser() })
+    },
   })
 }

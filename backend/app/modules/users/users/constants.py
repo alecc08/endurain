@@ -12,7 +12,6 @@ PROFILE_SELF_SERVICE_FIELDS: frozenset[str] = frozenset(
     {
         "name",
         "username",
-        "email",
         "city",
         "birthdate",
         "preferred_language",
@@ -22,8 +21,12 @@ PROFILE_SELF_SERVICE_FIELDS: frozenset[str] = frozenset(
         "max_heart_rate",
         "first_day_of_week",
         "currency",
+        "timezone",
     }
 )
 
 #: Photo extensions accepted on upload.
 ALLOWED_USER_IMAGE_EXTENSIONS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".webp"})
+
+#: Most users a username search returns to a non-admin caller.
+USER_SEARCH_LIMIT = 25

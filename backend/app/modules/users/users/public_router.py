@@ -13,12 +13,12 @@ router = APIRouter()
 @router.get(
     "/id/{user_id}",
     status_code=status.HTTP_200_OK,
-    response_model=users_schema.UsersRead | None,
+    response_model=users_schema.UserPublicRead | None,
 )
 def read_users_id(
     user_id: core_dependencies.PositiveId,
     db: core_dependencies.DbSession,
-) -> users_schema.UsersRead | None:
+) -> users_schema.UserPublicRead | None:
     """Get public user info by ID.
 
     Args:

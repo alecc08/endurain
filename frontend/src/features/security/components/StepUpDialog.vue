@@ -29,8 +29,10 @@ const props = withDefaults(
     confirmPhrase?: string
     /** Whether the confirming action is destructive. */
     destructive?: boolean
+    /** Whether the fields the parent adds through the default slot are valid. */
+    extraValid?: boolean
   }>(),
-  { requireMfa: true, confirmPhrase: undefined, destructive: false },
+  { requireMfa: true, confirmPhrase: undefined, destructive: false, extraValid: true },
 )
 
 const emit = defineEmits<{
@@ -45,6 +47,7 @@ const typedPhrase = ref('')
 
 const canSubmit = computed(
   () =>
+    props.extraValid &&
     (props.confirmPhrase === undefined || typedPhrase.value === props.confirmPhrase) &&
     (!props.requirePassword || password.value.length > 0) &&
     (!props.requireMfa || mfaCode.value.trim().length > 0),
@@ -82,6 +85,7 @@ function onSubmit(): void {
     @submit="onSubmit"
   >
     <div class="flex flex-col gap-3">
+      <slot />
       <div v-if="confirmPhrase !== undefined" class="flex flex-col gap-1.5">
         <Label for="stepup-confirm-phrase">
           {{ t('settings.security.confirmPhrase', { phrase: confirmPhrase }) }}

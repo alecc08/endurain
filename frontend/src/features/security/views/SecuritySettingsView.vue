@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import ChangeEmailCard from '@/features/security/components/ChangeEmailCard.vue'
 import ChangePasswordCard from '@/features/security/components/ChangePasswordCard.vue'
 import LinkedAccountsCard from '@/features/security/components/LinkedAccountsCard.vue'
 import MfaCard from '@/features/security/components/MfaCard.vue'
@@ -82,6 +83,11 @@ const mfaEnabled = computed(() => mfaStatusQuery.data.value?.enabled ?? false)
 
     <!-- Loaded -->
     <template v-else-if="profile">
+      <ChangeEmailCard
+        :email="profile.email"
+        :has-local-password="profile.hasLocalPassword"
+        :mfa-enabled="mfaEnabled"
+      />
       <ChangePasswordCard
         v-if="profile.hasLocalPassword"
         :mfa-enabled="mfaEnabled"

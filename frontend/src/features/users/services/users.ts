@@ -82,9 +82,9 @@ function toUserWire(user: ManagedUser): Omit<UserDto, 'mfa_enabled' | 'external_
 }
 
 /**
- * Fetches one page of all users (admin scope `users:read`).
+ * Fetches one page of all users (admin scope `users:read_all`).
  *
- * @param params - Page number, size, and the five list filters.
+ * @param params - Page number, size, the five list filters and an optional username search.
  * @param signal - Optional abort signal for cancellation.
  * @returns The page's users (mapped) plus the total record count.
  * @throws {HttpError} When the request fails.
@@ -98,6 +98,7 @@ export async function fetchUsers(
     showPendingApproval,
     showExternalAuth,
     showLocalAuth,
+    username,
   }: UsersListParams,
   signal?: AbortSignal,
 ): Promise<UsersPage> {
@@ -112,30 +113,14 @@ export async function fetchUsers(
     show_external_auth: String(showExternalAuth),
     show_local_auth: String(showLocalAuth),
   })
+  if (username) {
+    params.set('username', username)
+  }
   const response = await apiFetch<UsersListResponseDto>(`/users?${params.toString()}`, { signal })
   return {
     records: (response.records ?? []).map(mapManagedUser),
     total: response.total,
   }
-}
-
-/**
- * Searches users whose username contains the given term (admin scope).
- *
- * @param username - The search term.
- * @param signal - Optional abort signal for cancellation.
- * @returns The matching users, mapped to the clean model.
- * @throws {HttpError} When the request fails.
- */
-export async function searchUsersByUsername(
-  username: string,
-  signal?: AbortSignal,
-): Promise<ManagedUser[]> {
-  const dtos = await apiFetch<UserDto[] | null>(
-    `/users/username/contains/${encodeURIComponent(username)}`,
-    { signal },
-  )
-  return (dtos ?? []).map(mapManagedUser)
 }
 
 /**
@@ -197,7 +182,7 @@ export async function updateUser(user: ManagedUser, edits: EditUserFields): Prom
 }
 
 /**
- * Fetches a single user by id (admin scope `users:read`).
+ * Fetches a single user by id (admin scope `users:read_all`).
  *
  * @param id - The user id.
  * @param signal - Optional abort signal for cancellation.
@@ -205,7 +190,7 @@ export async function updateUser(user: ManagedUser, edits: EditUserFields): Prom
  * @throws {HttpError} When the request fails.
  */
 export async function fetchUserById(id: number, signal?: AbortSignal): Promise<ManagedUser | null> {
-  const dto = await apiFetch<UserDto | null>(`/users/id/${id}`, { signal })
+  const dto = await apiFetch<UserDto | null>(`/users/${id}`, { signal })
   return dto ? mapManagedUser(dto) : null
 }
 

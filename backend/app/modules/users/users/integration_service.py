@@ -196,6 +196,24 @@ def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session)
     return users_service.stage_profile_edit(user_id, profile, db)
 
 
+def stage_email_change(user_id: int, email: str, db: Session) -> users_schema.UsersRead:
+    """Stage a new email address for a user and mark it unverified.
+
+    Args:
+        user_id: The user whose email changes.
+        email: The new email address.
+        db: Database session.
+
+    Returns:
+        The user after the change.
+
+    Raises:
+        NotFoundError: If the user does not exist.
+        ConflictError: If the email is already taken.
+    """
+    return users_service.stage_email_change(user_id, email, db)
+
+
 def upload_user_photo(
     user_id: int,
     file: UploadFile,
@@ -219,6 +237,32 @@ def upload_user_photo(
         UnsupportedMediaTypeError: If the extension is not an allowed image type.
     """
     return users_photo_service.upload_photo(user_id, file, storage, db)
+
+
+def store_user_photo(
+    user_id: int,
+    extension: str,
+    data: bytes,
+    storage: platform_providers.StorageProvider,
+    db: Session,
+) -> str:
+    """Store an already validated photo for a user, record its key and commit.
+
+    Args:
+        user_id: The user whose photo is being saved.
+        extension: The image extension including the dot.
+        data: The validated image bytes.
+        storage: The platform storage provider.
+        db: Database session.
+
+    Returns:
+        The storage key of the saved photo.
+
+    Raises:
+        NotFoundError: If the user does not exist.
+        UnsupportedMediaTypeError: If the extension is not an allowed image type.
+    """
+    return users_photo_service.store_photo(user_id, extension, data, storage, db)
 
 
 def delete_user_photo(user_id: int, storage: platform_providers.StorageProvider, db: Session) -> None:

@@ -87,7 +87,43 @@ class TestPublicUser:
             public_shareable_links=True, public_shareable_links_user_info=True
         )
 
-        assert users_service.get_public_user(1, mock_db) == mock_crud.get_user_by_id.return_value
+        mock_crud.get_user_by_id.return_value = _user(1, email="private@example.com")
+
+        public = users_service.get_public_user(1, mock_db)
+
+        assert isinstance(public, users_schema.UserPublicRead)
+        assert public.id == 1
+
+
+class TestPublicProjection:
+    @patch(_CRUD)
+    def test_carries_no_personal_or_account_fields(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(3, city="Porto", birthdate="1990-01-01")
+
+        dumped = users_service.get_public_profile(3, mock_db).model_dump()
+
+        assert set(dumped) == {"id", "name", "username", "city", "photo_path"}
+
+    @patch(_CRUD)
+    def test_an_inactive_account_is_not_visible(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(3, active=False)
+
+        assert users_service.get_public_profile(3, mock_db) is None
+
+    @patch(_CRUD)
+    def test_missing_user_is_none(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = None
+
+        assert users_service.get_public_profile(3, mock_db) is None
+
+    @patch(_CRUD)
+    def test_search_is_bounded_and_projected(self, mock_crud, mock_db):
+        mock_crud.search_active_users_by_username.return_value = [_user(1), _user(2)]
+
+        found = users_service.search_public_users("user", mock_db)
+
+        assert [type(user) for user in found] == [users_schema.UserPublicRead] * 2
+        mock_crud.search_active_users_by_username.assert_called_once_with("user", 25, mock_db)
 
 
 class TestListUsers:
@@ -339,6 +375,14 @@ class TestEdits:
 
         assert mock_crud.update_user.call_args.args[1] == {"name": "New", "username": "mixed"}
 
+    def test_profile_edit_can_set_the_timezone(self, mock_crud, mock_weight, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1)
+        mock_crud.update_user.return_value = _user(1)
+
+        users_service.stage_profile_edit(1, users_schema.ProfileUpdate(timezone="Europe/Lisbon"), mock_db)
+
+        assert mock_crud.update_user.call_args.args[1] == {"timezone": "Europe/Lisbon"}
+
     def test_profile_height_change_recalculates_bmi(self, mock_crud, mock_weight, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1, height=170)
         mock_crud.update_user.return_value = _user(1, height=175)
@@ -424,7 +468,7 @@ class TestDeleteUser:
     def test_the_only_administrator_cannot_be_deleted(self, mock_crud, mock_registry, mock_db):
         admin = _user(1, access_type="admin")
         mock_crud.get_user_by_id.return_value = admin
-        mock_crud.get_users_admin.return_value = [admin]
+        mock_crud.lock_active_admin_ids.return_value = [1]
 
         with pytest.raises(core_exceptions.ConflictError):
             users_service.delete_user(1, MagicMock(), mock_db)
@@ -440,11 +484,59 @@ class TestDeleteUser:
         self, mock_crud, mock_registry, mock_photos, mock_db
     ):
         mock_crud.get_user_by_id.return_value = _user(1, access_type="admin")
-        mock_crud.get_users_admin.return_value = [_user(1, access_type="admin"), _user(2, access_type="admin")]
+        mock_crud.lock_active_admin_ids.return_value = [1, 2]
 
         users_service.delete_user(1, MagicMock(), mock_db)
 
         mock_crud.delete_user.assert_called_once_with(1, mock_db)
+
+
+class TestLastAdminIsProtected:
+    @pytest.mark.parametrize(
+        ("edit", "action"),
+        [({"access_type": "regular"}, "demoted"), ({"active": False}, "deactivated")],
+    )
+    @patch(_CRUD)
+    def test_the_only_administrator_cannot_be_demoted_or_deactivated(self, mock_crud, edit, action, mock_db):
+        admin = _user(1, access_type="admin")
+        mock_crud.get_user_by_id.return_value = admin
+        mock_crud.lock_active_admin_ids.return_value = [1]
+
+        with pytest.raises(core_exceptions.ConflictError, match=action):
+            users_service.stage_user_edit(1, _user(1, **{"access_type": "admin", **edit}), mock_db)
+
+        mock_crud.update_user.assert_not_called()
+
+    @patch("modules.users.users.service.health_weight_integration")
+    @patch(_CRUD)
+    def test_one_of_several_administrators_can_be_demoted(self, mock_crud, _weight, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1, access_type="admin")
+        mock_crud.lock_active_admin_ids.return_value = [1, 2]
+        mock_crud.update_user.return_value = _user(1)
+
+        users_service.stage_user_edit(1, _user(1, access_type="regular"), mock_db)
+
+        mock_crud.update_user.assert_called_once()
+
+    @patch("modules.users.users.service.health_weight_integration")
+    @patch(_CRUD)
+    def test_an_edit_that_keeps_the_admin_takes_no_lock(self, mock_crud, _weight, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1, access_type="admin")
+        mock_crud.update_user.return_value = _user(1)
+
+        users_service.stage_user_edit(1, _user(1, access_type="admin", name="Renamed"), mock_db)
+
+        mock_crud.lock_active_admin_ids.assert_not_called()
+
+    @patch(_CRUD)
+    def test_a_regular_user_is_never_locked_against(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1, access_type="regular")
+        mock_crud.update_user.return_value = _user(1)
+
+        with patch("modules.users.users.service.health_weight_integration"):
+            users_service.stage_user_edit(1, _user(1, access_type="regular", active=False), mock_db)
+
+        mock_crud.lock_active_admin_ids.assert_not_called()
 
 
 class TestTimezone:
@@ -477,3 +569,42 @@ class TestTimezone:
 
         mock_tz.today_in.assert_called_once_with("Pacific/Auckland")
         assert result == mock_tz.today_in.return_value
+
+
+class TestStageEmailChange:
+    @patch(_CRUD)
+    def test_stores_the_lower_cased_address_as_unverified(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1, email="old@example.com")
+
+        users_service.stage_email_change(1, "New@Example.COM", mock_db)
+
+        mock_crud.update_user.assert_called_once_with(1, {"email": "new@example.com", "email_verified": False}, mock_db)
+
+    @patch(_CRUD)
+    def test_resubmitting_the_current_address_keeps_it_verified(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1, email="same@example.com")
+
+        users_service.stage_email_change(1, "SAME@example.com", mock_db)
+
+        mock_crud.update_user.assert_not_called()
+
+    @patch(_CRUD)
+    def test_unknown_user_is_not_found(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = None
+
+        with pytest.raises(core_exceptions.NotFoundError):
+            users_service.stage_email_change(1, "a@example.com", mock_db)
+
+
+class TestAdminEditNormalizesIdentity:
+    @patch("modules.users.users.service.health_weight_integration")
+    @patch(_CRUD)
+    def test_email_is_lower_cased_like_the_username(self, mock_crud, _weight, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1)
+        mock_crud.update_user.return_value = _user(1)
+
+        users_service.stage_user_edit(1, _user(1, username="Bob", email="Bob@Example.COM"), mock_db)
+
+        changes = mock_crud.update_user.call_args.args[1]
+        assert changes["username"] == "bob"
+        assert changes["email"] == "bob@example.com"

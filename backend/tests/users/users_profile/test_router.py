@@ -1,5 +1,6 @@
 """Comprehensive tests for profile.router endpoints."""
 
+import io
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -383,6 +384,43 @@ class TestEditUser:
 # ===================================================================
 
 
+class TestEditProfileEmail:
+    """Tests for PUT /profile/email — edit_profile_email."""
+
+    @patch("modules.users.users_profile.service.users_integration.stage_email_change")
+    def test_success_runs_the_step_up_and_asks_for_verification(self, _stage, profile_client, mock_identity_service):
+        response = profile_client.put(
+            PREFIX + "/email",
+            json={"email": "new@example.com", "current_password": "pw", "mfa_code": None},
+        )
+
+        assert response.status_code == 200
+        assert "email updated successfully" in response.json()["message"]
+        mock_identity_service.verify_step_up.assert_called_once()
+        mock_identity_service.request_email_reverification.assert_called_once()
+
+    def test_step_up_fails(self, profile_client, mock_identity_service):
+        mock_identity_service.verify_step_up.side_effect = HTTPException(status_code=401, detail="Invalid credentials")
+
+        response = profile_client.put(
+            PREFIX + "/email",
+            json={"email": "new@example.com", "current_password": "wrong"},
+        )
+
+        assert response.status_code == 401
+        mock_identity_service.request_email_reverification.assert_not_called()
+
+    def test_the_address_must_be_valid(self, profile_client):
+        response = profile_client.put(PREFIX + "/email", json={"email": "not-an-email", "current_password": "pw"})
+
+        assert response.status_code == 422
+
+    def test_the_plain_profile_edit_refuses_an_email(self, profile_client):
+        response = profile_client.put(PREFIX, json={"email": "new@example.com"})
+
+        assert response.status_code == 422
+
+
 class TestEditProfilePrivacySettings:
     """Tests for PUT /profile/privacy — edit_profile_privacy_settings."""
 
@@ -502,6 +540,10 @@ class TestDeleteProfileOtherSessions:
 # ===================================================================
 
 
+def _archive(data: bytes):
+    return io.BytesIO(data)
+
+
 class TestExportProfileData:
     """Tests for GET /profile/export — export_profile_data."""
 
@@ -519,12 +561,13 @@ class TestExportProfileData:
         mock_get_user.return_value = _make_user_mock()
         mock_to_dict.return_value = {"name": "Test", "password": "secret"}
         mock_instance = mock_export_service.return_value
-        mock_instance.generate_export_archive.return_value = iter([b"zip-data"])
+        mock_instance.build_export_archive.return_value = _archive(b"zip-data")
 
         response = profile_client.get(PREFIX + "/export")
 
         assert response.status_code == 200
         assert response.content == b"zip-data"
+        assert response.headers["content-length"] == str(len(b"zip-data"))
 
     @patch("modules.users.users_profile.service.profile_export_service.ExportService")
     @patch("modules.users.users_profile.service.profile_utils.sqlalchemy_obj_to_dict")
@@ -563,13 +606,13 @@ class TestExportProfileData:
             "access_type": "admin",
         }
         mock_instance = mock_export_service.return_value
-        mock_instance.generate_export_archive.return_value = iter([b"data"])
+        mock_instance.build_export_archive.return_value = _archive(b"data")
 
         response = profile_client.get(PREFIX + "/export")
 
         assert response.status_code == 200
         # Verify sensitive fields were popped before passing to service
-        passed_dict = mock_instance.generate_export_archive.call_args[0][0]
+        passed_dict = mock_instance.build_export_archive.call_args[0][0]
         assert "password" not in passed_dict
         assert "mfa_secret" not in passed_dict
         assert "access_type" not in passed_dict

@@ -71,9 +71,12 @@ class TestReadUsers:
         assert mock_list.call_args.kwargs["page_number"] == 1
         assert mock_list.call_args.kwargs["show_external_auth"] is False
 
-    @patch(f"{_SERVICE}.search_users_by_username")
+    @patch(f"{_SERVICE}.search_public_users")
     def test_contains_username(self, mock_search, client):
-        mock_search.return_value = [_user(1, username="testuser1"), _user(2, username="testuser2")]
+        mock_search.return_value = [
+            users_schema.UserPublicRead(id=1, name="A", username="testuser1"),
+            users_schema.UserPublicRead(id=2, name="B", username="testuser2"),
+        ]
 
         response = client.get("/users/username/contains/test")
 
@@ -98,8 +101,17 @@ class TestReadUsers:
         assert response.json()["email"] == "test@example.com"
 
     @patch(f"{_SERVICE}.get_user")
-    def test_id_found(self, mock_get, client):
+    def test_full_record_by_id_is_served_on_the_admin_route(self, mock_get, client):
         mock_get.return_value = _user(42, name="ID User")
+
+        response = client.get("/users/42")
+
+        assert response.status_code == 200
+        assert response.json()["email"] == "user42@example.com"
+
+    @patch(f"{_SERVICE}.get_public_profile")
+    def test_id_found(self, mock_get, client):
+        mock_get.return_value = users_schema.UserPublicRead(id=42, name="ID User", username="u42")
 
         response = client.get("/users/id/42")
 
@@ -151,7 +163,7 @@ class TestCreateUser:
 
 
 class TestUploadUserImage:
-    @patch(f"{_SERVICE}.get_user")
+    @patch(f"{_SERVICE}.require_user")
     @patch(f"{_PHOTO}.upload_photo")
     def test_returns_the_resolved_photo_url(self, mock_upload, mock_get, client):
         mock_upload.return_value = "1.jpg"
@@ -240,3 +252,30 @@ class TestDeleteUser:
         mock_delete.side_effect = core_exceptions.NotFoundError("User not found")
 
         assert client.delete("/users/1").status_code == 404
+
+
+class TestReadScopes:
+    """Which scope each read route demands: the full record is admin-only."""
+
+    @staticmethod
+    def _scopes(path: str) -> set[str]:
+        from modules.users.users.router import router
+
+        route = next(r for r in router.routes if r.path == path and "GET" in r.methods)
+        return {scope for dep in route.dependant.dependencies for scope in dep.own_oauth_scopes or []}
+
+    @pytest.mark.parametrize("path", ["", "/email/{email}", "/username/{username}", "/{user_id}"])
+    def test_full_records_need_the_admin_read_scope(self, path):
+        assert self._scopes(path) == {"users:read_all"}
+
+    @pytest.mark.parametrize("path", ["/id/{user_id}", "/username/contains/{username}"])
+    def test_public_projections_need_only_the_regular_read_scope(self, path):
+        assert self._scopes(path) == {"users:read"}
+
+    @patch(f"{_SERVICE}.get_public_profile")
+    def test_id_lookup_never_returns_personal_fields(self, mock_get, client):
+        mock_get.return_value = users_schema.UserPublicRead(id=4, name="Dee", username="dee", city="Rome")
+
+        body = client.get("/users/id/4").json()
+
+        assert set(body) == {"id", "name", "username", "city", "photo_path"}

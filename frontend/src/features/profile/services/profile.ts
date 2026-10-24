@@ -93,7 +93,6 @@ export async function updateProfile(input: ProfileEditInput): Promise<void> {
   const payload: ProfileUpdateDto = {
     name: input.name,
     username: input.username,
-    email: input.email,
     city: input.city,
     birthdate: input.birthdate,
     gender: input.gender,

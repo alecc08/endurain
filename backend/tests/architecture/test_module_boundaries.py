@@ -406,6 +406,10 @@ _SURFACE_UNITS_OF_WORK: dict[str, str] = {
         "Writes the blob to storage before recording its key, so the commit is what publishes the photo; "
         "a caller committing later could leave a stored blob nothing references."
     ),
+    "users.integration_service.store_user_photo": (
+        "Writes the blob to storage before recording its key, so the commit is what publishes the photo, "
+        "then removes the blobs it replaced; the profile importer restores the photo this way."
+    ),
     "users.integration_service.delete_user_photo": (
         "Commits the cleared reference before deleting the stored blobs, so a failure never leaves a row "
         "pointing at a blob that is already gone; the blob removal cannot be staged."

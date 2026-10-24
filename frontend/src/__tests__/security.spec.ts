@@ -4,6 +4,7 @@ import type { SecuritySessionDto } from '@/features/security/types'
 
 import { apiFetch } from '@/services/http'
 import {
+  changeEmail,
   changePassword,
   deleteAccount,
   disableMfa,
@@ -247,5 +248,27 @@ describe('deleteAccount', () => {
       '/profile/delete-account',
       expect.objectContaining({ body: JSON.stringify({ current_password: null, mfa_code: null }) }),
     )
+  })
+})
+
+describe('changeEmail', () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset()
+  })
+
+  it('PUTs the new address together with the step-up credentials', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(undefined)
+
+    await changeEmail('new@example.com', { currentPassword: 'pw', mfaCode: '123456' })
+
+    expect(apiFetch).toHaveBeenCalledWith('/profile/email', {
+      method: 'PUT',
+      body: JSON.stringify({
+        email: 'new@example.com',
+        current_password: 'pw',
+        mfa_code: '123456',
+      }),
+      responseType: 'void',
+    })
   })
 })

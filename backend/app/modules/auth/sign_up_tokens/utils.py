@@ -90,6 +90,26 @@ def request_sign_up_verification_email(user_id: int, db: Session) -> None:
     sign_up_tokens_event_publishers.publish_sign_up_verification_requested(user_id, db)
 
 
+def request_email_reverification(user_id: int, db: Session) -> bool:
+    """
+    Queue the verification email for a user whose address just changed.
+
+    Unlike a sign-up, nothing here depends on the server's sign-up policy; an instance that cannot
+    send mail has no way to verify an address, so it skips the email instead of failing the change.
+
+    Args:
+        user_id: ID of the user whose email changed.
+        db: Active SQLAlchemy session.
+
+    Returns:
+        True if the email was queued, False if outgoing email is not configured.
+    """
+    if not server_settings_integration.is_mail_configured(db):
+        return False
+    sign_up_tokens_event_publishers.publish_sign_up_verification_requested(user_id, db)
+    return True
+
+
 def request_sign_up_admin_approval_emails(user_id: int, db: Session) -> None:
     """
     Queue one approval request email per admin for a new sign-up.

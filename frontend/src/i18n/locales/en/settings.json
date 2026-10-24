@@ -157,7 +157,7 @@
       "close": "Close",
       "createSuccess": "User added",
       "updateSuccess": "User updated",
-      "conflict": "That username or email is already in use",
+      "conflict": "That username is already in use",
       "saveError": "Couldn't save the user. Please try again."
     },
     "delete": {
@@ -758,6 +758,20 @@
       "invalidCredentials": "Your password or code is incorrect.",
       "alreadyLinked": "That account is already linked.",
       "lastMethodError": "You can't unlink your only sign-in method. Set a password first."
+    },
+    "email": {
+      "title": "Email address",
+      "subtitle": "This is where password resets and notices are sent. Changing it requires you to confirm your identity, and the new address must be verified.",
+      "current": "Current email",
+      "action": "Change email",
+      "dialogTitle": "Change your email",
+      "dialogDescription": "Enter your new address and confirm your identity to continue.",
+      "new": "New email",
+      "invalid": "Enter a valid email address.",
+      "confirm": "Change email",
+      "success": "Email updated. Check your inbox to verify the new address.",
+      "conflict": "That email is already in use.",
+      "error": "Couldn't change your email. Please try again."
     },
     "deleteAccount": {
       "title": "Delete my account",

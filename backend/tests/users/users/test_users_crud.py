@@ -73,10 +73,19 @@ class TestReads:
     def test_search_escapes_like_wildcards(self, mock_db):
         _many(mock_db, [])
 
-        users_crud.search_users_by_username("50%_off", mock_db)
+        users_crud.search_active_users_by_username("50%_off", 10, mock_db)
 
         assert "ESCAPE" in _sql(mock_db)
         assert "50\\%\\_off" in _sql(mock_db)
+
+    def test_search_only_returns_active_users_up_to_the_limit(self, mock_db):
+        _many(mock_db, [])
+
+        users_crud.search_active_users_by_username("ann", 7, mock_db)
+
+        sql = _sql(mock_db)
+        assert "active IS true" in sql
+        assert "LIMIT 7" in sql
 
     def test_get_users_admin_filters_on_access_type(self, mock_db):
         _many(mock_db, [])
@@ -84,6 +93,16 @@ class TestReads:
         users_crud.get_users_admin(mock_db)
 
         assert "access_type" in _sql(mock_db)
+
+    def test_lock_active_admin_ids_locks_active_admins_in_id_order(self, mock_db):
+        mock_db.execute.return_value.scalars.return_value.all.return_value = [1, 3]
+
+        assert users_crud.lock_active_admin_ids(mock_db) == [1, 3]
+
+        sql = _sql(mock_db)
+        assert "FOR UPDATE" in sql
+        assert "ORDER BY users.id" in sql
+        assert "active IS true" in sql
 
     def test_get_stored_photo_keys_returns_scalars(self, mock_db):
         mock_db.execute.return_value.all.return_value = [(1, "1.png"), (2, None)]
@@ -105,6 +124,15 @@ class TestListFilters:
 
         sql = _sql(mock_db)
         assert "active" in sql and "email_verified" in sql and "pending_admin_approval" in sql
+
+    def test_list_filters_by_username_contains(self, mock_db):
+        _many(mock_db, [])
+
+        users_crud.get_users_with_pagination(mock_db, username="Ann%")
+
+        sql = _sql(mock_db)
+        assert "lower(users.username) LIKE" in sql
+        assert "ann\\%" in sql
 
     def test_page_is_ordered_and_offset(self, mock_db):
         _many(mock_db, [])

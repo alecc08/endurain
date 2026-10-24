@@ -204,6 +204,44 @@ def edit_user(
     return {"message": f"User ID {token_user_id} updated successfully"}
 
 
+@router.put("/email", status_code=status.HTTP_200_OK, response_model=dict)
+@core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
+def edit_profile_email(
+    request: Request,
+    email_change: users_schema.EmailChange,
+    token_user_id: auth_dependencies.CurrentUserId,
+    identity_service: Annotated[
+        auth_identity_service.IdentityService,
+        Depends(auth_identity_service.get_identity_service),
+    ],
+    step_up_store: Annotated[
+        auth_dependencies.StepUpStore,
+        Depends(auth_dependencies.get_step_up_attempts),
+    ],
+    db: core_dependencies.DbSession,
+) -> dict:
+    """Change the authenticated user's email after step-up verification.
+
+    The address is where password resets go, so the caller must re-prove identity with the
+    current password (and an MFA code when MFA is enabled). The new address starts unverified and
+    a verification link is emailed to it.
+
+    Args:
+        request: The incoming request, read by the rate limiter.
+        email_change: The new address with the step-up credentials.
+        token_user_id: User ID from access token.
+        identity_service: Identity service dependency.
+        step_up_store: Step-up lockout store.
+        db: Database session.
+
+    Returns:
+        Success message.
+    """
+    profile_service.change_email(token_user_id, email_change, identity_service, step_up_store, db)
+
+    return {"message": f"User ID {token_user_id} email updated successfully"}
+
+
 @router.put("/privacy", status_code=status.HTTP_200_OK, response_model=dict)
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_profile_privacy_settings(
@@ -424,7 +462,9 @@ def delete_my_account(
 
 
 @router.get("/export", status_code=status.HTTP_200_OK, response_class=StreamingResponse)
+@core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def export_profile_data(
+    request: Request,
     token_user_id: auth_dependencies.CurrentUserId,
     storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
@@ -432,6 +472,7 @@ def export_profile_data(
     """Export all profile data as ZIP archive.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         token_user_id: User ID from access token.
         storage: The platform storage provider.
         db: Database session.
@@ -439,11 +480,14 @@ def export_profile_data(
     Returns:
         Streaming response with ZIP archive.
     """
+    chunks, size = profile_service.export_profile(token_user_id, storage, db)
     return StreamingResponse(
-        profile_service.export_profile(token_user_id, storage, db),
+        chunks,
         media_type="application/zip",
-        # Content-Length is omitted for streaming
-        headers={"Content-Disposition": f"attachment; filename=user_{token_user_id}_export.zip"},
+        headers={
+            "Content-Disposition": f"attachment; filename=user_{token_user_id}_export.zip",
+            "Content-Length": str(size),
+        },
     )
 
 

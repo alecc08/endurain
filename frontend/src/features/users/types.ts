@@ -3,6 +3,9 @@ import type { Schemas } from '@/types'
 /** Raw `UsersRead` payload as returned by the backend (snake_case wire shape). */
 export type UserDto = Schemas['UsersRead']
 
+/** Raw `UserPublicRead` payload: what any signed-in or anonymous viewer may learn about a user. */
+export type PublicUserDto = Schemas['UserPublicRead']
+
 /** Raw paginated users list payload. */
 export type UsersListResponseDto = Schemas['UsersListResponse']
 
@@ -114,6 +117,8 @@ export interface UsersListParams extends UserFilters {
   page: number
   /** Page size (records per page). */
   numRecords: number
+  /** Keep only users whose username contains this text. */
+  username?: string
 }
 
 /**

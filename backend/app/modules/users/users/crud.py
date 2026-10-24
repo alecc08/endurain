@@ -42,6 +42,7 @@ def _filtered(
     show_inactive: bool | None,
     show_email_unverified: bool | None,
     show_pending_approval: bool | None,
+    username: str | None = None,
 ):
     """Apply the optional list filters to a users statement.
 
@@ -50,6 +51,7 @@ def _filtered(
         show_inactive: If False, excludes inactive users.
         show_email_unverified: If False, excludes users with unverified emails.
         show_pending_approval: If False, excludes users pending admin approval.
+        username: If set, keeps only users whose username contains it.
 
     Returns:
         The filtered statement.
@@ -60,6 +62,9 @@ def _filtered(
         stmt = stmt.where(users_models.Users.email_verified.is_(True))
     if show_pending_approval is False:
         stmt = stmt.where(users_models.Users.pending_admin_approval.is_(False))
+    if username:
+        escaped = core_sanitization.escape_like(_normalized_username(username))
+        stmt = stmt.where(func.lower(users_models.Users.username).like(f"%{escaped}%", escape="\\"))
 
     return stmt
 
@@ -82,6 +87,7 @@ def get_users_number(
     show_inactive: bool | None = True,
     show_email_unverified: bool | None = True,
     show_pending_approval: bool | None = True,
+    username: str | None = None,
 ) -> int:
     """Count users matching the optional list filters.
 
@@ -90,12 +96,13 @@ def get_users_number(
         show_inactive: If False, excludes inactive users.
         show_email_unverified: If False, excludes users with unverified emails.
         show_pending_approval: If False, excludes users pending admin approval.
+        username: If set, counts only users whose username contains it.
 
     Returns:
         Number of users matching the filters.
     """
     stmt = _filtered(
-        select(func.count(users_models.Users.id)), show_inactive, show_email_unverified, show_pending_approval
+        select(func.count(users_models.Users.id)), show_inactive, show_email_unverified, show_pending_approval, username
     )
     return db.execute(stmt).scalar_one()
 
@@ -107,6 +114,7 @@ def get_users_with_pagination(
     show_inactive: bool | None = True,
     show_email_unverified: bool | None = True,
     show_pending_approval: bool | None = True,
+    username: str | None = None,
 ) -> list[users_schema.UsersRead]:
     """Retrieve a page of users, ordered by username, with optional filters.
 
@@ -117,11 +125,12 @@ def get_users_with_pagination(
         show_inactive: If False, excludes inactive users.
         show_email_unverified: If False, excludes users with unverified emails.
         show_pending_approval: If False, excludes users pending admin approval.
+        username: If set, keeps only users whose username contains it.
 
     Returns:
         The users matching the filters.
     """
-    stmt = _filtered(select(users_models.Users), show_inactive, show_email_unverified, show_pending_approval)
+    stmt = _filtered(select(users_models.Users), show_inactive, show_email_unverified, show_pending_approval, username)
     stmt = stmt.order_by(users_models.Users.username)
 
     if page_number is not None and num_records is not None:
@@ -157,18 +166,22 @@ def get_user_by_username(username: str, db: Session) -> users_schema.UsersRead |
     return users_serializers.to_read_schema(user) if user else None
 
 
-def search_users_by_username(username: str, db: Session) -> list[users_schema.UsersRead]:
-    """Retrieve the users whose username contains the search term.
+def search_active_users_by_username(username: str, limit: int, db: Session) -> list[users_schema.UsersRead]:
+    """Retrieve the active users whose username contains the search term.
 
     Args:
         username: The partial username to search for.
+        limit: The most users to return.
         db: Database session.
 
     Returns:
-        The matching users.
+        The matching users, ordered by username.
     """
-    escaped = core_sanitization.escape_like(_normalized_username(username))
-    stmt = select(users_models.Users).where(func.lower(users_models.Users.username).like(f"%{escaped}%", escape="\\"))
+    stmt = (
+        _filtered(select(users_models.Users), False, True, True, username)
+        .order_by(users_models.Users.username)
+        .limit(limit)
+    )
     return [users_serializers.to_read_schema(user) for user in db.execute(stmt).scalars().all()]
 
 
@@ -213,6 +226,45 @@ def get_users_admin(db: Session) -> list[users_schema.UsersRead]:
     """
     stmt = select(users_models.Users).where(users_models.Users.access_type == users_schema.UserAccessType.ADMIN.value)
     return [users_serializers.to_read_schema(user) for user in db.execute(stmt).scalars().all()]
+
+
+def get_photo_key(user_id: int, db: Session) -> str | None:
+    """Return the storage key of a user's photo, as stored on the row.
+
+    Args:
+        user_id: The user to look up.
+        db: Database session.
+
+    Returns:
+        The key, or None if the user has no photo or does not exist.
+    """
+    stmt = select(users_models.Users.photo_path).where(users_models.Users.id == user_id)
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def lock_active_admin_ids(db: Session) -> list[int]:
+    """Row-lock the active administrators, in id order, and return their ids.
+
+    Two concurrent requests that each remove a different administrator would otherwise both see
+    "another one remains" and leave none. The lock makes the second wait for the first to commit,
+    and it then counts what is really left.
+
+    Args:
+        db: Database session.
+
+    Returns:
+        The ids of the active admin users.
+    """
+    stmt = (
+        select(users_models.Users.id)
+        .where(
+            users_models.Users.access_type == users_schema.UserAccessType.ADMIN.value,
+            users_models.Users.active.is_(True),
+        )
+        .order_by(users_models.Users.id)
+        .with_for_update()
+    )
+    return list(db.execute(stmt).scalars().all())
 
 
 def get_stored_photo_keys(db: Session) -> list[tuple[int, str | None]]:

@@ -485,6 +485,40 @@ class TestImportServiceUserData:
 
         assert service.counts["user_integrations"] == 1
 
+    async def test_user_integrations_import_drops_credentials_and_oauth_state(self) -> None:
+        service = profile_import_service.ImportService(user_id=1, storage=MagicMock(), db=MagicMock(spec=Session))
+        crafted = {
+            "id": 99,
+            "user_id": 2,
+            "strava_client_id": "stolen-id",
+            "strava_client_secret": "stolen-secret",
+            "strava_state": "state",
+            "strava_token": "stolen-token",
+            "strava_refresh_token": "stolen-refresh",
+            "garminconnect_token": {"di_token": "stolen"},
+            "strava_sync_gear": True,
+            "garminconnect_sync_gear": False,
+        }
+
+        with patch(
+            "modules.users.users_profile.import_service.user_integrations_integration.edit_integrations",
+        ) as mock_edit:
+            await service.collect_and_import_user_integrations([crafted])
+
+        applied = mock_edit.call_args.args[0]
+        assert applied.model_dump(exclude_unset=True) == {"strava_sync_gear": True, "garminconnect_sync_gear": False}
+
+    async def test_user_integrations_import_with_only_credentials_imports_nothing(self) -> None:
+        service = profile_import_service.ImportService(user_id=1, storage=MagicMock(), db=MagicMock(spec=Session))
+
+        with patch(
+            "modules.users.users_profile.import_service.user_integrations_integration.edit_integrations",
+        ) as mock_edit:
+            await service.collect_and_import_user_integrations([{"strava_token": "stolen"}])
+
+        mock_edit.assert_not_called()
+        assert service.counts["user_integrations"] == 0
+
     async def test_collect_and_import_user_goals(self) -> None:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
@@ -1536,6 +1570,25 @@ class TestImportServiceAddActivityMediaFromZip:
 
 
 class TestImportServiceAddUserImages:
+    async def test_add_user_images_from_zip_accepts_webp_like_the_upload_does(self) -> None:
+        service = profile_import_service.ImportService(user_id=1, storage=MagicMock(), db=MagicMock(spec=Session))
+        service.performance_config.enable_memory_monitoring = False
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("user_images/photo.WEBP", b"image-data")
+        mock_validator = MagicMock()
+        mock_validator.config.limits.max_image_size = 1000000
+
+        with (
+            patch("modules.users.users_profile.import_service.file_uploads.file_validator", mock_validator),
+            patch("modules.users.users_profile.import_service.file_uploads.validate_bytes", new_callable=AsyncMock),
+            patch("modules.users.users_profile.import_service.users_integration.store_user_photo") as mock_store,
+            zipfile.ZipFile(BytesIO(buf.getvalue())) as z,
+        ):
+            await service.add_user_images_from_zip(z, {"user_images/photo.WEBP"})
+
+        assert mock_store.call_args.args[:3] == (1, ".webp", b"image-data")
+
     async def test_add_user_images_from_zip_valid(self) -> None:
         mock_db = MagicMock(spec=Session)
         service = profile_import_service.ImportService(
@@ -1555,7 +1608,7 @@ class TestImportServiceAddUserImages:
         with (
             patch("modules.users.users_profile.import_service.file_uploads.file_validator", mock_validator),
             patch("modules.users.users_profile.import_service.file_uploads.validate_bytes", new_callable=AsyncMock),
-            _storage_of(service) as runtime,
+            patch("modules.users.users_profile.import_service.users_integration.store_user_photo") as mock_store,
             zipfile.ZipFile(BytesIO(zip_data)) as z,
         ):
             await service.add_user_images_from_zip(z, {"user_images/old_photo.jpg"})
@@ -1563,9 +1616,7 @@ class TestImportServiceAddUserImages:
         assert service.counts["user_images"] == 1
         # The archive's filename is discarded: the key is minted for the
         # importing user so a crafted ZIP cannot write over someone else's blob.
-        runtime.get_active_platform.return_value.storage.save.assert_called_once_with(
-            "user_images", "1.jpg", b"image-data"
-        )
+        mock_store.assert_called_once_with(1, ".jpg", b"image-data", service.storage, mock_db)
 
     async def test_add_user_images_from_zip_domain_error(self) -> None:
         mock_db = MagicMock(spec=Session)

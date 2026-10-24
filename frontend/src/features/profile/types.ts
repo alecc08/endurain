@@ -101,13 +101,13 @@ export interface ProfileDetails {
 
 /**
  * The editable identity fields the user can change about their own profile.
- * Excludes the photo (managed by the separate upload/delete actions) and the
- * privacy settings (saved through their own endpoint).
+ * Excludes the email (changed through the step-up protected security flow), the photo
+ * (managed by the separate upload/delete actions) and the privacy settings (saved through
+ * their own endpoint).
  */
 export interface ProfileEditInput {
   name: string
   username: string
-  email: string
   city: string | null
   birthdate: string | null
   gender: Schemas['Gender']

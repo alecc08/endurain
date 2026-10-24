@@ -1,21 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { UserDto } from '@/features/users/types'
+import type { PublicUserDto } from '@/features/users/types'
 
 import { apiFetch } from '@/services/http'
-import { fetchPublicUser, mapPublicUser } from '@/features/users/services/publicUsers'
+import {
+  fetchPublicUser,
+  mapPublicUser,
+  searchPublicUsers,
+} from '@/features/users/services/publicUsers'
 
 vi.mock('@/services/http', () => ({ apiFetch: vi.fn<typeof apiFetch>() }))
 
-// A `UsersRead` payload carries many fields; the public mapper only reads this
-// privacy-conscious subset, so the fixture is narrowed and cast for the test.
-const userDto = {
+const userDto: PublicUserDto = {
   id: 7,
   name: 'Jane Runner',
   username: 'jane',
   city: 'Lisbon',
   photo_path: '/api/v1/users/7/photo?t=sig',
-} as UserDto
+}
 
 beforeEach(() => {
   vi.mocked(apiFetch).mockReset()
@@ -35,7 +37,7 @@ describe('mapPublicUser', () => {
   })
 
   it('does not expose sensitive fields', () => {
-    const user = mapPublicUser(userDto)
+    const user = mapPublicUser({ ...userDto, email: 'jane@example.com' } as PublicUserDto)
     expect(user).not.toHaveProperty('email')
     expect(user).not.toHaveProperty('birthdate')
   })
@@ -54,5 +56,16 @@ describe('fetchPublicUser', () => {
   it('returns null when the user is not found', async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce(null)
     expect(await fetchPublicUser(7)).toBeNull()
+  })
+})
+
+describe('searchPublicUsers', () => {
+  it('encodes the term and maps the public projection', async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([userDto])
+
+    const users = await searchPublicUsers('a da')
+
+    expect(apiFetch).toHaveBeenCalledWith('/users/username/contains/a%20da', { signal: undefined })
+    expect(users[0]?.username).toBe('jane')
   })
 })

@@ -12,7 +12,6 @@ import {
   fetchUserById,
   fetchUsers,
   mapManagedUser,
-  searchUsersByUsername,
   updateUser,
   uploadUserPhoto,
 } from '@/features/users/services/users'
@@ -105,12 +104,21 @@ describe('users service requests', () => {
     expect(page.records[0]?.username).toBe('ada')
   })
 
-  it('searchUsersByUsername encodes the term', async () => {
-    vi.mocked(apiFetch).mockResolvedValue([makeUserDto()])
+  it('fetchUsers sends the username search as a server-side filter', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ records: [], total: 0 })
 
-    await searchUsersByUsername('a da')
+    await fetchUsers({
+      page: 1,
+      numRecords: 25,
+      showInactive: false,
+      showEmailUnverified: true,
+      showPendingApproval: true,
+      showExternalAuth: true,
+      showLocalAuth: true,
+      username: 'a da',
+    })
 
-    expect(apiFetch).toHaveBeenCalledWith('/users/username/contains/a%20da', { signal: undefined })
+    expect(vi.mocked(apiFetch).mock.calls[0]?.[0]).toContain('&username=a+da')
   })
 
   it('createUser posts the full field payload', async () => {
@@ -214,7 +222,7 @@ describe('users service requests', () => {
 
     const user = await fetchUserById(7)
 
-    expect(apiFetch).toHaveBeenCalledWith('/users/id/7', { signal: undefined })
+    expect(apiFetch).toHaveBeenCalledWith('/users/7', { signal: undefined })
     expect(user?.username).toBe('ada')
   })
 

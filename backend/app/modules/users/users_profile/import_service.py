@@ -47,6 +47,7 @@ import modules.users.users_default_gear.integration_service as users_default_gea
 import modules.users.users_default_gear.schema as user_default_gear_schema
 import modules.users.users_goals.integration_service as users_goals_integration
 import modules.users.users_goals.schema as user_goals_schema
+import modules.users.users_integrations.constants as users_integrations_constants
 import modules.users.users_integrations.integration_service as user_integrations_integration
 import modules.users.users_integrations.schema as users_integrations_schema
 import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
@@ -62,10 +63,6 @@ from modules.users.users_profile.exceptions import (
 )
 
 logger = core_logger.get_logger(__name__)
-
-# Extensions accepted for a profile photo restored from an archive. Anything
-# else drops the photo rather than minting a key the upload path can't produce.
-_IMPORTABLE_IMAGE_EXTENSIONS = frozenset({"png", "jpg", "jpeg"})
 
 
 class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
@@ -522,18 +519,6 @@ class ImportService:
             user_profile = user_data[0]
             user_profile["id"] = self.user_id
 
-            # The archive carries the exporter's photo key (or, for
-            # archives predating storage keys, an absolute filesystem path).
-            # Either way only the extension is trusted: the key is rebuilt for
-            # the importing user so a crafted ZIP cannot repoint the avatar at
-            # somebody else's blob.
-            photo_path = user_profile.get("photo_path")
-            extension = os.path.splitext(photo_path)[1].lstrip(".").lower() if isinstance(photo_path, str) else ""
-            if extension in _IMPORTABLE_IMAGE_EXTENSIONS:
-                user_profile["photo_path"] = f"{self.user_id}.{extension}"
-            else:
-                user_profile["photo_path"] = None
-
             # Strict allow-list before persistence: profile import is a
             # self-service operation and MUST NOT be a back door for
             # privilege escalation. Even if the source ZIP was crafted
@@ -619,9 +604,17 @@ class ImportService:
             logger.info("No user integrations data to import")
             return
 
-        integrations_data = user_integrations_data[0]
-        integrations_data.pop("id", None)
-        integrations_data.pop("user_id", None)
+        # Strict allow-list: an archive may carry the sync preferences only. Tokens, client
+        # credentials and OAuth state belong to the account that linked them; a crafted ZIP
+        # must not be able to plant them on the importing account.
+        integrations_data = {
+            key: value
+            for key, value in user_integrations_data[0].items()
+            if key in users_integrations_constants.PORTABLE_INTEGRATION_FIELDS
+        }
+        if not integrations_data:
+            logger.info("No importable user integrations data")
+            return
 
         user_integrations = users_integrations_schema.UsersIntegrationsUpdate(**integrations_data)
         user_integrations_integration.edit_integrations(user_integrations, self.user_id, self.db)
@@ -1156,9 +1149,11 @@ class ImportService:
             path = file_path.replace("\\", "/")
 
             # Import user images
-            if path.lower().endswith((".png", ".jpg", ".jpeg")) and path.startswith("user_images/"):
+            if path.lower().endswith(tuple(users_constants.ALLOWED_USER_IMAGE_EXTENSIONS)) and path.startswith(
+                "user_images/"
+            ):
                 logger.debug("Processing a user image file", extra=core_logger.context(file_path=file_path))
-                ext = os.path.splitext(path)[1]
+                ext = os.path.splitext(path)[1].lower()
                 new_file_name = f"{self.user_id}{ext}"
 
                 # Read bytes from ZIP and save through the unified
@@ -1178,9 +1173,5 @@ class ImportService:
                         extra=core_logger.context(file_name=new_file_name, detail=err.detail),
                     )
                     continue
-                self.storage.save(
-                    users_constants.USER_IMAGE_STORAGE_AREA,
-                    new_file_name,
-                    file_bytes,
-                )
+                users_integration.store_user_photo(self.user_id, ext, file_bytes, self.storage, self.db)
                 self.counts["user_images"] += 1

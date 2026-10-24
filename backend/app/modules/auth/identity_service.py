@@ -296,6 +296,17 @@ class IdentityService(Protocol):
         """
         ...
 
+    def request_email_reverification(self, user_id: int) -> bool:
+        """Queue the verification email for a user whose address just changed.
+
+        Args:
+            user_id: ID of the user whose email changed.
+
+        Returns:
+            True if the email was queued, False if outgoing email is not configured.
+        """
+        ...
+
     def hash_password(self, password: str) -> str:
         """Return a secure hash for a trusted generated secret.
 
@@ -1179,6 +1190,17 @@ class DefaultIdentityService:
             HTTPException: 503 if the email service is not configured.
         """
         auth_sign_up_tokens_utils.request_sign_up_approved_email(user_id, self._db)
+
+    def request_email_reverification(self, user_id: int) -> bool:
+        """Queue the verification email for a user whose address just changed.
+
+        Args:
+            user_id: ID of the user whose email changed.
+
+        Returns:
+            True if the email was queued, False if outgoing email is not configured.
+        """
+        return auth_sign_up_tokens_utils.request_email_reverification(user_id, self._db)
 
     def hash_password(self, password: str) -> str:
         """Return a secure hash for a trusted generated secret.

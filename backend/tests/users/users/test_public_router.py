@@ -21,20 +21,14 @@ def _build_app(mock_db):
 class TestReadUsersById:
     @patch("modules.users.users.public_router.users_service.get_public_user")
     def test_success(self, mock_get, mock_db):
-        from modules.users.users.schema import UsersRead
+        from modules.users.users.schema import UserPublicRead
 
         client = TestClient(_build_app(mock_db))
-        mock_get.return_value = UsersRead(
-            id=1,
-            name="Test User",
-            username="testuser",
-            email="test@example.com",
-            active=True,
-            access_type="regular",
-        )
+        mock_get.return_value = UserPublicRead(id=1, name="Test User", username="testuser")
 
         response = client.get("/public/users/id/1")
         assert response.status_code == 200
+        assert set(response.json()) == {"id", "name", "username", "city", "photo_path"}
 
     @patch("modules.users.users.public_router.users_service.get_public_user")
     def test_not_found(self, mock_get, mock_db):

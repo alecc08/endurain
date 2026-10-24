@@ -4,8 +4,8 @@ import { apiFetch } from '@/services/http'
 import type { ActivityOwner } from '../types'
 import type { Schemas } from '@/types'
 
-/** Wire shape of a user record returned by the (public or authed) user endpoint. */
-type ActivityOwnerDto = Schemas['UsersRead']
+/** Wire shape of the public user projection returned by the (public or authed) user endpoint. */
+type ActivityOwnerDto = Schemas['UserPublicRead']
 
 /**
  * Maps a user DTO to the minimal owner identity shown in the activity header,

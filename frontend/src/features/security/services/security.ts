@@ -19,6 +19,7 @@ import type {
   PasswordChangeInput,
   SecuritySession,
   SecuritySessionDto,
+  EmailChangeDto,
   StepUpDto,
   StepUpInput,
 } from '@/features/security/types'
@@ -344,6 +345,23 @@ export async function deleteAccount(input: StepUpInput): Promise<void> {
   await apiFetch('/profile/delete-account', {
     method: 'POST',
     body: JSON.stringify(toStepUpWire(input)),
+    responseType: 'void',
+  })
+}
+
+/**
+ * Changes the account email after step-up verification. The new address starts unverified and
+ * the backend emails it a verification link when mail is configured.
+ *
+ * @param email - The new email address.
+ * @param input - The step-up credentials (password and, with MFA, a code).
+ * @throws {HttpError} When the request fails (401 step-up, 409 address already in use).
+ */
+export async function changeEmail(email: string, input: StepUpInput): Promise<void> {
+  const payload: EmailChangeDto = { email, ...toStepUpWire(input) }
+  await apiFetch('/profile/email', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
     responseType: 'void',
   })
 }

@@ -100,21 +100,49 @@ def require_admin_users(db: Session) -> list[users_schema.UsersRead]:
     return admins
 
 
-def get_public_user(user_id: int, db: Session) -> users_schema.UsersRead | None:
-    """Return a user for an unauthenticated viewer, when public sharing allows it.
+def _to_public(user: users_schema.UsersRead | None) -> users_schema.UserPublicRead | None:
+    """Narrow a user record to what a non-admin viewer may see.
+
+    Args:
+        user: The full user record, or None.
+
+    Returns:
+        The public projection, or None if there is no user or the account is inactive.
+    """
+    if user is None or not user.active:
+        return None
+
+    return users_schema.UserPublicRead.model_validate(user)
+
+
+def get_public_profile(user_id: int, db: Session) -> users_schema.UserPublicRead | None:
+    """Return a user's public projection for a signed-in viewer.
 
     Args:
         user_id: The user to look up.
         db: Database session.
 
     Returns:
-        The user, or None if there is none or public user info is not shared.
+        The public projection, or None if there is none or the account is inactive.
+    """
+    return _to_public(users_crud.get_user_by_id(user_id, db))
+
+
+def get_public_user(user_id: int, db: Session) -> users_schema.UserPublicRead | None:
+    """Return a user's public projection for an unauthenticated viewer, when sharing allows it.
+
+    Args:
+        user_id: The user to look up.
+        db: Database session.
+
+    Returns:
+        The public projection, or None if there is none or public user info is not shared.
     """
     server_settings = server_settings_integration.get_server_settings(db)
     if not server_settings.public_shareable_links or not server_settings.public_shareable_links_user_info:
         return None
 
-    return users_crud.get_user_by_id(user_id, db)
+    return get_public_profile(user_id, db)
 
 
 def get_user_by_username(username: str, db: Session) -> users_schema.UsersRead | None:
@@ -130,17 +158,18 @@ def get_user_by_username(username: str, db: Session) -> users_schema.UsersRead |
     return users_crud.get_user_by_username(username, db)
 
 
-def search_users_by_username(username: str, db: Session) -> list[users_schema.UsersRead]:
-    """Return the users whose username contains the search term.
+def search_public_users(username: str, db: Session) -> list[users_schema.UserPublicRead]:
+    """Return the active users whose username contains the search term, as public projections.
 
     Args:
         username: The partial username to search for.
         db: Database session.
 
     Returns:
-        The matching users.
+        The matching users, at most ``USER_SEARCH_LIMIT``.
     """
-    return users_crud.search_users_by_username(username, db)
+    matches = users_crud.search_active_users_by_username(username, users_constants.USER_SEARCH_LIMIT, db)
+    return [users_schema.UserPublicRead.model_validate(user) for user in matches]
 
 
 def get_user_by_email(email: str, db: Session) -> users_schema.UsersRead | None:
@@ -167,6 +196,7 @@ def list_users(
     show_pending_approval: bool | None = None,
     show_external_auth: bool | None = None,
     show_local_auth: bool | None = None,
+    username: str | None = None,
 ) -> users_schema.UsersListResponse:
     """List a page of users with their authentication status.
 
@@ -183,13 +213,14 @@ def list_users(
         show_pending_approval: If False, excludes users pending admin approval.
         show_external_auth: If False, excludes users with a linked identity provider.
         show_local_auth: If False, excludes users with no linked identity provider.
+        username: If set, keeps only users whose username contains it.
 
     Returns:
-        The page of users and the total matching the first three filters.
+        The page of users and the total matching the first three filters and the username.
     """
-    total = users_crud.get_users_number(db, show_inactive, show_email_unverified, show_pending_approval)
+    total = users_crud.get_users_number(db, show_inactive, show_email_unverified, show_pending_approval, username)
     users = users_crud.get_users_with_pagination(
-        db, page_number, num_records, show_inactive, show_email_unverified, show_pending_approval
+        db, page_number, num_records, show_inactive, show_email_unverified, show_pending_approval, username
     )
 
     user_ids = [user.id for user in users]
@@ -349,6 +380,30 @@ def _recalculate_bmi_if_height_changed(
         )
 
 
+def _refuse_to_remove_last_admin(user: users_schema.UsersRead, action: str, db: Session) -> None:
+    """Refuse a change that would leave the server without an active administrator.
+
+    Args:
+        user: The user the change applies to, as stored now.
+        action: What is being refused, for the message and the log.
+        db: Database session.
+
+    Raises:
+        ConflictError: If the user is the only active administrator.
+    """
+    if not (
+        user.active and users_schema.normalize_access_type(user.access_type) == users_schema.UserAccessType.ADMIN.value
+    ):
+        return
+
+    admin_ids = users_crud.lock_active_admin_ids(db)
+    if user.id in admin_ids and len(admin_ids) <= 1:
+        logger.warning(
+            "Refused to remove the only administrator", extra=core_logger.context(user_id=user.id, action=action)
+        )
+        raise core_exceptions.ConflictError(f"The only administrator cannot be {action}")
+
+
 def stage_user_edit(user_id: int, user: users_schema.UsersRead, db: Session) -> users_schema.UsersRead:
     """Stage an administrative edit of a user.
 
@@ -366,9 +421,14 @@ def stage_user_edit(user_id: int, user: users_schema.UsersRead, db: Session) -> 
 
     Raises:
         NotFoundError: If the user does not exist.
-        ConflictError: If the username or email is already taken.
+        ConflictError: If the username or email is already taken, or the edit would demote or
+            deactivate the only administrator.
     """
     existing = require_user(user_id, db)
+    if not user.active:
+        _refuse_to_remove_last_admin(existing, "deactivated", db)
+    if users_schema.normalize_access_type(user.access_type) != users_schema.UserAccessType.ADMIN.value:
+        _refuse_to_remove_last_admin(existing, "demoted", db)
 
     # ``photo_path`` is excluded because the read schema exposes a resolved, signed URL while
     # the column stores a storage key: echoing the read model back would overwrite the key
@@ -378,6 +438,7 @@ def stage_user_edit(user_id: int, user: users_schema.UsersRead, db: Session) -> 
         exclude={"password", "external_auth_count", "mfa_enabled", "photo_path"},
     )
     changes["username"] = user.username.lower()
+    changes["email"] = user.email.lower()
 
     updated = users_crud.update_user(user_id, changes, db)
     _recalculate_bmi_if_height_changed(existing, updated, db)
@@ -441,9 +502,8 @@ def stage_profile_edit(user_id: int, profile: users_schema.ProfileUpdate, db: Se
 
     provided = profile.model_dump(exclude_unset=True)
     changes = {key: value for key, value in provided.items() if key in users_constants.PROFILE_SELF_SERVICE_FIELDS}
-    for key in ("username", "email"):
-        if isinstance(changes.get(key), str):
-            changes[key] = changes[key].lower()
+    if isinstance(changes.get("username"), str):
+        changes["username"] = changes["username"].lower()
 
     updated = users_crud.update_user(user_id, changes, db)
     if "height" in changes:
@@ -474,6 +534,32 @@ def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session)
     db.commit()
     logger.info("User profile edited", extra=core_logger.context(user_id=user_id))
     return updated
+
+
+def stage_email_change(user_id: int, email: str, db: Session) -> users_schema.UsersRead:
+    """Stage a new email address for a user and mark it unverified.
+
+    Does nothing when the address is the one the user already has, so re-submitting it does not
+    cost them their verified status.
+
+    Args:
+        user_id: ID of the user whose email changes.
+        email: The new email address.
+        db: Database session.
+
+    Returns:
+        The user after the change.
+
+    Raises:
+        NotFoundError: If the user does not exist.
+        ConflictError: If the email is already taken.
+    """
+    existing = require_user(user_id, db)
+    normalized = email.lower()
+    if existing.email == normalized:
+        return existing
+
+    return users_crud.update_user(user_id, {"email": normalized, "email_verified": False}, db)
 
 
 def approve_user(user_id: int, db: Session) -> None:
@@ -537,11 +623,7 @@ def delete_user(user_id: int, storage: platform_providers.StorageProvider, db: S
         ConflictError: If the user is the only administrator.
     """
     user = require_user(user_id, db)
-    if users_schema.normalize_access_type(user.access_type) == users_schema.UserAccessType.ADMIN.value and (
-        len(users_crud.get_users_admin(db)) <= 1
-    ):
-        logger.warning("Refused to delete the only administrator", extra=core_logger.context(user_id=user_id))
-        raise core_exceptions.ConflictError("The only administrator cannot be deleted")
+    _refuse_to_remove_last_admin(user, "deleted", db)
 
     users_contributor_registry.erasers().delete_activities(user_id, db)
     users_crud.delete_user(user_id, db)

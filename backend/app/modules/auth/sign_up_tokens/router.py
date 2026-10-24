@@ -115,26 +115,34 @@ def verify_email(
     Raises:
         HTTPException: 412 if email verification is not enabled.
     """
-    # Get server settings
     server_settings = server_settings_integration.get_server_settings(db)
+
+    # Verify the email
+    user_id = sign_up_tokens_utils.use_sign_up_token(confirm_data.token, db)
+    user: users_schema.UsersRead | None = users_integration.get_user(user_id, db)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    # An account that is already active is confirming an address it changed, not signing up: it
+    # has nothing to approve, and the sign-up policy does not apply to it.
+    if user.active:
+        users_integration.stage_email_verification(user_id, server_settings, db)
+        db.commit()
+        return sign_up_tokens_schema.SignUpResponse(message="Email verified successfully.")
+
     if not server_settings.signup_require_email_verification:
         raise HTTPException(
             status_code=status.HTTP_412_PRECONDITION_FAILED,
             detail="Email verification is not enabled",
         )
 
-    # Verify the email
-    user_id = sign_up_tokens_utils.use_sign_up_token(confirm_data.token, db)
     users_integration.stage_email_verification(user_id, server_settings, db)
     db.commit()
 
     if server_settings_integration.is_mail_configured(db):
-        user: users_schema.UsersRead | None = users_integration.get_user(user_id, db)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            )
         sign_up_tokens_utils.request_sign_up_admin_approval_emails(user.id, db)
         notifications = notifications_integration.create_admin_sign_up_approval_notifications(user, db)
         db.commit()

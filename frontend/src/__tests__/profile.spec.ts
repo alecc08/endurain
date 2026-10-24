@@ -132,7 +132,6 @@ describe('profile service requests', () => {
     const input: ProfileEditInput = {
       name: 'Ada L',
       username: 'ada',
-      email: 'ada@example.com',
       city: 'Paris',
       birthdate: '1990-01-01',
       gender: 'female',
@@ -151,7 +150,6 @@ describe('profile service requests', () => {
     expect(JSON.parse(body as string)).toEqual({
       name: 'Ada L',
       username: 'ada',
-      email: 'ada@example.com',
       city: 'Paris',
       birthdate: '1990-01-01',
       gender: 'female',

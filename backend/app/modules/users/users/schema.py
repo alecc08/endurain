@@ -358,6 +358,29 @@ class UsersRead(Users):
     )
 
 
+class UserPublicRead(BaseModel):
+    """What any signed-in viewer, or an anonymous one on a shared link, may learn about a user.
+
+    A deliberate subset of :class:`UsersRead`: no email, birthdate, access level or account
+    state, so a lookup cannot be used to harvest personal data or to probe who is an admin.
+
+    Attributes:
+        id: User ID.
+        name: User's full name.
+        username: Unique username.
+        city: User's city.
+        photo_path: Servable URL of the user's photo.
+    """
+
+    id: StrictInt = Field(..., ge=1, description="User ID")
+    name: StrictStr = Field(..., description="User's full name")
+    username: StrictStr = Field(..., description="Unique username")
+    city: StrictStr | None = Field(default=None, description="User's city")
+    photo_path: StrictStr | None = Field(default=None, description="Servable URL of the user's photo")
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
 class UsersMe(UsersRead):
     """Extended users schema for current user profile.
 
@@ -556,6 +579,16 @@ class StepUpVerification(BaseModel):
     )
 
 
+class EmailChange(StepUpVerification):
+    """Self-service email change, authorised by step-up verification.
+
+    Attributes:
+        email: The new email address.
+    """
+
+    email: EmailStr = Field(..., max_length=250, description="The new email address")
+
+
 class ProfileUpdate(BaseModel):
     """Schema for self-service profile updates.
 
@@ -570,7 +603,6 @@ class ProfileUpdate(BaseModel):
     Attributes:
         name: User's full name.
         username: Unique username.
-        email: User's email address.
         city: User's city.
         birthdate: User's birthdate.
         preferred_language: Preferred application language.
@@ -583,6 +615,9 @@ class ProfileUpdate(BaseModel):
         timezone: IANA timezone the athlete lives in.
 
     Note:
+        ``email`` is deliberately absent. It is the address password resets go to, so changing
+        it needs fresh proof of identity and is :class:`EmailChange`.
+
         ``photo_path`` is deliberately absent. The photo is a
         server-issued storage key written only by the upload and
         delete endpoints, so accepting it here would let a caller
@@ -596,7 +631,6 @@ class ProfileUpdate(BaseModel):
         max_length=250,
         pattern=r"^[a-zA-Z0-9._-]+$",
     )
-    email: EmailStr | None = Field(default=None, max_length=250)
     city: StrictStr | None = Field(default=None, max_length=250)
     birthdate: datetime_date | None = None
     preferred_language: Language | None = None

@@ -2746,6 +2746,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/profile/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Edit Profile Email
+         * @description Change the authenticated user's email after step-up verification.
+         *
+         *     The address is where password resets go, so the caller must re-prove identity with the
+         *     current password (and an MFA code when MFA is enabled). The new address starts unverified and
+         *     a verification link is emailed to it.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         email_change: The new address with the step-up credentials.
+         *         token_user_id: User ID from access token.
+         *         identity_service: Identity service dependency.
+         *         step_up_store: Step-up lockout store.
+         *         db: Database session.
+         *
+         *     Returns:
+         *         Success message.
+         */
+        put: operations["edit_profile_email_api_v1_profile_email_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/profile/export": {
         parameters: {
             query?: never;
@@ -2758,6 +2793,7 @@ export interface paths {
          * @description Export all profile data as ZIP archive.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         token_user_id: User ID from access token.
          *         storage: The platform storage provider.
          *         db: Database session.
@@ -4625,6 +4661,7 @@ export interface paths {
          *         show_pending_approval: Optional filter by pending approval status.
          *         show_external_auth: Optional filter by external authentication status.
          *         show_local_auth: Optional filter by local authentication status.
+         *         username: Optional text the username must contain.
          *
          *     Returns:
          *         Paginated list of users with total count.
@@ -4688,14 +4725,14 @@ export interface paths {
         };
         /**
          * Read Users Id
-         * @description Get user by ID.
+         * @description Get a user's public projection by ID.
          *
          *     Args:
          *         user_id: User ID to retrieve.
          *         db: Database session dependency.
          *
          *     Returns:
-         *         User if found, None otherwise.
+         *         The public projection if the user exists and is active, None otherwise.
          */
         get: operations["read_users_id_api_v1_users_id__user_id__get"];
         put?: never;
@@ -4715,14 +4752,14 @@ export interface paths {
         };
         /**
          * Read Users Contain Username
-         * @description Search users by partial username match.
+         * @description Search active users by partial username match.
          *
          *     Args:
          *         username: Partial username to search for.
          *         db: Database session dependency.
          *
          *     Returns:
-         *         List of users matching the search.
+         *         The matching users' public projections.
          */
         get: operations["read_users_contain_username_api_v1_users_username_contains__username__get"];
         put?: never;
@@ -4767,7 +4804,18 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Read Users Full
+         * @description Get a user's full record by ID (admin operation).
+         *
+         *     Args:
+         *         user_id: User ID to retrieve.
+         *         db: Database session dependency.
+         *
+         *     Returns:
+         *         The full record if the user exists, None otherwise.
+         */
+        get: operations["read_users_full_api_v1_users__user_id__get"];
         /**
          * Edit User
          * @description Update user information.
@@ -4962,6 +5010,7 @@ export interface paths {
          *     Args:
          *         user_id: The user whose photo to serve.
          *         storage: The platform storage provider.
+         *         db: Database session dependency.
          *         token: The signed access token (``?t=``) minted at serialization time.
          *
          *     Returns:
@@ -5843,6 +5892,31 @@ export interface components {
              * @default 0
              */
             total_elevation_gain: number;
+        };
+        /**
+         * EmailChange
+         * @description Self-service email change, authorised by step-up verification.
+         *
+         *     Attributes:
+         *         email: The new email address.
+         */
+        EmailChange: {
+            /**
+             * Current Password
+             * @description Current password (step-up verification). Required when the account has a local password.
+             */
+            current_password?: string | null;
+            /**
+             * Email
+             * Format: email
+             * @description The new email address
+             */
+            email: string;
+            /**
+             * Mfa Code
+             * @description TOTP or backup code, required when MFA is enabled
+             */
+            mfa_code?: string | null;
         };
         /**
          * EmailStatus
@@ -9613,7 +9687,6 @@ export interface components {
          *     Attributes:
          *         name: User's full name.
          *         username: Unique username.
-         *         email: User's email address.
          *         city: User's city.
          *         birthdate: User's birthdate.
          *         preferred_language: Preferred application language.
@@ -9626,6 +9699,9 @@ export interface components {
          *         timezone: IANA timezone the athlete lives in.
          *
          *     Note:
+         *         ``email`` is deliberately absent. It is the address password resets go to, so changing
+         *         it needs fresh proof of identity and is :class:`EmailChange`.
+         *
          *         ``photo_path`` is deliberately absent. The photo is a
          *         server-issued storage key written only by the upload and
          *         delete endpoints, so accepting it here would let a caller
@@ -9637,8 +9713,6 @@ export interface components {
             /** City */
             city?: string | null;
             currency?: components["schemas"]["Currency"] | null;
-            /** Email */
-            email?: string | null;
             first_day_of_week?: components["schemas"]["WeekDay"] | null;
             gender?: components["schemas"]["Gender"] | null;
             /** Height */
@@ -10476,6 +10550,47 @@ export interface components {
          * @enum {string}
          */
         UserAccessType: "regular" | "admin";
+        /**
+         * UserPublicRead
+         * @description What any signed-in viewer, or an anonymous one on a shared link, may learn about a user.
+         *
+         *     A deliberate subset of :class:`UsersRead`: no email, birthdate, access level or account
+         *     state, so a lookup cannot be used to harvest personal data or to probe who is an admin.
+         *
+         *     Attributes:
+         *         id: User ID.
+         *         name: User's full name.
+         *         username: Unique username.
+         *         city: User's city.
+         *         photo_path: Servable URL of the user's photo.
+         */
+        UserPublicRead: {
+            /**
+             * City
+             * @description User's city
+             */
+            city?: string | null;
+            /**
+             * Id
+             * @description User ID
+             */
+            id: number;
+            /**
+             * Name
+             * @description User's full name
+             */
+            name: string;
+            /**
+             * Photo Path
+             * @description Servable URL of the user's photo
+             */
+            photo_path?: string | null;
+            /**
+             * Username
+             * @description Unique username
+             */
+            username: string;
+        };
         /**
          * UsersAdminEditPassword
          * @description Schema for admin password reset operations.
@@ -16714,6 +16829,50 @@ export interface operations {
             };
         };
     };
+    edit_profile_email_api_v1_profile_email_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     export_profile_data_api_v1_profile_export_get: {
         parameters: {
             query?: never;
@@ -18209,7 +18368,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersRead"] | null;
+                    "application/json": components["schemas"]["UserPublicRead"] | null;
                 };
             };
             /** @description Validation Error */
@@ -19168,6 +19327,8 @@ export interface operations {
                 show_external_auth?: boolean | null;
                 /** @description Filter by local authentication status */
                 show_local_auth?: boolean | null;
+                /** @description Keep only users whose username contains this text */
+                username?: string | null;
             };
             header?: never;
             path?: never;
@@ -19303,7 +19464,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersRead"] | null;
+                    "application/json": components["schemas"]["UserPublicRead"] | null;
                 };
             };
             /** @description Validation Error */
@@ -19343,7 +19504,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersRead"][] | null;
+                    "application/json": components["schemas"]["UserPublicRead"][];
                 };
             };
             /** @description Validation Error */
@@ -19372,6 +19533,46 @@ export interface operations {
             header?: never;
             path: {
                 username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsersRead"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    read_users_full_api_v1_users__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
             };
             cookie?: never;
         };
@@ -19630,7 +19831,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": string;
+                    "application/json": string | null;
                 };
             };
             /** @description Validation Error */

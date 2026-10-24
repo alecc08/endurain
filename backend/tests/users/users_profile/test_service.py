@@ -1,5 +1,6 @@
 """Tests for users_profile.service module."""
 
+import io
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -40,6 +41,66 @@ class TestEdits:
         mock_db.commit.assert_not_called()
 
 
+class TestChangeEmail:
+    @staticmethod
+    def _change(identity, store, mock_db):
+        import modules.users.users.schema as users_schema
+
+        change = users_schema.EmailChange(email="New@Example.com", current_password="pw", mfa_code="123456")
+        profile_service.change_email(1, change, identity, store, mock_db)
+
+    @patch(f"{_MODULE}.users_integration")
+    def test_changes_only_after_the_step_up_passes_then_commits_and_asks_for_verification(self, mock_users, mock_db):
+        identity = MagicMock()
+        identity.request_email_reverification.return_value = True
+        store = MagicMock()
+        order = MagicMock()
+        order.attach_mock(identity.verify_step_up, "step_up")
+        order.attach_mock(mock_users.stage_email_change, "stage")
+        order.attach_mock(mock_db.commit, "commit")
+        order.attach_mock(identity.request_email_reverification, "verify")
+
+        self._change(identity, store, mock_db)
+
+        assert [call[0] for call in order.mock_calls] == ["step_up", "stage", "commit", "verify"]
+        verification = identity.verify_step_up.call_args.args
+        assert (verification[0].current_password, verification[0].mfa_code) == ("pw", "123456")
+        assert verification[1:] == (1, store)
+        mock_users.stage_email_change.assert_called_once_with(1, "New@example.com", mock_db)
+
+    @patch(f"{_MODULE}.users_integration")
+    def test_a_failed_step_up_changes_nothing(self, mock_users, mock_db):
+        identity = MagicMock()
+        identity.verify_step_up.side_effect = core_exceptions.PermissionDeniedError("wrong password")
+
+        with pytest.raises(core_exceptions.PermissionDeniedError):
+            self._change(identity, MagicMock(), mock_db)
+
+        mock_users.stage_email_change.assert_not_called()
+        mock_db.commit.assert_not_called()
+
+    @patch(f"{_MODULE}.users_integration")
+    def test_a_taken_address_rolls_back_and_sends_nothing(self, mock_users, mock_db):
+        identity = MagicMock()
+        mock_users.stage_email_change.side_effect = core_exceptions.ConflictError("taken")
+
+        with pytest.raises(core_exceptions.ConflictError):
+            self._change(identity, MagicMock(), mock_db)
+
+        mock_db.rollback.assert_called_once()
+        mock_db.commit.assert_not_called()
+        identity.request_email_reverification.assert_not_called()
+
+    @patch(f"{_MODULE}.users_integration")
+    def test_an_instance_that_cannot_send_mail_still_changes_the_address(self, mock_users, mock_db):
+        identity = MagicMock()
+        identity.request_email_reverification.return_value = False
+
+        self._change(identity, MagicMock(), mock_db)
+
+        mock_db.commit.assert_called_once()
+
+
 class TestExportProfile:
     @patch(f"{_MODULE}.profile_export_service")
     @patch(f"{_MODULE}.profile_utils")
@@ -56,13 +117,29 @@ class TestExportProfile:
             "pending_admin_approval": False,
         }
         storage = MagicMock()
+        mock_export.ExportService.return_value.build_export_archive.return_value = io.BytesIO(b"12345")
 
-        result = profile_service.export_profile(1, storage, mock_db)
+        chunks, size = profile_service.export_profile(1, storage, mock_db)
 
         mock_export.ExportService.assert_called_once_with(1, storage, mock_db)
-        exported = mock_export.ExportService.return_value.generate_export_archive.call_args.args[0]
+        exported = mock_export.ExportService.return_value.build_export_archive.call_args.args[0]
         assert exported == {"name": "Test"}
-        assert result == mock_export.ExportService.return_value.generate_export_archive.return_value
+        assert size == 5
+        assert chunks == mock_export.stream_archive.return_value
+
+    @patch(f"{_MODULE}.profile_export_service")
+    @patch(f"{_MODULE}.profile_utils")
+    @patch(f"{_MODULE}.users_integration")
+    def test_a_failed_build_is_an_error_response_not_a_broken_stream(
+        self, mock_users, mock_utils, mock_export, mock_db
+    ):
+        mock_utils.sqlalchemy_obj_to_dict.return_value = {}
+        mock_export.ExportService.return_value.build_export_archive.side_effect = (
+            profile_exceptions.DataCollectionError("boom")
+        )
+
+        with pytest.raises(core_exceptions.DomainError):
+            profile_service.export_profile(1, MagicMock(), mock_db)
 
     @patch(f"{_MODULE}.users_integration")
     def test_unknown_user_is_not_found(self, mock_users, mock_db):

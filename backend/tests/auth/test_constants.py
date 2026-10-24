@@ -34,6 +34,8 @@ class TestScopeConstants:
         assert auth_constants.USERS_ADMIN_SCOPE is not None
         assert isinstance(auth_constants.USERS_ADMIN_SCOPE, tuple)
         assert "users:write" in auth_constants.USERS_ADMIN_SCOPE
+        assert "users:read_all" in auth_constants.USERS_ADMIN_SCOPE
+        assert "users:read_all" not in auth_constants.REGULAR_ACCESS_SCOPE
         assert "sessions:read" in auth_constants.USERS_ADMIN_SCOPE
         assert "sessions:write" in auth_constants.USERS_ADMIN_SCOPE
 

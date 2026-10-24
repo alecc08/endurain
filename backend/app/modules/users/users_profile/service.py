@@ -6,6 +6,7 @@ links) stay behind the auth boundary and are called straight from the router.
 """
 
 import asyncio
+import os
 from collections.abc import Generator
 from typing import TYPE_CHECKING, Any
 
@@ -124,6 +125,49 @@ def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session)
     logger.info("Profile updated", extra=core_logger.context(user_id=user_id))
 
 
+def change_email(
+    user_id: int,
+    change: users_schema.EmailChange,
+    identity_service: "auth_identity_service.IdentityService",
+    step_up_store: "auth_dependencies.StepUpStore",
+    db: Session,
+) -> None:
+    """Change the authenticated user's email after step-up verification, and ask them to verify it.
+
+    The address is where password resets go, so a stolen access token alone must not be able to
+    redirect it. The new address starts unverified; a verification link is emailed to it when the
+    server can send mail.
+
+    Args:
+        user_id: The authenticated user.
+        change: The new address with the step-up credentials.
+        identity_service: Identity service that verifies the step-up and queues the email.
+        step_up_store: Step-up lockout store.
+        db: Database session.
+
+    Raises:
+        HTTPException: If step-up verification fails.
+        NotFoundError: If the user does not exist.
+        ConflictError: If the email is already taken.
+    """
+    identity_service.verify_step_up(
+        users_schema.StepUpVerification(**change.model_dump(exclude={"email"})), user_id, step_up_store
+    )
+    try:
+        users_integration.stage_email_change(user_id, change.email, db)
+    except core_exceptions.ConflictError:
+        db.rollback()
+        raise
+    db.commit()
+    logger.info("Email changed", extra=core_logger.context(user_id=user_id))
+
+    if not identity_service.request_email_reverification(user_id):
+        logger.warning(
+            "Email changed but cannot be verified: outgoing email is not configured",
+            extra=core_logger.context(user_id=user_id),
+        )
+
+
 def edit_privacy_settings(
     user_id: int,
     privacy_settings: users_privacy_settings_schema.UsersPrivacySettingsUpdate,
@@ -175,8 +219,13 @@ def delete_account(
     logger.info("Account deleted by its owner", extra=core_logger.context(user_id=user_id))
 
 
-def export_profile(user_id: int, storage: platform_providers.StorageProvider, db: Session) -> Generator[bytes]:
-    """Start the export of the user's profile data as a ZIP archive.
+def export_profile(
+    user_id: int, storage: platform_providers.StorageProvider, db: Session
+) -> tuple[Generator[bytes], int]:
+    """Build the export of the user's profile data as a ZIP archive and prepare it for streaming.
+
+    The archive is complete before this returns, so every failure surfaces as an error response
+    rather than as a download that stops half way.
 
     Args:
         user_id: The authenticated user.
@@ -184,10 +233,11 @@ def export_profile(user_id: int, storage: platform_providers.StorageProvider, db
         db: Database session.
 
     Returns:
-        The archive, produced chunk by chunk.
+        The archive, produced chunk by chunk, and its size in bytes.
 
     Raises:
         NotFoundError: If the user does not exist.
+        DomainError: If the archive cannot be built.
     """
     user = users_integration.require_user(user_id, db)
 
@@ -196,7 +246,16 @@ def export_profile(user_id: int, storage: platform_providers.StorageProvider, db
         user_dict.pop(field, None)
 
     exporter = profile_export_service.ExportService(user_id, storage, db)
-    return exporter.generate_export_archive(user_dict)
+    try:
+        archive = exporter.build_export_archive(user_dict)
+    except profile_exceptions.ProfileOperationError as err:
+        logger.error("Profile export failed", exc_info=err, extra=core_logger.context(user_id=user_id))
+        raise profile_exceptions.to_domain_error(err, "profile data export") from err
+
+    size = archive.seek(0, os.SEEK_END)
+    archive.seek(0)
+    logger.info("Profile data exported", extra=core_logger.context(user_id=user_id, size_bytes=size))
+    return profile_export_service.stream_archive(archive), size
 
 
 def import_profile(

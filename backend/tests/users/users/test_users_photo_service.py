@@ -60,9 +60,8 @@ class TestUploadPhoto:
             key = users_photo_service.upload_photo(7, _upload("Avatar.JPG"), storage, mock_db)
 
         assert key == "7.jpg"
-        assert storage.save.call_args.args[:3] == ("user_images", "7.jpg", b"bytes")
+        assert storage.save.call_args.args == ("user_images", "7.jpg", b"bytes", "image/jpeg")
         assert mock_crud.update_user.call_args.args[1] == {"photo_path": "7.jpg"}
-        mock_db.commit.assert_called_once()
 
     @patch(_CRUD)
     def test_unknown_user_is_not_found(self, mock_crud, mock_db):
@@ -88,3 +87,59 @@ class TestUploadPhoto:
 
         storage.save.assert_not_called()
         mock_db.commit.assert_not_called()
+
+
+class TestStorePhoto:
+    @patch(_CRUD)
+    def test_the_read_transaction_ends_before_the_blob_is_written(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = MagicMock()
+        storage = MagicMock()
+        storage.list_keys.return_value = []
+        order = MagicMock()
+        order.attach_mock(mock_db.commit, "commit")
+        order.attach_mock(storage.save, "save")
+
+        users_photo_service.store_photo(7, ".png", b"bytes", storage, mock_db)
+
+        assert [call[0] for call in order.mock_calls] == ["commit", "save", "commit"]
+
+    @patch(_CRUD)
+    def test_replaced_blobs_under_another_extension_are_removed_after_the_commit(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = MagicMock()
+        storage = MagicMock()
+        storage.list_keys.return_value = ["7.jpg", "7.png"]
+        order = MagicMock()
+        order.attach_mock(mock_db.commit, "commit")
+        order.attach_mock(storage.delete, "delete")
+
+        users_photo_service.store_photo(7, ".png", b"bytes", storage, mock_db)
+
+        assert [call.args for call in storage.delete.call_args_list] == [("user_images", "7.jpg")]
+        assert [call[0] for call in order.mock_calls][-2:] == ["commit", "delete"]
+
+    @patch(_CRUD)
+    def test_a_failed_cleanup_does_not_fail_the_upload(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = MagicMock()
+        storage = MagicMock()
+        storage.list_keys.side_effect = OSError("storage down")
+
+        assert users_photo_service.store_photo(7, ".webp", b"bytes", storage, mock_db) == "7.webp"
+
+    @patch(_CRUD)
+    def test_unknown_extension_stores_nothing(self, mock_crud, mock_db):
+        storage = MagicMock()
+
+        with pytest.raises(core_exceptions.UnsupportedMediaTypeError):
+            users_photo_service.store_photo(7, ".gif", b"bytes", storage, mock_db)
+
+        storage.save.assert_not_called()
+
+    @patch(_CRUD)
+    def test_unknown_user_stores_nothing(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = None
+        storage = MagicMock()
+
+        with pytest.raises(core_exceptions.NotFoundError):
+            users_photo_service.store_photo(7, ".png", b"bytes", storage, mock_db)
+
+        storage.save.assert_not_called()

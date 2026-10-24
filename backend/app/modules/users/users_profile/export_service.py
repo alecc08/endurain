@@ -11,12 +11,13 @@ Key Features:
 - Memory and timeout monitoring
 """
 
+import contextlib
 import os
 import tempfile
 import time
 import zipfile
 from collections.abc import Generator
-from typing import Any
+from typing import IO, Any
 
 import jasil.providers as platform_providers
 from sqlalchemy.exc import SQLAlchemyError
@@ -35,6 +36,7 @@ import modules.users.users.constants as users_constants
 import modules.users.users_default_gear.integration_service as users_default_gear_integration
 import modules.users.users_default_gear.schema as user_default_gear_schema
 import modules.users.users_goals.integration_service as users_goals_integration
+import modules.users.users_integrations.constants as user_integrations_constants
 import modules.users.users_integrations.integration_service as user_integrations_integration
 import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 import modules.users.users_profile.utils as users_profile_utils
@@ -656,7 +658,12 @@ class ExportService:
             try:
                 user_integrations = user_integrations_integration.get_user_integrations(self.user_id, self.db)
                 if user_integrations:
-                    integrations_dict = [users_profile_utils.sqlalchemy_obj_to_dict(user_integrations)]
+                    integrations_dict = [
+                        {
+                            field: getattr(user_integrations, field)
+                            for field in user_integrations_constants.PORTABLE_INTEGRATION_FIELDS
+                        }
+                    ]
                     users_profile_utils.write_json_to_zip(
                         zipf,
                         "data/user_integrations.json",
@@ -816,15 +823,19 @@ class ExportService:
             except Exception as err:
                 logger.warning("Unexpected error adding user image", exc_info=err, extra=core_logger.context(key=key))
 
-    def generate_export_archive(self, user_dict: dict[str, Any], timeout_seconds: int | None = 300) -> Generator[bytes]:
-        """Generate and stream export archive as bytes.
+    def build_export_archive(self, user_dict: dict[str, Any], timeout_seconds: int | None = 300) -> IO[bytes]:
+        """Build the export ZIP in a temporary file and return it, rewound to the start.
+
+        Everything that can fail (database reads, storage reads, the timeout) happens here, before
+        any response bytes exist, so a failure becomes an error response instead of a truncated
+        download. The caller owns the returned file and must close it, which deletes it.
 
         Args:
             user_dict: User data dictionary to export.
-            timeout_seconds: Optional timeout in seconds.
+            timeout_seconds: Optional timeout in seconds for building the archive.
 
-        Yields:
-            Chunks of ZIP archive as bytes.
+        Returns:
+            The finished archive, positioned at its first byte.
 
         Raises:
             ExportTimeoutError: If operation times out.
@@ -833,110 +844,107 @@ class ExportService:
             FileSystemError: If file system error occurs.
         """
         start_time = time.time()
+        with contextlib.ExitStack() as stack:
+            archive = stack.enter_context(tempfile.TemporaryFile())
+            self._write_archive(archive, user_dict, timeout_seconds, start_time)
+            archive.flush()
+            size = archive.tell()
+            archive.seek(0)
+            logger.info("ZIP archive created successfully", extra=core_logger.context(size_mb=size / (1024 * 1024)))
+            # Built without error: ownership passes to the caller, so the stack must not close it.
+            stack.pop_all()
 
+        return archive
+
+    def _write_archive(
+        self, archive: IO[bytes], user_dict: dict[str, Any], timeout_seconds: int | None, start_time: float
+    ) -> None:
+        """Write the export ZIP into an open file, mapping low-level failures to export errors.
+
+        Args:
+            archive: The file the ZIP is written to.
+            user_dict: User data dictionary to export.
+            timeout_seconds: Optional timeout in seconds.
+            start_time: When the export began, for the timeout.
+
+        Raises:
+            ExportTimeoutError: If operation times out.
+            ZipCreationError: If ZIP creation fails.
+            MemoryAllocationError: If memory limit exceeded.
+            FileSystemError: If file system error occurs.
+        """
         try:
-            with tempfile.NamedTemporaryFile(delete=True) as tmp:
-                try:
-                    compression_level = self.performance_config.compression_level
-                    logger.info("Creating ZIP", extra=core_logger.context(compression_level=compression_level))
+            compression_level = self.performance_config.compression_level
+            logger.debug("Creating ZIP", extra=core_logger.context(compression_level=compression_level))
 
-                    with zipfile.ZipFile(
-                        tmp,
-                        "w",
-                        compression=zipfile.ZIP_DEFLATED,
-                        compresslevel=compression_level,
-                    ) as zipf:
-                        logger.info("Starting export", extra=core_logger.context(user_id=self.user_id))
+            with zipfile.ZipFile(
+                archive,
+                "w",
+                compression=zipfile.ZIP_DEFLATED,
+                compresslevel=compression_level,
+            ) as zipf:
+                logger.info("Starting export", extra=core_logger.context(user_id=self.user_id))
 
-                        # Collect and write activities data progressively
-                        users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                        logger.info("Collecting and writing activities data...")
-                        user_activities = self.collect_user_activities_data(zipf)
+                # Database phase first: activities, gear, health and settings.
+                users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
+                user_activities = self.collect_user_activities_data(zipf)
 
-                        # Collect and write gear data progressively
-                        users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                        logger.info("Collecting and writing gear data...")
-                        self.collect_gear_data(zipf)
+                users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
+                self.collect_gear_data(zipf)
 
-                        # Collect and write health data progressively
-                        users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                        logger.info("Collecting and writing health data...")
-                        self.collect_health_weight(zipf)
+                users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
+                self.collect_health_weight(zipf)
 
-                        # Collect and write settings data progressively
-                        users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                        logger.info("Collecting and writing settings data...")
-                        self.collect_user_settings_data(zipf)
+                users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
+                self.collect_user_settings_data(zipf)
 
-                        # Write user data
-                        users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                        logger.info("Writing user data...")
-                        user_dict_list = [user_dict]
-                        users_profile_utils.write_json_to_zip(zipf, "data/user.json", user_dict_list, self.counts)
+                users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
+                users_profile_utils.write_json_to_zip(zipf, "data/user.json", [user_dict], self.counts)
 
-                        # Add files to ZIP with timeout checks
-                        users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                        logger.info("Adding activity files to archive...")
-                        self.add_activity_files_to_zip(zipf, user_activities)
+                # Everything below reads object storage only, which can take a long time, so the
+                # read transaction ends here instead of pinning a pool connection throughout.
+                self.db.commit()
 
-                        users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                        logger.info("Adding activity media to archive...")
-                        self.add_activity_media_to_zip(zipf, user_activities)
+                users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
+                self.add_activity_files_to_zip(zipf, user_activities)
 
-                        users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                        logger.info("Adding user images to archive...")
-                        self.add_user_images_to_zip(zipf)
+                users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
+                self.add_activity_media_to_zip(zipf, user_activities)
 
-                        # Write counts file
-                        users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                        logger.info("Writing counts file...")
-                        users_profile_utils.write_json_to_zip(zipf, "counts.json", [self.counts], self.counts)
+                users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
+                self.add_user_images_to_zip(zipf)
 
-                        users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                        logger.info("Export completed successfully", extra=core_logger.context(counts=self.counts))
+                users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
+                users_profile_utils.write_json_to_zip(zipf, "counts.json", [self.counts], self.counts)
 
-                except zipfile.BadZipFile as err:
-                    logger.error("ZIP creation error", exc_info=err)
-                    raise ZipCreationError(f"Failed to create ZIP archive: {err}") from err
-                except zipfile.LargeZipFile as err:
-                    logger.error("ZIP file too large", exc_info=err)
-                    raise ZipCreationError(f"Export archive too large: {err}") from err
+                logger.info("Export completed successfully", extra=core_logger.context(counts=self.counts))
 
-                # Ensure all data is written to disk before streaming
-                # This is critical for proper ZIP file structure and MIME type detection
-                tmp.flush()
-                os.fsync(tmp.fileno())
-
-                # Get file size for logging
-                file_size = tmp.tell()
-                logger.info(
-                    "ZIP archive created successfully", extra=core_logger.context(size_mb=file_size / (1024 * 1024))
-                )
-
-                # Stream the file with error handling
-                tmp.seek(0)
-                chunk_count = 0
-                while True:
-                    try:
-                        users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                        chunk = tmp.read(8192)
-                        if not chunk:
-                            break
-                        chunk_count += 1
-                        yield chunk
-                    except MemoryError as err:
-                        logger.error("Memory error during streaming", exc_info=err)
-                        raise MemoryAllocationError(f"Insufficient memory to stream export: {err}") from err
-
-                logger.info(
-                    "Successfully streamed the export",
-                    extra=core_logger.context(chunk_count=chunk_count, user_id=self.user_id),
-                )
-        except MemoryAllocationError as err:
-            raise err
+        except zipfile.BadZipFile as err:
+            logger.error("ZIP creation error", exc_info=err)
+            raise ZipCreationError(f"Failed to create ZIP archive: {err}") from err
+        except zipfile.LargeZipFile as err:
+            logger.error("ZIP file too large", exc_info=err)
+            raise ZipCreationError(f"Export archive too large: {err}") from err
         except OSError as err:
             logger.error("File system error during export", exc_info=err)
             raise FileSystemError(f"File system error during export: {err}") from err
         except MemoryError as err:
             logger.error("Memory allocation error during export", exc_info=err)
             raise MemoryAllocationError(f"Insufficient memory for export: {err}") from err
+
+
+def stream_archive(archive: IO[bytes], chunk_size: int = 64 * 1024) -> Generator[bytes]:
+    """Stream a finished archive in chunks, closing (and so deleting) it when done or abandoned.
+
+    Args:
+        archive: The archive from :meth:`ExportService.build_export_archive`.
+        chunk_size: Bytes per chunk.
+
+    Yields:
+        Chunks of the ZIP archive.
+    """
+    try:
+        while chunk := archive.read(chunk_size):
+            yield chunk
+    finally:
+        archive.close()

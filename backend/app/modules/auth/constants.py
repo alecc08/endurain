@@ -35,6 +35,7 @@ if not JWT_SECRET_KEY:
 # scope (immutable)
 USERS_REGULAR_SCOPE: Final[tuple[str, ...]] = ("profile", "users:read")
 USERS_ADMIN_SCOPE: Final[tuple[str, ...]] = (
+    "users:read_all",
     "users:write",
     "sessions:read",
     "sessions:write",
@@ -76,6 +77,7 @@ SERVER_SETTINGS_ADMIN_SCOPE: Final[tuple[str, ...]] = (
 SCOPE_DICT: Final[dict[str, str]] = {
     "profile": "Privileges over user's own profile",
     "users:read": "Read privileges over users",
+    "users:read_all": "Read privileges over the full records of every user",
     "users:write": "Write privileges over users",
     "sessions:read": "Read privileges over sessions",
     "sessions:write": "Create/edit/delete privileges over sessions",
