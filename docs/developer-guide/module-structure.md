@@ -599,10 +599,17 @@ one pattern. Recorded here so a review does not reopen them.
 
 **Settled (follow these in a new module):**
 
-- **Event publishers.** `publish_<fact>(<ids>, db, *, commit, <extras>)`: `db` and
-  `commit` are required and `commit` is keyword-only. A publisher with an optional
-  `commit` has a best-effort path that lets a caller publish outside the
-  transaction, which is what `publish_committing` exists to prevent.
+- **Event publishers.** Two shapes, chosen by who owns the commit at the call:
+  - `publish_<fact>(<ids>, db, *, commit, <extras>)` wraps `jasil.publisher.publish_committing`, for a
+    service that arranges the write and ends the transaction itself. `db` and `commit` are required and
+    `commit` is keyword-only, so there is no path that publishes outside the transaction.
+  - `publish_<fact>(<ids>, db, <extras>)` wraps `publish_on_commit`, for a write that is staged and committed
+    by someone else: the activity ingestion pipeline, and the surface writes that stage and leave the commit to
+    their caller (`clear_activities_gear`, `delete_all_activities_for_user`). It takes no `commit`, and the event
+    follows whichever commit ends the transaction.
+
+  A publisher takes `source` as a parameter when more than one route raises the same fact
+  (`publish_activity_created`, `publish_follower_request_removed`) and states it as a constant otherwise.
 - **Import aliases.** An alias is the *containing package* plus the role, so the
   name says whose file it is and which side of the visibility rule a call site is
   on. A peer's surface is `<package>_integration` (`activity_laps_integration`,
@@ -636,6 +643,12 @@ one pattern. Recorded here so a review does not reopen them.
   (what a file "used to" do, a ratio of removed duplication, a refactor's
   motivation) belongs in the commit message or PR, where it can be dated and
   corrected, not in the source, where it goes stale.
+- **Log levels.** ERROR is a failure nobody asked for, with its traceback. WARNING is a refusal or a
+  degraded path the operator may need to see (a denied caller, a dropped subscriber, a provider that
+  refused); an expected user mistake such as a wrong password carries no traceback. INFO is a state
+  change someone would audit: an account created, approved, deleted or linked, settings changed, a
+  background job queued or finished. DEBUG is everything routine: a record stored, edited or deleted,
+  a follow, a re-sync that skips what it already holds, and the progress inside a job.
 - **Logging.** A service function that refuses a caller (`PermissionDeniedError`)
   or ends a transaction logs in the same function; a service that only delegates
   has no such function and logs nothing. A file with no role logs only when it is

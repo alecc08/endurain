@@ -72,5 +72,5 @@ def edit_default_gear(
     """
     updated = stage_default_gear_edit(user_default_gear, user_id, db)
     db.commit()
-    logger.info("Default gear updated", extra=core_logger.context(user_id=user_id))
+    logger.debug("Default gear updated", extra=core_logger.context(user_id=user_id))
     return updated

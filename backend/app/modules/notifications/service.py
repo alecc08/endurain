@@ -338,7 +338,7 @@ def remove_follow_request_notifications(requester_user_id: int, target_user_id: 
         db,
     )
     db.commit()
-    logger.info(
+    logger.debug(
         "Removed follow-request notifications",
         extra=core_logger.context(requester_user_id=requester_user_id, target_user_id=target_user_id, deleted=deleted),
     )

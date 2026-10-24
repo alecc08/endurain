@@ -1,7 +1,9 @@
 """Tests for the Garmin Connect link routes."""
 
+from datetime import date
 from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from jasil.backends.state_memory import MemoryState
@@ -36,6 +38,12 @@ def _client(user_id: int = 1):
         sync_state_store.GarminSyncStateStore(state=state)
     )
     return TestClient(app), link_states
+
+
+@pytest.fixture(autouse=True)
+def users_today():
+    with patch("modules.garmin.sync_service.users_integration.local_today", return_value=date(2026, 1, 31)):
+        yield
 
 
 @patch("modules.garmin.link_service._link_pool")

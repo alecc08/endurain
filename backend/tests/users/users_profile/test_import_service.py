@@ -107,6 +107,29 @@ class TestImportServiceZipValidation:
             await service.import_from_zip_data(b"not-a-zip")
 
 
+class TestImportServiceArchiveCaps:
+    def _service(self) -> profile_import_service.ImportService:
+        return profile_import_service.ImportService(user_id=1, storage=MagicMock(), db=MagicMock(spec=Session))
+
+    async def test_an_archive_with_too_many_entries_is_refused_before_anything_is_read(self) -> None:
+        service = self._service()
+        service.performance_config.max_entries = 2
+        zip_data = _make_zip_with_json({f"data/f{i}.json": [] for i in range(3)})
+
+        with pytest.raises(FileSizeError, match="entries"):
+            await service.import_from_zip_data(zip_data)
+
+    def test_the_bytes_read_across_entries_are_capped(self) -> None:
+        service = self._service()
+        service.performance_config.max_uncompressed_mb = 0.0001
+        zip_data = _make_zip_with_json({"data/a.json": ["x" * 60], "data/b.json": ["y" * 60]})
+
+        with zipfile.ZipFile(BytesIO(zip_data)) as z:
+            service._read_zip_entry(z, "data/a.json")
+            with pytest.raises(FileSizeError, match="uncompressed"):
+                service._read_zip_entry(z, "data/b.json")
+
+
 class TestImportServiceReadZipEntry:
     def test_read_zip_entry_exceeds_size(self) -> None:
         mock_db = MagicMock(spec=Session)

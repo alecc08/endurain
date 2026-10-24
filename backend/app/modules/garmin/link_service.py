@@ -157,7 +157,7 @@ def link_garminconnect(
                 db,
             )
             db.commit()
-    except garminconnect.GarminConnectAuthenticationError as err:
+    except garminconnect.GarminConnectAuthenticationError:
         # The library raises this for a refused password and for a refused MFA code alike.
         reason = (
             garmin_constants.LinkFailure.INCORRECT_MFA
@@ -166,7 +166,6 @@ def link_garminconnect(
         )
         logger.warning(
             "Garmin Connect refused the link attempt",
-            exc_info=err,
             extra=core_logger.context(user_id=user_id, reason=reason),
         )
         link_states.set_status(user_id, garmin_constants.LinkStatus.FAILED, reason)

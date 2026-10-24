@@ -199,7 +199,7 @@ def create_health_weight(
     """
     stored = stage_upsert_health_weight(user_id, health_weight, db)
     db.commit()
-    logger.info("Stored a weight record", extra=core_logger.context(user_id=user_id))
+    logger.debug("Stored a weight record", extra=core_logger.context(user_id=user_id))
     return stored
 
 
@@ -222,7 +222,7 @@ def edit_health_weight(
     """
     updated = stage_edit_health_weight(user_id, health_weight, db)
     db.commit()
-    logger.info("Edited a weight record", extra=core_logger.context(user_id=user_id))
+    logger.debug("Edited a weight record", extra=core_logger.context(user_id=user_id))
     return updated
 
 
@@ -239,6 +239,6 @@ def delete_health_weight(user_id: int, health_weight_id: int, db: Session) -> No
     """
     health_weight_crud.delete_health_weight(user_id, health_weight_id, db)
     db.commit()
-    logger.info(
+    logger.debug(
         "Deleted a weight record", extra=core_logger.context(user_id=user_id, health_weight_id=health_weight_id)
     )

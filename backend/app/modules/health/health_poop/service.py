@@ -117,7 +117,7 @@ def create_health_poop(
     """
     created = health_poop_crud.create_health_poop(user_id, health_poop, db)
     db.commit()
-    logger.info("Stored a bowel movement record", extra=core_logger.context(user_id=user_id))
+    logger.debug("Stored a bowel movement record", extra=core_logger.context(user_id=user_id))
     return created
 
 
@@ -146,7 +146,7 @@ def edit_health_poop(
 
     updated = health_poop_crud.edit_health_poop(user_id, health_poop, db)
     db.commit()
-    logger.info("Edited a bowel movement record", extra=core_logger.context(user_id=user_id))
+    logger.debug("Edited a bowel movement record", extra=core_logger.context(user_id=user_id))
     return updated
 
 
@@ -163,6 +163,6 @@ def delete_health_poop(user_id: int, health_poop_id: int, db: Session) -> None:
     """
     health_poop_crud.delete_health_poop(user_id, health_poop_id, db)
     db.commit()
-    logger.info(
+    logger.debug(
         "Deleted a bowel movement record", extra=core_logger.context(user_id=user_id, health_poop_id=health_poop_id)
     )

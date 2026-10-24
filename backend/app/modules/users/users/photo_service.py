@@ -87,7 +87,7 @@ def delete_photo(user_id: int, storage: platform_providers.StorageProvider, db: 
     """
     replaced = users_crud.replace_photo_key(user_id, None, db)
     db.commit()
-    logger.info("User photo removed", extra=core_logger.context(user_id=user_id))
+    logger.debug("User photo removed", extra=core_logger.context(user_id=user_id))
 
     _delete_replaced_blob(user_id, replaced, None, storage)
 
@@ -131,7 +131,7 @@ def store_photo(
 
     replaced = users_crud.replace_photo_key(user_id, key, db)
     db.commit()
-    logger.info("User photo saved", extra=core_logger.context(user_id=user_id))
+    logger.debug("User photo saved", extra=core_logger.context(user_id=user_id))
 
     _delete_replaced_blob(user_id, replaced, key, storage)
     return key

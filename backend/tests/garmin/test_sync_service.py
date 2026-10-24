@@ -1,6 +1,6 @@
 """Tests for queueing Garmin Connect gear and health syncs."""
 
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,6 +16,12 @@ import modules.garmin.sync_state_store as garmin_sync_state_store
 DAY = date(2026, 1, 1)
 Kind = garmin_constants.SyncKind
 Status = garmin_constants.SyncStatus
+
+
+@pytest.fixture(autouse=True)
+def users_today():
+    with patch.object(garmin_sync_service.users_integration, "local_today", return_value=DAY) as today:
+        yield today
 
 
 @pytest.fixture
@@ -124,19 +130,45 @@ def test_a_range_beyond_the_cap_is_refused_and_nothing_is_queued(local, states):
     local.submit.assert_not_called()
 
 
-def test_the_longest_allowed_range_is_accepted(local, states):
+def test_the_longest_allowed_range_is_accepted(local, states, users_today):
     last = date(2026, 1, garmin_constants.MAX_HEALTH_RANGE_DAYS)
+    users_today.return_value = last
 
     garmin_sync_service.request_health_sync(1, DAY, last, states, MagicMock())
 
     local.submit.assert_called_once()
 
 
-def test_an_activities_range_is_not_capped():
-    with patch.object(garmin_sync_service.activity_ingestion_integration, "request_provider_sync") as request:
+def test_an_activities_range_beyond_the_cap_is_refused():
+    with (
+        patch.object(garmin_sync_service.activity_ingestion_integration, "request_provider_sync") as request,
+        pytest.raises(core_exceptions.InvalidInputError, match="must not exceed"),
+    ):
         garmin_sync_service.request_activities_sync(1, date(2010, 1, 1), DAY, MagicMock(), MagicMock())
 
+    request.assert_not_called()
+
+
+def test_the_longest_allowed_activities_range_is_accepted():
+    first = DAY - timedelta(days=garmin_constants.MAX_ACTIVITIES_RANGE_DAYS - 1)
+    with patch.object(garmin_sync_service.activity_ingestion_integration, "request_provider_sync") as request:
+        garmin_sync_service.request_activities_sync(1, first, DAY, MagicMock(), MagicMock())
+
     request.assert_called_once()
+
+
+def test_a_range_ending_after_the_users_today_is_refused(local, states):
+    tomorrow = DAY + timedelta(days=1)
+    with (
+        patch.object(garmin_sync_service.activity_ingestion_integration, "request_provider_sync") as request,
+        pytest.raises(core_exceptions.InvalidInputError, match="future"),
+    ):
+        garmin_sync_service.request_activities_sync(1, DAY, tomorrow, MagicMock(), MagicMock())
+    with pytest.raises(core_exceptions.InvalidInputError, match="future"):
+        garmin_sync_service.request_health_sync(1, DAY, tomorrow, states, MagicMock())
+
+    request.assert_not_called()
+    local.submit.assert_not_called()
 
 
 def test_a_reversed_activities_range_is_refused():
@@ -165,7 +197,7 @@ class TestRunSync:
         assert states.get(1, Kind.GEAR).status == Status.COMPLETED
         assert states.get(2, Kind.HEALTH).status == Status.COMPLETED
 
-    def test_without_a_worker_a_failure_is_recorded_released_and_raised(self, local, states):
+    def test_a_failure_nothing_retries_is_recorded_released_and_raised(self, states):
         states.begin(1, Kind.GEAR)
         with (
             patch.object(garmin_sync_service.garmin_gear_service, "get_user_gear", side_effect=RuntimeError("boom")),
@@ -176,13 +208,15 @@ class TestRunSync:
         assert states.get(1, Kind.GEAR).status == Status.FAILED
         assert states.begin(1, Kind.GEAR) is True
 
-    def test_with_a_worker_a_failure_stays_queued_and_claimed_for_its_retry(self, durable, states):
+    def test_a_failure_with_attempts_left_stays_queued_and_claimed_for_its_retry(self, states):
         states.begin(1, Kind.GEAR)
         with (
             patch.object(garmin_sync_service.garmin_gear_service, "get_user_gear", side_effect=RuntimeError("boom")),
             pytest.raises(RuntimeError),
         ):
-            garmin_sync_service.run_sync(garmin_events.SyncRequestedPayload(user_id=1, kind=Kind.GEAR), states)
+            garmin_sync_service.run_sync(
+                garmin_events.SyncRequestedPayload(user_id=1, kind=Kind.GEAR), states, will_retry=True
+            )
 
         assert states.get(1, Kind.GEAR).status == Status.QUEUED
         assert states.begin(1, Kind.GEAR) is False
@@ -305,15 +339,32 @@ class TestRecentHealth:
         assert publish.call_args.kwargs["source"] == garmin_constants.SYNC_SOURCE_API
 
 
-def test_the_durable_handler_runs_the_event_payload(states):
-    event = MagicMock()
+@pytest.mark.parametrize(("retry_count", "will_retry"), [(1, True), (3, False)])
+def test_the_durable_handler_asks_for_a_retry_only_while_attempts_remain(states, retry_count, will_retry):
+    event = MagicMock(retry_count=retry_count)
     payload = garmin_events.SyncRequestedPayload(user_id=1, kind=Kind.GEAR)
     with (
         patch.object(garmin_subscribers.platform_event_versioning, "parse_payload", return_value=payload),
         patch.object(garmin_subscribers.garmin_sync_state_store, "GarminSyncStateStore", return_value=states),
         patch.object(garmin_subscribers.platform_runtime, "get_state"),
+        patch.object(garmin_subscribers.core_config, "settings", MagicMock(JOBS_MAX_ATTEMPTS=3)),
         patch.object(garmin_subscribers.garmin_sync_service, "run_sync") as run,
     ):
         garmin_subscribers.process_sync_requested_for_event(event)
 
-    run.assert_called_once_with(payload, states)
+    run.assert_called_once_with(payload, states, will_retry=will_retry)
+
+
+def test_the_durable_handler_runs_the_event_payload(states):
+    event = MagicMock(retry_count=0)
+    payload = garmin_events.SyncRequestedPayload(user_id=1, kind=Kind.GEAR)
+    with (
+        patch.object(garmin_subscribers.platform_event_versioning, "parse_payload", return_value=payload),
+        patch.object(garmin_subscribers.garmin_sync_state_store, "GarminSyncStateStore", return_value=states),
+        patch.object(garmin_subscribers.platform_runtime, "get_state"),
+        patch.object(garmin_subscribers.core_config, "settings", MagicMock(JOBS_MAX_ATTEMPTS=3)),
+        patch.object(garmin_subscribers.garmin_sync_service, "run_sync") as run,
+    ):
+        garmin_subscribers.process_sync_requested_for_event(event)
+
+    run.assert_called_once_with(payload, states, will_retry=True)

@@ -549,7 +549,7 @@ def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session)
         db.rollback()
         raise
     db.commit()
-    logger.info("User profile edited", extra=core_logger.context(user_id=user_id))
+    logger.debug("User profile edited", extra=core_logger.context(user_id=user_id))
     return updated
 
 

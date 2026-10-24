@@ -149,7 +149,7 @@ def create_health_sleep(
     health_sleep_sleep_scoring.calculate_and_set_sleep_scores(health_sleep)
     stored = stage_upsert_health_sleep(user_id, health_sleep, db)
     db.commit()
-    logger.info("Stored a sleep record", extra=core_logger.context(user_id=user_id))
+    logger.debug("Stored a sleep record", extra=core_logger.context(user_id=user_id))
     return stored
 
 
@@ -173,7 +173,7 @@ def edit_health_sleep(
     health_sleep_sleep_scoring.calculate_and_set_sleep_scores(health_sleep)
     updated = stage_edit_health_sleep(user_id, health_sleep, db)
     db.commit()
-    logger.info("Edited a sleep record", extra=core_logger.context(user_id=user_id))
+    logger.debug("Edited a sleep record", extra=core_logger.context(user_id=user_id))
     return updated
 
 
@@ -190,4 +190,4 @@ def delete_health_sleep(user_id: int, health_sleep_id: int, db: Session) -> None
     """
     health_sleep_crud.delete_health_sleep(user_id, health_sleep_id, db)
     db.commit()
-    logger.info("Deleted a sleep record", extra=core_logger.context(user_id=user_id, health_sleep_id=health_sleep_id))
+    logger.debug("Deleted a sleep record", extra=core_logger.context(user_id=user_id, health_sleep_id=health_sleep_id))

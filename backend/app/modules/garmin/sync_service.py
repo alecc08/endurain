@@ -46,38 +46,47 @@ def shutdown_sync_pool(*, wait: bool = False) -> None:
     _sync_pool.shutdown(wait=wait)
 
 
-def _validate_range(start_date: date, end_date: date, max_days: int | None = None) -> None:
-    """Refuse a reversed date range, or one longer than ``max_days``.
+def _validate_range(start_date: date, end_date: date, max_days: int, today: date) -> None:
+    """Refuse a reversed date range, a future one, or one longer than ``max_days``.
 
     Args:
         start_date: First day of the range.
         end_date: Last day of the range.
-        max_days: Longest range allowed, or ``None`` for no cap.
+        max_days: Longest range allowed.
+        today: The user's current calendar date.
 
     Raises:
-        InvalidInputError: When ``start_date`` is after ``end_date`` or the range is too long.
+        InvalidInputError: When ``start_date`` is after ``end_date``, ``end_date`` is in the future or
+            the range is too long.
     """
     if start_date > end_date:
         raise core_exceptions.InvalidInputError("start_date must not be after end_date")
-    if max_days is not None and end_date - start_date >= timedelta(days=max_days):
+    if end_date > today:
+        raise core_exceptions.InvalidInputError("end_date must not be in the future")
+    if end_date - start_date >= timedelta(days=max_days):
         raise core_exceptions.InvalidInputError(f"The date range must not exceed {max_days} days")
 
 
-def run_sync(payload: garmin_events.SyncRequestedPayload, states: garmin_sync_state_store.GarminSyncStateStore) -> None:
+def run_sync(
+    payload: garmin_events.SyncRequestedPayload,
+    states: garmin_sync_state_store.GarminSyncStateStore,
+    *,
+    will_retry: bool = False,
+) -> None:
     """Run one queued sync and record its outcome. Blocking; call it from a worker, never a request.
 
     A sync that could not run because the account is not linked, Garmin Connect rejected its
     token or Garmin Connect is rate limiting the account is recorded as failed and not raised: a
     retry would meet the same answer.
 
-    A sync that raised is retried by a durable worker, so it stays ``QUEUED`` with its claim held:
-    releasing the claim would let a second sync start beside the retry, and the claim runs out on
-    its own if the retries are exhausted. Without a worker nothing retries it, so it is ``FAILED``
-    and the claim is released.
+    A sync that raised and will be retried by a durable worker stays ``QUEUED`` with its claim held:
+    releasing the claim would let a second sync start beside the retry. A sync nothing will retry,
+    because there is no worker or this was the last attempt, is ``FAILED`` and its claim is released.
 
     Args:
         payload: What to sync.
         states: Shared store of the sync's state.
+        will_retry: Whether a durable worker runs this again if it raises.
 
     Raises:
         Exception: Whatever the sync raised, after recording its state, so a durable worker retries it.
@@ -97,11 +106,10 @@ def run_sync(payload: garmin_events.SyncRequestedPayload, states: garmin_sync_st
         states.set_status(payload.user_id, payload.kind, garmin_constants.SyncStatus.FAILED)
         return
     except Exception:
-        retried = core_config.settings.JOBS_ENABLED
         states.set_status(
             payload.user_id,
             payload.kind,
-            garmin_constants.SyncStatus.QUEUED if retried else garmin_constants.SyncStatus.FAILED,
+            garmin_constants.SyncStatus.QUEUED if will_retry else garmin_constants.SyncStatus.FAILED,
         )
         raise
     outcome = garmin_constants.SyncStatus.COMPLETED if synced else garmin_constants.SyncStatus.FAILED
@@ -200,10 +208,15 @@ def request_health_sync(
         The sync's initial status.
 
     Raises:
-        InvalidInputError: When ``start_date`` is after ``end_date`` or the range is longer than
-            ``MAX_HEALTH_RANGE_DAYS``.
+        InvalidInputError: When ``start_date`` is after ``end_date``, ``end_date`` is in the future or the
+            range is longer than ``MAX_HEALTH_RANGE_DAYS``.
     """
-    _validate_range(start_date, end_date, garmin_constants.MAX_HEALTH_RANGE_DAYS)
+    _validate_range(
+        start_date,
+        end_date,
+        garmin_constants.MAX_HEALTH_RANGE_DAYS,
+        users_integration.local_today(user_id, db),
+    )
     return _queue(user_id, garmin_constants.SyncKind.HEALTH, start_date, end_date, states, db)
 
 
@@ -239,7 +252,7 @@ def request_activities_sync(
     """Queue a Garmin Connect sync of an explicit date range.
 
     The range is fetched by a background job, never on the request or an API worker thread. It is
-    not capped: a first sync may reach back years.
+    capped, so a first sync that reaches back years is made in several requests.
 
     Args:
         user_id: The user to sync.
@@ -252,9 +265,15 @@ def request_activities_sync(
         The queued job's handle.
 
     Raises:
-        InvalidInputError: When ``start_date`` is after ``end_date``.
+        InvalidInputError: When ``start_date`` is after ``end_date``, ``end_date`` is in the future or the
+            range is longer than ``MAX_ACTIVITIES_RANGE_DAYS``.
     """
-    _validate_range(start_date, end_date)
+    _validate_range(
+        start_date,
+        end_date,
+        garmin_constants.MAX_ACTIVITIES_RANGE_DAYS,
+        users_integration.local_today(user_id, db),
+    )
 
     job = activity_ingestion_integration.request_provider_sync(
         user_id,

@@ -33,7 +33,7 @@ Publish it from the service, in the same transaction as the change, through your
 activity_event_publishers.publish_activity_created(activity.id, activity.user_id, db=db, source="ingest:upload")
 ```
 
-The publisher only stages the event, and the caller commits. With durable jobs on, the event is written to the outbox in the caller's transaction, so it commits or rolls back with the rows. With them off, it is dispatched on the bus after the commit and dropped if the transaction rolls back.
+A publisher that takes no `commit` only stages the event, and the caller commits. One that takes `commit` is used by a service that ends the transaction itself, and runs that commit (see [Conventions that look like drift](module-structure.md#conventions-that-look-like-drift)). With durable jobs on, the event is written to the outbox in the caller's transaction, so it commits or rolls back with the rows. With them off, it is dispatched on the bus after the commit and dropped if the transaction rolls back.
 
 Payloads are versioned. When a field is renamed, removed or changes meaning, raise `SCHEMA_VERSION` and register an upgrader. Adding an optional field needs no new version.
 

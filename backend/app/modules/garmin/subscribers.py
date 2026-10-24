@@ -10,6 +10,7 @@ import jasil.runtime as platform_runtime
 from jasil.events import Event
 from jasil.jobs.registry import JobHandlerRegistry
 
+import core.config as core_config
 import core.logger as core_logger
 import modules.garmin.events as garmin_events
 import modules.garmin.sync_service as garmin_sync_service
@@ -27,7 +28,11 @@ def process_sync_requested_for_event(event: Event) -> None:
         event: The ``garmin.sync_requested`` event.
     """
     payload = platform_event_versioning.parse_payload(garmin_events.SyncRequestedPayload, event)
-    garmin_sync_service.run_sync(payload, garmin_sync_state_store.GarminSyncStateStore(platform_runtime.get_state()))
+    garmin_sync_service.run_sync(
+        payload,
+        garmin_sync_state_store.GarminSyncStateStore(platform_runtime.get_state()),
+        will_retry=event.retry_count < core_config.settings.JOBS_MAX_ATTEMPTS,
+    )
     logger.debug(
         "Garmin Connect sync job finished",
         extra=core_logger.context(user_id=payload.user_id, kind=payload.kind),

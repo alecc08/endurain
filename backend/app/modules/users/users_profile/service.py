@@ -108,7 +108,7 @@ def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session)
     """
     users_integration.edit_profile(user_id, profile, db)
     db.commit()
-    logger.info("Profile updated", extra=core_logger.context(user_id=user_id))
+    logger.debug("Profile updated", extra=core_logger.context(user_id=user_id))
 
 
 def change_email(
@@ -180,7 +180,7 @@ def edit_privacy_settings(
     """
     users_privacy_settings_integration.edit_privacy_settings(user_id, privacy_settings, db)
     db.commit()
-    logger.info("Privacy settings updated", extra=core_logger.context(user_id=user_id))
+    logger.debug("Privacy settings updated", extra=core_logger.context(user_id=user_id))
 
 
 def delete_account(

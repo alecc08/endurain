@@ -79,6 +79,9 @@ class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
         max_json_mb: Maximum size of one JSON data entry in megabytes; parsing it takes several
             times that in memory.
         max_activities: Maximum number of activities.
+        max_entries: Maximum number of entries in the archive.
+        max_uncompressed_mb: Maximum decompressed bytes read from the archive, in megabytes, whatever
+            the archive declares.
         timeout_seconds: Operation timeout in seconds.
         chunk_size: Data chunk size in bytes.
         enable_memory_monitoring: Enable memory monitoring.
@@ -91,6 +94,8 @@ class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
         max_file_size_mb: int = 500,
         max_json_mb: int = 128,
         max_activities: int = 10000,
+        max_entries: int = 100000,
+        max_uncompressed_mb: int = 2048,
         timeout_seconds: int = 3600,
         chunk_size: int = 8192,
         enable_memory_monitoring: bool = True,
@@ -106,6 +111,8 @@ class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
         self.max_file_size_mb = max_file_size_mb
         self.max_json_mb = max_json_mb
         self.max_activities = max_activities
+        self.max_entries = max_entries
+        self.max_uncompressed_mb = max_uncompressed_mb
 
     @classmethod
     def _get_tier_configs(cls) -> dict[str, dict[str, Any]]:
@@ -179,11 +186,12 @@ class ImportService:
         self.db = db
         self.on_database_committed = on_database_committed
         self.counts = profile_utils.initialize_operation_counts(include_user_count=False)
+        self._uncompressed_bytes = 0
         self.performance_config: ImportPerformanceConfig = (
             performance_config or ImportPerformanceConfig.get_auto_config()
         )
 
-        logger.info(
+        logger.debug(
             "ImportService initialized",
             extra=core_logger.context(
                 batch_size=self.performance_config.batch_size,
@@ -234,6 +242,11 @@ class ImportService:
         try:
             with zipfile.ZipFile(BytesIO(zip_data)) as zipf:
                 file_list = set(zipf.namelist())
+                if len(zipf.infolist()) > self.performance_config.max_entries:
+                    raise FileSizeError(
+                        f"ZIP file has {len(zipf.infolist())} entries, more than the "
+                        f"{self.performance_config.max_entries} allowed"
+                    )
 
                 # Create ID mappings for relationships
                 gears_id_mapping: dict[int, int] = {}
@@ -381,7 +394,7 @@ class ImportService:
             records = self._load_single_json(zipf, contributor.archive_path, check_memory=False)
             restored = contributor.restore(records, self.db)
             self.counts[contributor.count_key] += restored
-        logger.info("Restored the global activity components", extra=core_logger.context(user_id=self.user_id))
+        logger.debug("Restored the global activity components", extra=core_logger.context(user_id=self.user_id))
 
     def _read_zip_entry(
         self,
@@ -428,6 +441,11 @@ class ImportService:
                     raise FileSizeError(
                         f"ZIP entry {filename} decompressed size exceeds maximum allowed ({limit} bytes)"
                     )
+                self._uncompressed_bytes += len(chunk)
+                if self._uncompressed_bytes > self.performance_config.max_uncompressed_mb * 1024 * 1024:
+                    raise FileSizeError(
+                        f"The archive's uncompressed size exceeds {self.performance_config.max_uncompressed_mb}MB"
+                    )
                 chunks.append(chunk)
         return b"".join(chunks)
 
@@ -443,7 +461,7 @@ class ImportService:
         gears_id_mapping: dict[int, int] = {}
 
         if not gears_data:
-            logger.info("No gears data to import")
+            logger.debug("No gears data to import")
             return gears_id_mapping
 
         for gear_data in gears_data:
@@ -460,7 +478,7 @@ class ImportService:
             gears_id_mapping[original_id] = self._import_gear(gear)
             self.counts["gears"] += 1
 
-        logger.info("Imported gears", extra=core_logger.context(count=self.counts["gears"]))
+        logger.debug("Imported gears", extra=core_logger.context(count=self.counts["gears"]))
         return gears_id_mapping
 
     def _import_gear(self, gear: gear_schema.GearCreate) -> int:
@@ -501,7 +519,7 @@ class ImportService:
             gears_id_mapping: Mapping of old to new gear IDs.
         """
         if not gear_components_data:
-            logger.info("No gear components data to import")
+            logger.debug("No gear components data to import")
             return
 
         for gear_component_data in gear_components_data:
@@ -527,7 +545,7 @@ class ImportService:
             gear_components_integration.create_gear_component(gear_component, self.user_id, self.db)
             self.counts["gear_components"] += 1
 
-        logger.info("Imported gear components", extra=core_logger.context(count=self.counts["gear_components"]))
+        logger.debug("Imported gear components", extra=core_logger.context(count=self.counts["gear_components"]))
 
     async def collect_and_import_user_data(
         self,
@@ -567,7 +585,7 @@ class ImportService:
             users_integration.edit_profile(self.user_id, profile_payload, self.db)
             self.counts["user"] += 1
         else:
-            logger.info("No user data to import, but continuing with sub-settings")
+            logger.debug("No user data to import, but continuing with sub-settings")
 
         # Import user-related settings — always attempt, even if
         # user_data was empty, so that sub-setting data loaded from
@@ -587,11 +605,11 @@ class ImportService:
             gears_id_mapping: Mapping of old to new gear IDs.
         """
         if not user_default_gear_data:
-            logger.info("No user default gear data to import")
+            logger.debug("No user default gear data to import")
             return
 
         if users_default_gear_integration.get_default_gear(self.user_id, self.db) is None:
-            logger.info("No existing user default gear, creating new record")
+            logger.debug("No existing user default gear, creating new record")
             users_default_gear_integration.create_default_gear(self.user_id, self.db)
 
         gear_data = user_default_gear_data[0]
@@ -628,7 +646,7 @@ class ImportService:
             logger.warning("Skipped invalid user default gear")
             return
         users_default_gear_integration.edit_default_gear(user_default_gear, self.user_id, self.db)
-        logger.info("Imported user default gear")
+        logger.debug("Imported user default gear")
         self.counts["user_default_gear"] += 1
 
     async def collect_and_import_user_integrations(self, user_integrations_data: list[Any]) -> None:
@@ -638,7 +656,7 @@ class ImportService:
             user_integrations_data: Integration data.
         """
         if not user_integrations_data:
-            logger.info("No user integrations data to import")
+            logger.debug("No user integrations data to import")
             return
 
         # Strict allow-list: an archive may carry the sync preferences only. Tokens, client
@@ -650,7 +668,7 @@ class ImportService:
             if key in users_integrations_constants.PORTABLE_INTEGRATION_FIELDS
         }
         if not integrations_data:
-            logger.info("No importable user integrations data")
+            logger.debug("No importable user integrations data")
             return
 
         try:
@@ -659,7 +677,7 @@ class ImportService:
             logger.warning("Skipped invalid user integrations")
             return
         user_integrations_integration.edit_integrations(user_integrations, self.user_id, self.db)
-        logger.info("Imported user integrations")
+        logger.debug("Imported user integrations")
         self.counts["user_integrations"] += 1
 
     async def collect_and_import_user_goals(self, user_goals_data: list[Any]) -> None:
@@ -669,7 +687,7 @@ class ImportService:
             user_goals_data: List of user goal dictionaries.
         """
         if not user_goals_data:
-            logger.info("No user goals data to import")
+            logger.debug("No user goals data to import")
             return
 
         for goal_data in user_goals_data:
@@ -685,11 +703,11 @@ class ImportService:
                 with self.db.begin_nested():
                     users_goals_integration.create_goal(self.user_id, goal, self.db)
             except core_exceptions.ConflictError:
-                logger.info("Skipped a user goal the user already has")
+                logger.debug("Skipped a user goal the user already has")
                 continue
             self.counts["user_goals"] += 1
 
-        logger.info("Imported user goals", extra=core_logger.context(count=self.counts["user_goals"]))
+        logger.debug("Imported user goals", extra=core_logger.context(count=self.counts["user_goals"]))
 
     async def collect_and_import_user_privacy_settings(self, user_privacy_settings_data: list[Any]) -> None:
         """Import user privacy settings.
@@ -698,7 +716,7 @@ class ImportService:
             user_privacy_settings_data: Privacy settings data.
         """
         if not user_privacy_settings_data:
-            logger.info("No user privacy settings data to import")
+            logger.debug("No user privacy settings data to import")
             return
 
         privacy_data = user_privacy_settings_data[0]
@@ -711,7 +729,7 @@ class ImportService:
             logger.warning("Skipped invalid user privacy settings")
             return
         users_privacy_settings_integration.edit_privacy_settings(self.user_id, user_privacy_settings, self.db)
-        logger.info("Imported user privacy settings")
+        logger.debug("Imported user privacy settings")
         self.counts["user_privacy_settings"] += 1
 
     async def collect_and_import_activity_components(
@@ -765,7 +783,7 @@ class ImportService:
         # Load activities list
         activities_data = self._load_single_json(zipf, "data/activities.json")
         if not activities_data:
-            logger.info("No activities data to import")
+            logger.debug("No activities data to import")
             return activities_id_mapping
 
         # Check activity count limit
@@ -791,7 +809,7 @@ class ImportService:
                     check_memory=False,
                 )
 
-        logger.info(
+        logger.debug(
             "Importing activities with batched component loading", extra=core_logger.context(count=len(activities_data))
         )
 
@@ -803,7 +821,7 @@ class ImportService:
             batch_end = min(batch_start + batch_size, len(activities_data))
             activities_batch = activities_data[batch_start:batch_end]
 
-            logger.info(
+            logger.debug(
                 "Processing an activities batch",
                 extra=core_logger.context(
                     batch_number=batch_start // batch_size + 1, batch_start=batch_start, batch_end=batch_end
@@ -862,7 +880,7 @@ class ImportService:
                 self.performance_config.enable_memory_monitoring,
             )
 
-        logger.info("Imported activities", extra=core_logger.context(count=self.counts["activities"]))
+        logger.debug("Imported activities", extra=core_logger.context(count=self.counts["activities"]))
         return activities_id_mapping
 
     @staticmethod
@@ -1010,7 +1028,9 @@ class ImportService:
                     continue
                 health_weight_integration.upsert_health_weight(self.user_id, data, self.db)
                 self.counts["health_weight"] += 1
-            logger.info("Imported health weight records", extra=core_logger.context(count=self.counts["health_weight"]))
+            logger.debug(
+                "Imported health weight records", extra=core_logger.context(count=self.counts["health_weight"])
+            )
         else:
             logger.debug("No health weight data to import")
 
@@ -1047,7 +1067,7 @@ class ImportService:
                     continue
                 health_targets_integration.edit_health_targets(target, self.user_id, self.db)
                 self.counts["health_targets"] += 1
-            logger.info("Imported health targets", extra=core_logger.context(count=self.counts["health_targets"]))
+            logger.debug("Imported health targets", extra=core_logger.context(count=self.counts["health_targets"]))
         else:
             logger.debug("No health targets to import")
 

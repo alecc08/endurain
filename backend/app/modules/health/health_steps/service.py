@@ -145,7 +145,7 @@ def create_health_steps(
     """
     stored = stage_upsert_health_steps(user_id, health_steps, db)
     db.commit()
-    logger.info("Stored a steps record", extra=core_logger.context(user_id=user_id))
+    logger.debug("Stored a steps record", extra=core_logger.context(user_id=user_id))
     return stored
 
 
@@ -168,7 +168,7 @@ def edit_health_steps(
     """
     updated = stage_edit_health_steps(user_id, health_steps, db)
     db.commit()
-    logger.info("Edited a steps record", extra=core_logger.context(user_id=user_id))
+    logger.debug("Edited a steps record", extra=core_logger.context(user_id=user_id))
     return updated
 
 
@@ -185,4 +185,4 @@ def delete_health_steps(user_id: int, health_steps_id: int, db: Session) -> None
     """
     health_steps_crud.delete_health_steps(user_id, health_steps_id, db)
     db.commit()
-    logger.info("Deleted a steps record", extra=core_logger.context(user_id=user_id, health_steps_id=health_steps_id))
+    logger.debug("Deleted a steps record", extra=core_logger.context(user_id=user_id, health_steps_id=health_steps_id))

@@ -136,7 +136,7 @@ class ExportService:
             performance_config or ExportPerformanceConfig.get_auto_config()
         )
 
-        logger.info(
+        logger.debug(
             "ExportService initialized",
             extra=core_logger.context(
                 batch_size=self.performance_config.batch_size,
@@ -172,7 +172,7 @@ class ExportService:
             offset = 0
             batch_size = self.performance_config.batch_size
 
-            logger.info("Starting batched activity collection", extra=core_logger.context(batch_size=batch_size))
+            logger.debug("Starting batched activity collection", extra=core_logger.context(batch_size=batch_size))
 
             while True:
                 # Get a batch of activities
@@ -204,13 +204,13 @@ class ExportService:
                     self.performance_config.enable_memory_monitoring,
                 )
 
-                logger.info(
+                logger.debug(
                     "Collected a batch of activities",
                     extra=core_logger.context(batch_count=len(batch_activities), total_count=len(all_activities)),
                 )
 
             if not all_activities:
-                logger.info("No activities found for the user", extra=core_logger.context(user_id=self.user_id))
+                logger.debug("No activities found for the user", extra=core_logger.context(user_id=self.user_id))
                 # Write empty activities file
                 users_profile_utils.write_json_to_zip(zipf, "data/activities.json", [], self.counts)
                 self._collect_and_write_global_activity_components(zipf)
@@ -220,7 +220,7 @@ class ExportService:
             activities_dicts = [users_profile_utils.sqlalchemy_obj_to_dict(a) for a in all_activities]
             users_profile_utils.write_json_to_zip(zipf, "data/activities.json", activities_dicts, self.counts)
 
-            logger.info("Written activities to ZIP", extra=core_logger.context(count=len(activities_dicts)))
+            logger.debug("Written activities to ZIP", extra=core_logger.context(count=len(activities_dicts)))
 
             # Filter out activities with None IDs and collect valid IDs
             activity_ids = [activity.id for activity in all_activities if activity.id is not None]
@@ -386,7 +386,7 @@ class ExportService:
             except Exception as err:
                 raise DataCollectionError(f"Failed to collect {component_key}: {err}") from err
 
-            logger.info(
+            logger.debug(
                 "Processed a component batch",
                 extra=core_logger.context(
                     component_key=component_key, batch_number=i // batch_size + 1, count=len(batch_ids)
@@ -398,7 +398,7 @@ class ExportService:
             if file_counter == 0:
                 # Only one chunk, use original filename
                 users_profile_utils.write_json_to_zip(zipf, base_filename, chunk_buffer, self.counts)
-                logger.info(
+                logger.debug(
                     "Written component items to a single file",
                     extra=core_logger.context(count=len(chunk_buffer), component_key=component_key),
                 )
@@ -418,11 +418,11 @@ class ExportService:
         if total_items == 0:
             # Write empty file for component type
             users_profile_utils.write_json_to_zip(zipf, base_filename, [], self.counts)
-            logger.info(
+            logger.debug(
                 "No component data found, written an empty file", extra=core_logger.context(component_key=component_key)
             )
         else:
-            logger.info(
+            logger.debug(
                 "Written component items to files",
                 extra=core_logger.context(
                     total_items=total_items, component_key=component_key, file_counter=file_counter
@@ -470,7 +470,7 @@ class ExportService:
             except Exception as err:
                 raise DataCollectionError(f"Failed to collect {component_key}: {err}") from err
 
-            logger.info(
+            logger.debug(
                 "Processed a component batch",
                 extra=core_logger.context(
                     component_key=component_key, batch_number=i // batch_size + 1, count=len(batch_ids)
@@ -481,7 +481,7 @@ class ExportService:
         if all_component_data:
             component_dicts = [users_profile_utils.sqlalchemy_obj_to_dict(item) for item in all_component_data]
             users_profile_utils.write_json_to_zip(zipf, base_filename, component_dicts, self.counts)
-            logger.info(
+            logger.debug(
                 "Written component items to ZIP",
                 extra=core_logger.context(count=len(component_dicts), component_key=component_key),
             )
@@ -491,7 +491,7 @@ class ExportService:
         else:
             # Write empty file for component type
             users_profile_utils.write_json_to_zip(zipf, base_filename, [], self.counts)
-            logger.info(
+            logger.debug(
                 "No component data found, written an empty file", extra=core_logger.context(component_key=component_key)
             )
 
@@ -813,7 +813,7 @@ class ExportService:
             archive.flush()
             size = archive.tell()
             archive.seek(0)
-            logger.info("ZIP archive created successfully", extra=core_logger.context(size_mb=size / (1024 * 1024)))
+            logger.debug("ZIP archive created successfully", extra=core_logger.context(size_mb=size / (1024 * 1024)))
             # Built without error: ownership passes to the caller, so the stack must not close it.
             stack.pop_all()
 
@@ -846,7 +846,7 @@ class ExportService:
                 compression=zipfile.ZIP_DEFLATED,
                 compresslevel=compression_level,
             ) as zipf:
-                logger.info("Starting export", extra=core_logger.context(user_id=self.user_id))
+                logger.debug("Starting export", extra=core_logger.context(user_id=self.user_id))
 
                 # Database phase first: activities, gear, health and settings.
                 users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
@@ -880,7 +880,7 @@ class ExportService:
                 users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
                 users_profile_utils.write_json_to_zip(zipf, "counts.json", [self.counts], self.counts)
 
-                logger.info("Export completed successfully", extra=core_logger.context(counts=self.counts))
+                logger.debug("Export completed successfully", extra=core_logger.context(counts=self.counts))
 
         except zipfile.BadZipFile as err:
             raise ZipCreationError(f"Failed to create ZIP archive: {err}") from err

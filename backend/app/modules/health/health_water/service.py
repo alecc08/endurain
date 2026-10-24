@@ -146,7 +146,7 @@ def create_health_water(
     """
     stored = stage_add_health_water(user_id, health_water, db)
     db.commit()
-    logger.info("Stored a water intake record", extra=core_logger.context(user_id=user_id))
+    logger.debug("Stored a water intake record", extra=core_logger.context(user_id=user_id))
     return stored
 
 
@@ -169,7 +169,7 @@ def edit_health_water(
     """
     updated = stage_edit_health_water(user_id, health_water, db)
     db.commit()
-    logger.info("Edited a water intake record", extra=core_logger.context(user_id=user_id))
+    logger.debug("Edited a water intake record", extra=core_logger.context(user_id=user_id))
     return updated
 
 
@@ -186,6 +186,6 @@ def delete_health_water(user_id: int, health_water_id: int, db: Session) -> None
     """
     health_water_crud.delete_health_water(user_id, health_water_id, db)
     db.commit()
-    logger.info(
+    logger.debug(
         "Deleted a water intake record", extra=core_logger.context(user_id=user_id, health_water_id=health_water_id)
     )

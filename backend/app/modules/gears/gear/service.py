@@ -97,7 +97,7 @@ def create_gear(gear: gears_schema.GearCreateRequest, user_id: int, db: Session)
     """
     created = gears_crud.create_gear(gear, user_id, db)
     db.commit()
-    logger.info("Created a gear", extra=core_logger.context(user_id=user_id, gear_id=created.id))
+    logger.debug("Created a gear", extra=core_logger.context(user_id=user_id, gear_id=created.id))
     return created
 
 
@@ -121,7 +121,7 @@ def stage_gears(gears: Iterable[gears_schema.GearCreate | None], user_id: int, d
             continue
         nickname = gears_schema.normalize_nickname(gear.nickname)
         if nickname in candidates:
-            logger.warning(
+            logger.debug(
                 "Skipped a gear whose nickname repeats in the request",
                 extra=core_logger.context(user_id=user_id, nickname=gear.nickname),
             )
@@ -130,7 +130,7 @@ def stage_gears(gears: Iterable[gears_schema.GearCreate | None], user_id: int, d
 
     existing = gears_crud.get_existing_nicknames(user_id, set(candidates), db) if candidates else set()
     for nickname in existing:
-        logger.warning(
+        logger.debug(
             "Skipped a gear whose nickname already exists",
             extra=core_logger.context(user_id=user_id, nickname=candidates[nickname].nickname),
         )
@@ -173,7 +173,7 @@ def edit_gear(
     ):
         updated = gears_crud.edit_gear(gear_id, gear, user_id, db, if_match=if_match)
         db.commit()
-    logger.info("Edited a gear", extra=core_logger.context(user_id=user_id, gear_id=gear_id))
+    logger.debug("Edited a gear", extra=core_logger.context(user_id=user_id, gear_id=gear_id))
     return updated
 
 
@@ -193,7 +193,7 @@ def delete_gear(gear_id: int, user_id: int, db: Session) -> None:
     gears_contributor_registry.readers().clear_activities_gear(gear_id, user_id, db)
     gears_crud.delete_gear(gear_id, user_id, db)
     db.commit()
-    logger.info("Deleted a gear", extra=core_logger.context(user_id=user_id, gear_id=gear_id))
+    logger.debug("Deleted a gear", extra=core_logger.context(user_id=user_id, gear_id=gear_id))
 
 
 def require_owned_gears(user_id: int, gear_ids: Iterable[int | None], db: Session) -> None:
