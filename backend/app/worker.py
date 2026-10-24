@@ -78,6 +78,7 @@ def run_worker_process(stop: threading.Event | None = None) -> None:
     # jobs unresolvable (and dead-lettered) on a dedicated worker.
     runtime_module_registry.configure_activity_contributors()
     runtime_module_registry.configure_gear_contributors()
+    runtime_module_registry.configure_user_contributors()
     runtime_module_registry.register_durable_handlers(jobs_registry.registry)
     # Same reason, for the refresh job: it pulls from whichever providers are
     # registered, and a provider registered in the API but not here would make a

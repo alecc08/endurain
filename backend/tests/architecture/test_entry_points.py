@@ -7,7 +7,7 @@ import pytest
 
 _APP_ROOT = pathlib.Path(__file__).resolve().parents[2] / "app"
 _ENTRY_POINTS = ("main.py", "worker.py")
-_REQUIRED_CALLS = ("configure_activity_contributors", "configure_gear_contributors")
+_REQUIRED_CALLS = ("configure_activity_contributors", "configure_gear_contributors", "configure_user_contributors")
 
 
 def _called_names(path: pathlib.Path) -> set[str]:

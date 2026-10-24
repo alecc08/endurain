@@ -7,6 +7,7 @@ import LinkedAccountsCard from '@/features/security/components/LinkedAccountsCar
 import MfaCard from '@/features/security/components/MfaCard.vue'
 import SessionsCard from '@/features/security/components/SessionsCard.vue'
 import ApiKeysCard from '@/features/security/components/ApiKeysCard.vue'
+import DeleteAccountCard from '@/features/security/components/DeleteAccountCard.vue'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ErrorState } from '@/components/ui/error-state'
@@ -93,6 +94,11 @@ const mfaEnabled = computed(() => mfaStatusQuery.data.value?.enabled ?? false)
       />
       <SessionsCard />
       <ApiKeysCard :has-local-password="profile.hasLocalPassword" :mfa-enabled="mfaEnabled" />
+      <DeleteAccountCard
+        :username="profile.username"
+        :has-local-password="profile.hasLocalPassword"
+        :mfa-enabled="mfaEnabled"
+      />
     </template>
   </div>
 </template>

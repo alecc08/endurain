@@ -381,6 +381,44 @@ def delete_profile_session(
 # Import/export logic
 
 
+@router.post(
+    "/delete-account",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+@core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
+def delete_my_account(
+    request: Request,
+    step_up: users_schema.StepUpVerification,
+    token_user_id: auth_dependencies.CurrentUserId,
+    identity_service: Annotated[
+        auth_identity_service.IdentityService,
+        Depends(auth_identity_service.get_identity_service),
+    ],
+    step_up_store: Annotated[
+        auth_dependencies.StepUpStore,
+        Depends(auth_dependencies.get_step_up_attempts),
+    ],
+    storage: core_dependencies.Storage,
+    db: core_dependencies.DbSession,
+) -> None:
+    """Delete the authenticated user's account and all of their data.
+
+    Requires step-up verification: the current password, and an MFA code when MFA is enabled. The
+    deletion is permanent and cannot be undone. Export the profile first to keep a copy.
+
+    Args:
+        request: The incoming request, read by the rate limiter.
+        step_up: Step-up verification payload.
+        token_user_id: User ID from access token.
+        identity_service: Identity service dependency.
+        step_up_store: Step-up lockout store.
+        storage: The platform storage provider.
+        db: Database session.
+    """
+    profile_service.delete_account(token_user_id, step_up, identity_service, step_up_store, storage, db)
+
+
 @router.get("/export", status_code=status.HTTP_200_OK, response_class=StreamingResponse)
 def export_profile_data(
     token_user_id: auth_dependencies.CurrentUserId,

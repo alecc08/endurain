@@ -394,10 +394,13 @@ def _excepted(importer: str, imported: str) -> bool:
 #: deliberately a self-contained unit of work, with the reason it has to be.
 _SURFACE_UNITS_OF_WORK: dict[str, str] = {
     "users.integration_service.create_signup_user": (
-        "Creates the user row, stores the auth-owned password hash and creates every default row "
-        "(integrations, privacy, health targets, gear, MFA) as one unit: the hash and the MFA row are written "
-        "through the auth boundary on the same session after the user is committed, so a caller composing "
-        "the steps itself could leave an account without them."
+        "Creates the user row, the auth-owned password hash and MFA row, and every default row as one "
+        "commit, so an account never exists without its credential or MFA row; a caller composing the "
+        "steps itself could commit between them."
+    ),
+    "users.integration_service.delete_user": (
+        "Erases the user's data and the user row in one commit, then removes the stored photo blobs, "
+        "which cannot be staged; deleting the blobs before the commit could leave a user with no photo."
     ),
     "users.integration_service.upload_user_photo": (
         "Writes the blob to storage before recording its key, so the commit is what publishes the photo; "

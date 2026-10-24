@@ -47,6 +47,8 @@ import modules.gears.gear_components.integration_service as gear_components_inte
 import modules.notifications.scheduled_jobs as notifications_scheduled_jobs
 import modules.notifications.subscriber_registry as notifications_subscriber_registry
 import modules.server_settings.integration_service as server_settings_integration
+import modules.users.contributor_registry as users_contributor_registry
+import modules.users.contributors as users_contributors
 import modules.websocket.subscriber_registry as websocket_subscriber_registry
 
 logger = core_logger.get_logger(__name__)
@@ -285,6 +287,15 @@ def configure_gear_contributors() -> None:
             usage_by_window=activity_integration.get_gear_usage_totals_by_window,
             components_cost=gear_components_integration.get_gear_components_total_cost,
             clear_activities_gear=activity_integration.clear_activities_gear,
+        )
+    )
+
+
+def configure_user_contributors() -> None:
+    """Install the erasures the users namespace asks the activities module to answer."""
+    users_contributor_registry.register(
+        users_contributors.UserErasers(
+            delete_activities=activity_integration.delete_all_activities_for_user,
         )
     )
 

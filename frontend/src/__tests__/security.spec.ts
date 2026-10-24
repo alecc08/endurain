@@ -5,6 +5,7 @@ import type { SecuritySessionDto } from '@/features/security/types'
 import { apiFetch } from '@/services/http'
 import {
   changePassword,
+  deleteAccount,
   disableMfa,
   enableMfa,
   fetchBackupCodeStatus,
@@ -217,5 +218,34 @@ describe('security service requests', () => {
       method: 'DELETE',
       responseType: 'void',
     })
+  })
+})
+
+describe('deleteAccount', () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset()
+  })
+
+  it('POSTs the step-up body to the delete-account path', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(undefined)
+
+    await deleteAccount({ currentPassword: 'pw', mfaCode: '123456' })
+
+    expect(apiFetch).toHaveBeenCalledWith('/profile/delete-account', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: 'pw', mfa_code: '123456' }),
+      responseType: 'void',
+    })
+  })
+
+  it('sends null for step-up fields that do not apply', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(undefined)
+
+    await deleteAccount({ currentPassword: null, mfaCode: null })
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/profile/delete-account',
+      expect.objectContaining({ body: JSON.stringify({ current_password: null, mfa_code: null }) }),
+    )
   })
 })

@@ -25,6 +25,7 @@ import modules.users.users_profile.import_service as profile_import_service
 import modules.users.users_profile.utils as profile_utils
 
 if TYPE_CHECKING:
+    import modules.auth.dependencies as auth_dependencies
     import modules.auth.identity_service as auth_identity_service
 
 logger = core_logger.get_logger(__name__)
@@ -141,6 +142,37 @@ def edit_privacy_settings(
     users_privacy_settings_integration.edit_privacy_settings(user_id, privacy_settings, db)
     db.commit()
     logger.info("Privacy settings updated", extra=core_logger.context(user_id=user_id))
+
+
+def delete_account(
+    user_id: int,
+    step_up: users_schema.StepUpVerification,
+    identity_service: "auth_identity_service.IdentityService",
+    step_up_store: "auth_dependencies.StepUpStore",
+    storage: platform_providers.StorageProvider,
+    db: Session,
+) -> None:
+    """Delete the authenticated user's account and all of their data.
+
+    The right to erasure: the user, their activities and stored files, health records, gear, goals,
+    integrations, privacy settings, sessions and every other row that references them are removed. The
+    caller must prove their identity again first, so a stolen access token cannot erase an account.
+
+    Args:
+        user_id: The authenticated user.
+        step_up: Step-up verification payload (password, and an MFA code when MFA is enabled).
+        identity_service: Identity service that verifies the step-up.
+        step_up_store: Step-up lockout store.
+        storage: The platform storage provider.
+        db: Database session.
+
+    Raises:
+        HTTPException: If step-up verification fails.
+        ConflictError: If the user is the only administrator.
+    """
+    identity_service.verify_step_up(step_up, user_id, step_up_store)
+    users_integration.delete_user(user_id, storage, db)
+    logger.info("Account deleted by its owner", extra=core_logger.context(user_id=user_id))
 
 
 def export_profile(user_id: int, storage: platform_providers.StorageProvider, db: Session) -> Generator[bytes]:

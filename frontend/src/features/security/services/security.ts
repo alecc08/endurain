@@ -329,3 +329,21 @@ export async function deleteApiKey(id: string): Promise<void> {
     responseType: 'void',
   })
 }
+
+/**
+ * Permanently deletes the authenticated user's account and all of their data
+ * (the GDPR right to erasure) after step-up verification. The backend removes
+ * the activities and their files, health records, gear, goals, integrations,
+ * sessions and every other row that references the user, and refuses when the
+ * user is the server's only administrator.
+ *
+ * @param input - The step-up credentials.
+ * @throws {HttpError} When the request fails (401 step-up, 409 only administrator).
+ */
+export async function deleteAccount(input: StepUpInput): Promise<void> {
+  await apiFetch('/profile/delete-account', {
+    method: 'POST',
+    body: JSON.stringify(toStepUpWire(input)),
+    responseType: 'void',
+  })
+}

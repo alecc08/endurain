@@ -161,6 +161,52 @@ class TestCreateUser:
         identity.set_local_password_hash.assert_not_called()
 
 
+class TestAccountCreationIsOneUnit:
+    """The user row, credential, MFA row and default rows commit together, once, last."""
+
+    @patch("modules.users.users.service.users_default_gear_integration")
+    @patch("modules.users.users.service.health_targets_integration")
+    @patch("modules.users.users.service.users_privacy_settings_integration")
+    @patch("modules.users.users.service.user_integrations_integration")
+    @patch(_SETTINGS)
+    @patch(_CRUD)
+    def test_commit_follows_every_staged_write(
+        self, mock_crud, mock_settings, mock_integrations, mock_privacy, mock_targets, mock_gear, mock_db
+    ):
+        identity = MagicMock()
+        identity.validate_and_hash_password_for_user.return_value = "hash"
+        mock_crud.create_user.return_value = _user(7)
+        order = MagicMock()
+        order.attach_mock(mock_crud.create_user, "user")
+        order.attach_mock(identity.set_local_password_hash, "credential")
+        order.attach_mock(mock_integrations.create_integrations, "integrations")
+        order.attach_mock(mock_gear.create_default_gear, "gear")
+        order.attach_mock(identity.initialize_user_mfa, "mfa")
+        order.attach_mock(mock_db.commit, "commit")
+        user = users_schema.UsersCreate(
+            name="N", username="n", email="n@example.com", active=True, access_type="regular", password="password123"
+        )
+
+        users_service.create_user(user, identity, mock_db)
+
+        names = [call[0] for call in order.mock_calls]
+        assert names[-1] == "commit"
+        assert names.count("commit") == 1
+        assert {"user", "credential", "integrations", "gear", "mfa"} <= set(names[:-1])
+
+    @patch("modules.users.users.service._stage_default_data", side_effect=RuntimeError("mfa down"))
+    @patch(_CRUD)
+    def test_a_failed_part_commits_nothing(self, mock_crud, _defaults, mock_db):
+        identity = MagicMock()
+        mock_crud.create_user.return_value = _user(3)
+        settings = MagicMock(signup_require_email_verification=False, signup_require_admin_approval=False)
+
+        with pytest.raises(RuntimeError):
+            users_service.create_signup_user(_signup(), settings, identity, mock_db)
+
+        mock_db.commit.assert_not_called()
+
+
 class TestCreateSignupUser:
     def _settings(self, verification: bool, approval: bool):
         return MagicMock(signup_require_email_verification=verification, signup_require_admin_approval=approval)
@@ -220,7 +266,7 @@ class TestStageDefaultData:
     @patch("modules.users.users.service.health_targets_integration")
     @patch("modules.users.users.service.users_privacy_settings_integration")
     @patch("modules.users.users.service.user_integrations_integration")
-    def test_creates_every_default_row_then_commits_then_the_mfa_row(
+    def test_stages_every_default_row_without_committing(
         self, mock_integrations, mock_privacy, mock_targets, mock_gear, mock_db
     ):
         identity = MagicMock()
@@ -231,7 +277,7 @@ class TestStageDefaultData:
         mock_privacy.create_privacy_settings.assert_called_once_with(5, mock_db)
         mock_targets.create_health_targets.assert_called_once_with(5, mock_db)
         mock_gear.create_default_gear.assert_called_once_with(5, mock_db)
-        mock_db.commit.assert_called_once()
+        mock_db.commit.assert_not_called()
         identity.initialize_user_mfa.assert_called_once_with(5)
 
 
@@ -346,13 +392,13 @@ class TestApproveAndVerify:
 
 class TestDeleteUser:
     @patch("modules.users.users.service.users_photo_service")
-    @patch("modules.users.users.service.activity_integration")
+    @patch("modules.users.users.service.users_contributor_registry")
     @patch(_CRUD)
-    def test_removes_activities_then_the_row_then_the_photo(self, mock_crud, mock_activities, mock_photos, mock_db):
+    def test_erases_data_then_the_row_then_the_photo(self, mock_crud, mock_registry, mock_photos, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1)
         storage = MagicMock()
         order = MagicMock()
-        order.attach_mock(mock_activities.delete_all_activities_for_user, "activities")
+        order.attach_mock(mock_registry.erasers.return_value.delete_activities, "activities")
         order.attach_mock(mock_crud.delete_user, "row")
         order.attach_mock(mock_db.commit, "commit")
         order.attach_mock(mock_photos.delete_photo_files, "photos")
@@ -360,17 +406,45 @@ class TestDeleteUser:
         users_service.delete_user(1, storage, mock_db)
 
         assert [call[0] for call in order.mock_calls] == ["activities", "row", "commit", "photos"]
+        mock_registry.erasers.return_value.delete_activities.assert_called_once_with(1, mock_db)
         mock_photos.delete_photo_files.assert_called_once_with(1, storage)
 
-    @patch("modules.users.users.service.activity_integration")
+    @patch("modules.users.users.service.users_contributor_registry")
     @patch(_CRUD)
-    def test_unknown_user_deletes_nothing(self, mock_crud, mock_activities, mock_db):
+    def test_unknown_user_deletes_nothing(self, mock_crud, mock_registry, mock_db):
         mock_crud.get_user_by_id.return_value = None
 
         with pytest.raises(core_exceptions.NotFoundError):
             users_service.delete_user(1, MagicMock(), mock_db)
 
-        mock_activities.delete_all_activities_for_user.assert_not_called()
+        mock_registry.erasers.assert_not_called()
+
+    @patch("modules.users.users.service.users_contributor_registry")
+    @patch(_CRUD)
+    def test_the_only_administrator_cannot_be_deleted(self, mock_crud, mock_registry, mock_db):
+        admin = _user(1, access_type="admin")
+        mock_crud.get_user_by_id.return_value = admin
+        mock_crud.get_users_admin.return_value = [admin]
+
+        with pytest.raises(core_exceptions.ConflictError):
+            users_service.delete_user(1, MagicMock(), mock_db)
+
+        mock_registry.erasers.assert_not_called()
+        mock_crud.delete_user.assert_not_called()
+        mock_db.commit.assert_not_called()
+
+    @patch("modules.users.users.service.users_photo_service")
+    @patch("modules.users.users.service.users_contributor_registry")
+    @patch(_CRUD)
+    def test_an_administrator_can_be_deleted_while_another_remains(
+        self, mock_crud, mock_registry, mock_photos, mock_db
+    ):
+        mock_crud.get_user_by_id.return_value = _user(1, access_type="admin")
+        mock_crud.get_users_admin.return_value = [_user(1, access_type="admin"), _user(2, access_type="admin")]
+
+        users_service.delete_user(1, MagicMock(), mock_db)
+
+        mock_crud.delete_user.assert_called_once_with(1, mock_db)
 
 
 class TestTimezone:

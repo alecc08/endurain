@@ -101,3 +101,31 @@ class TestImportProfile:
             self._import(mock_db, error=RuntimeError("secret internals"))
 
         assert "secret internals" not in exc.value.detail
+
+
+class TestDeleteAccount:
+    @patch(f"{_MODULE}.users_integration")
+    def test_deletes_only_after_the_step_up_passes(self, mock_users, mock_db):
+        identity = MagicMock()
+        step_up = MagicMock()
+        store = MagicMock()
+        storage = MagicMock()
+        order = MagicMock()
+        order.attach_mock(identity.verify_step_up, "step_up")
+        order.attach_mock(mock_users.delete_user, "delete")
+
+        profile_service.delete_account(1, step_up, identity, store, storage, mock_db)
+
+        assert [call[0] for call in order.mock_calls] == ["step_up", "delete"]
+        identity.verify_step_up.assert_called_once_with(step_up, 1, store)
+        mock_users.delete_user.assert_called_once_with(1, storage, mock_db)
+
+    @patch(f"{_MODULE}.users_integration")
+    def test_a_failed_step_up_deletes_nothing(self, mock_users, mock_db):
+        identity = MagicMock()
+        identity.verify_step_up.side_effect = core_exceptions.PermissionDeniedError("wrong password")
+
+        with pytest.raises(core_exceptions.PermissionDeniedError):
+            profile_service.delete_account(1, MagicMock(), identity, MagicMock(), MagicMock(), mock_db)
+
+        mock_users.delete_user.assert_not_called()

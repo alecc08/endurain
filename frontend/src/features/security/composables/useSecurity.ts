@@ -16,6 +16,7 @@ import { useAuthStore } from '@/features/auth/stores/auth'
 import {
   changePassword,
   createApiKey,
+  deleteAccount,
   deleteApiKey,
   disableMfa,
   enableMfa,
@@ -263,5 +264,22 @@ export function useDeleteApiKeyMutation() {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.security.apiKeys() })
     },
+  })
+}
+
+/**
+ * Delete-my-account mutation. On success the account no longer exists, so the
+ * local session is cleared (which also empties the Query cache) rather than
+ * invalidating individual queries.
+ *
+ * @returns The TanStack Query mutation for deleting the account.
+ */
+export function useDeleteAccountMutation() {
+  const authStore = useAuthStore()
+
+  return useMutation<void, Error, StepUpInput>({
+    mutationKey: queryKeys.security.all(),
+    mutationFn: (input) => deleteAccount(input),
+    onSuccess: () => authStore.logout(),
   })
 }

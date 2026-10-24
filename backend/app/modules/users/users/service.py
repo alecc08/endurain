@@ -15,11 +15,11 @@ from sqlalchemy.orm import Session
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.timezone as core_timezone
-import modules.activities.activity.integration_service as activity_integration
 import modules.health.health_targets.integration_service as health_targets_integration
 import modules.health.health_weight.integration_service as health_weight_integration
 import modules.server_settings.integration_service as server_settings_integration
 import modules.server_settings.schema as server_settings_schema
+import modules.users.contributor_registry as users_contributor_registry
 import modules.users.users.constants as users_constants
 import modules.users.users.crud as users_crud
 import modules.users.users.photo_service as users_photo_service
@@ -218,21 +218,17 @@ def list_users(
 
 
 def _stage_default_data(user_id: int, identity_service: "auth_identity_service.IdentityService", db: Session) -> None:
-    """Stage the rows every new account starts with and commit them.
+    """Stage the rows every new account starts with.
 
     Args:
         user_id: ID of the new user.
-        identity_service: Identity service that creates the auth-owned MFA row.
+        identity_service: Identity service that stages the auth-owned MFA row.
         db: Database session.
     """
     user_integrations_integration.create_integrations(user_id, db)
     users_privacy_settings_integration.create_privacy_settings(user_id, db)
     health_targets_integration.create_health_targets(user_id, db)
     users_default_gear_integration.create_default_gear(user_id, db)
-    db.commit()
-    logger.info("Default rows created for a new user", extra=core_logger.context(user_id=user_id))
-
-    # Created through the auth boundary, which owns that table and its transaction.
     identity_service.initialize_user_mfa(user_id)
 
 
@@ -266,11 +262,11 @@ def create_user(
     except core_exceptions.ConflictError:
         db.rollback()
         raise
-    db.commit()
-    logger.info("User created", extra=core_logger.context(user_id=created.id))
 
     identity_service.set_local_password_hash(created.id, hashed_password)
     _stage_default_data(created.id, identity_service, db)
+    db.commit()
+    logger.info("User created", extra=core_logger.context(user_id=created.id))
     return created
 
 
@@ -328,12 +324,12 @@ def create_signup_user(
         db.rollback()
         # Abstract message to reduce information leakage.
         raise core_exceptions.ConflictError("Unable to create user.") from err
-    db.commit()
-    logger.info("User signed up", extra=core_logger.context(user_id=created.id))
 
     if hashed_password is not None:
         identity_service.set_local_password_hash(created.id, hashed_password)
     _stage_default_data(created.id, identity_service, db)
+    db.commit()
+    logger.info("User signed up", extra=core_logger.context(user_id=created.id))
     return created
 
 
@@ -523,12 +519,13 @@ def stage_email_verification(
 
 
 def delete_user(user_id: int, storage: platform_providers.StorageProvider, db: Session) -> None:
-    """Delete a user, their activities and their stored photo.
+    """Delete a user together with their data and stored photo.
 
-    The activities are removed explicitly instead of through the database cascade: the cascade
-    tells nobody, so every thumbnail and stored source file the user produced would be orphaned
-    in storage. Deleting through the activities surface publishes one ``activity.deleted`` per
-    row, and the cleanup subscribers reclaim the blobs.
+    The data other modules keep about the user is erased through the installed erasers, in the same
+    transaction as the user row, so an account is never left half erased. The activities are removed
+    explicitly instead of through the database cascade: the cascade tells nobody, so every
+    thumbnail and stored source file the user produced would be orphaned in storage. Everything
+    else that references the user is removed by the database cascade.
 
     Args:
         user_id: ID of the user to delete.
@@ -537,9 +534,16 @@ def delete_user(user_id: int, storage: platform_providers.StorageProvider, db: S
 
     Raises:
         NotFoundError: If the user does not exist.
+        ConflictError: If the user is the only administrator.
     """
-    require_user(user_id, db)
-    activity_integration.delete_all_activities_for_user(user_id, db)
+    user = require_user(user_id, db)
+    if users_schema.normalize_access_type(user.access_type) == users_schema.UserAccessType.ADMIN.value and (
+        len(users_crud.get_users_admin(db)) <= 1
+    ):
+        logger.warning("Refused to delete the only administrator", extra=core_logger.context(user_id=user_id))
+        raise core_exceptions.ConflictError("The only administrator cannot be deleted")
+
+    users_contributor_registry.erasers().delete_activities(user_id, db)
     users_crud.delete_user(user_id, db)
     db.commit()
     logger.info("User deleted", extra=core_logger.context(user_id=user_id))

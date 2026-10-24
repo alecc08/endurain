@@ -815,7 +815,18 @@ class TestSetLocalPasswordHash:
             "modules.auth.identity_service.auth_credentials_crud.upsert_password_hash",
         ) as upsert:
             service.set_local_password_hash(42, "$argon2id$abc")
-        upsert.assert_called_once_with(42, "$argon2id$abc", mock_db)
+        upsert.assert_called_once_with(42, "$argon2id$abc", mock_db, commit=False)
+
+
+class TestVerifyStepUp:
+    """Tests for DefaultIdentityService.verify_step_up."""
+
+    def test_delegates_to_the_step_up_service(self, service, mock_db):
+        step_up = MagicMock(current_password="pw", mfa_code="123456")
+        store = MagicMock()
+        with patch("modules.auth.identity_service.auth_step_up_service.verify_step_up_credentials") as verify:
+            service.verify_step_up(step_up, 42, store)
+        verify.assert_called_once_with(42, "pw", "123456", service, store, mock_db)
 
 
 class TestClearLocalPassword:

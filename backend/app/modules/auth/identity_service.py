@@ -44,6 +44,7 @@ import modules.auth._internal.password_hasher as auth_password_hasher
 import modules.auth._internal.services.account_security_service as auth_account_security_service
 import modules.auth._internal.services.identity_link_service as auth_identity_link_service
 import modules.auth._internal.services.mfa_workflow as auth_mfa_workflow
+import modules.auth._internal.services.step_up_service as auth_step_up_service
 import modules.auth._internal.token_manager as auth_token_manager
 import modules.auth.api_keys.crud as auth_api_keys_crud
 import modules.auth.api_keys.utils as auth_api_keys_utils
@@ -352,7 +353,9 @@ class IdentityService(Protocol):
         ...
 
     def set_local_password_hash(self, user_id: int, password_hash: str) -> None:
-        """Insert or update a user's local password hash.
+        """Stage the insert or update of a user's local password hash.
+
+        The write is staged on the identity service's session; the caller commits.
 
         Args:
             user_id: ID of the user to write the credential for.
@@ -375,10 +378,11 @@ class IdentityService(Protocol):
         ...
 
     def initialize_user_mfa(self, user_id: int) -> None:
-        """Create the default (disabled) MFA row for a new user.
+        """Stage the default (disabled) MFA row for a new user.
 
         Establishes the 1:1 ``users``↔``users_mfa`` invariant so non-auth
-        modules never touch the auth-owned MFA table directly.
+        modules never touch the auth-owned MFA table directly. The row is staged
+        on the identity service's session; the caller commits.
 
         Args:
             user_id: ID of the newly created user.
@@ -620,6 +624,24 @@ class IdentityService(Protocol):
         Raises:
             HTTPException: If step-up fails, the IdP is missing/disabled, or
                 already linked.
+        """
+        ...
+
+    def verify_step_up(
+        self,
+        step_up: users_schema.StepUpVerification,
+        user_id: int,
+        step_up_store: auth_security_stores.StepUpStore,
+    ) -> None:
+        """Require fresh proof of identity for a sensitive account operation.
+
+        Args:
+            step_up: Step-up verification payload.
+            user_id: ID of the authenticated user.
+            step_up_store: Step-up lockout store.
+
+        Raises:
+            HTTPException: If the password or MFA code is wrong, or the account is locked out.
         """
         ...
 
@@ -1208,7 +1230,9 @@ class DefaultIdentityService:
         return auth_credentials_crud.get_credential(user_id, self._db) is not None
 
     def set_local_password_hash(self, user_id: int, password_hash: str) -> None:
-        """Insert or update a user's local password hash.
+        """Stage the insert or update of a user's local password hash.
+
+        The write is staged on the identity service's session; the caller commits.
 
         Args:
             user_id: ID of the user to write the credential for.
@@ -1217,7 +1241,7 @@ class DefaultIdentityService:
         Returns:
             None.
         """
-        auth_credentials_crud.upsert_password_hash(user_id, password_hash, self._db)
+        auth_credentials_crud.upsert_password_hash(user_id, password_hash, self._db, commit=False)
 
     def clear_local_password(self, user_id: int) -> None:
         """Remove a user's local password credential, if present.
@@ -1231,10 +1255,11 @@ class DefaultIdentityService:
         auth_credentials_crud.delete_credential(user_id, self._db)
 
     def initialize_user_mfa(self, user_id: int) -> None:
-        """Create the default (disabled) MFA row for a new user.
+        """Stage the default (disabled) MFA row for a new user.
 
         Establishes the 1:1 ``users``↔``users_mfa`` invariant so non-auth
-        modules never touch the auth-owned MFA table directly.
+        modules never touch the auth-owned MFA table directly. The row is staged
+        on the identity service's session; the caller commits.
 
         Args:
             user_id: ID of the newly created user.
@@ -1242,7 +1267,7 @@ class DefaultIdentityService:
         Returns:
             None.
         """
-        auth_mfa_crud.create_users_mfa_row(user_id, self._db)
+        auth_mfa_crud.create_users_mfa_row(user_id, self._db, commit=False)
 
     # ------------------------------------------------------------------
     # Account-security workflows (delegate to auth._internal.services.*)
@@ -1365,6 +1390,22 @@ class DefaultIdentityService:
             link_request,
             request,
             user_id,
+            self,
+            step_up_store,
+            self._db,
+        )
+
+    def verify_step_up(
+        self,
+        step_up: users_schema.StepUpVerification,
+        user_id: int,
+        step_up_store: auth_security_stores.StepUpStore,
+    ) -> None:
+        """Require fresh proof of identity for a sensitive account operation."""
+        auth_step_up_service.verify_step_up_credentials(
+            user_id,
+            step_up.current_password,
+            step_up.mfa_code,
             self,
             step_up_store,
             self._db,

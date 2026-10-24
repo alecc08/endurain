@@ -127,6 +127,7 @@ def change_own_password(
         new_password,
     )
     identity_service.set_local_password_hash(user_id, hashed_password)
+    db.commit()
     auth_security_stores.clear_pending_mfa_for_user(user_id)
 
     if revoke_other_sessions:
@@ -171,5 +172,6 @@ def change_managed_user_password(
         new_password,
     )
     identity_service.set_local_password_hash(user_id, hashed_password)
+    db.commit()
     auth_sessions_crud.delete_sessions_by_user(user_id, db)
     auth_security_stores.clear_pending_mfa_for_user(user_id)

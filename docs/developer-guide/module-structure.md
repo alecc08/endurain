@@ -745,15 +745,15 @@ converted one at a time with the `convert-module` skill. The items below need
 changes outside the converted modules, so they are recorded here as accepted
 limitations rather than half-done:
 
-- **Top-level cycles.** `users` ⇄ `activities`: `users` deletes an account's activities through
-  `activities.integration_service` and runs profile export/import through the activities contributors
-  (`activities.contributor_registry`, listed in `_LAYER_EXCEPTIONS`), while activities consumes
-  `users.integration_service`. Publishing a `user.deleted` event that activities subscribes to would
-  remove the first edge. `gears` no longer closes a cycle: it sits below activities (`_MUST_NOT_IMPORT`),
-  states the required usage questions in `gears/contributors.py`, and
-  `module_registry.configure_gear_contributors` installs the activities answers. A `layers` contract
-  (core, identity, followers/gears/health, activities, providers) can then state the module-level
-  direction once. The remaining edge that closes a cycle lives in `users`.
+- **Top-level cycles.** `users` ⇄ `activities`: goal progress reads activities, and profile export/import
+  consumes them (the contributor registry is listed in `_LAYER_EXCEPTIONS`), while activities consumes
+  `users.integration_service`. Account deletion no longer closes it: `users` asks for the activities'
+  erasure through `users/contributors.py`, and `module_registry.configure_user_contributors` installs the
+  answer, so the erasure runs in the deletion's own transaction. `gears` no longer closes a cycle either:
+  it sits below activities (`_MUST_NOT_IMPORT`), states the required usage questions in
+  `gears/contributors.py`, and `module_registry.configure_gear_contributors` installs the activities
+  answers. A `layers` contract (core, identity, followers/gears/health, activities, providers) can then
+  state the module-level direction once. The remaining edges that close a cycle live in `users`.
 - **Layer rules for unconverted modules.** `TestLayerRules` covers converted
   modules only. An unconverted module is outside it until converted, and the
   `auth-boundary` contract is the one generic rule over every module:
@@ -795,10 +795,6 @@ limitations rather than half-done:
   notification handlers live in `modules/notifications` and subscribe to
   `followers.events` (`TestLayerRules`). `strava`
   still imports another module's `utils`/`manager` directly.
-- **Account creation spans two transactions.** `users.service.create_user` and `create_signup_user`
-  commit the user row, then store the password hash and the MFA row through the auth boundary
-  (`IdentityService`), whose writes commit themselves. A failure between the steps leaves an account
-  without a credential or MFA row. Making those auth writes stage would let the whole unit commit once.
 - **Profile import runs its own event loop.** `users_profile.service.import_profile` calls
   `asyncio.run` on the request's worker thread, because `ImportService` awaits file validation. The
   importer shares no loop-bound resource, so this is safe, but the importer should become synchronous

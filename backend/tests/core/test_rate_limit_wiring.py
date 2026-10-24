@@ -145,6 +145,7 @@ _TIERED_ENDPOINTS = [
     ),
     pytest.param(users_profile_router.delete_profile_session, core_rate_limit.WRITE, id="profile-session-delete"),
     pytest.param(users_profile_router.import_profile_data, core_rate_limit.UPLOAD, id="profile-import"),
+    pytest.param(users_profile_router.delete_my_account, core_rate_limit.SENSITIVE, id="profile-account-delete"),
     pytest.param(users_profile_router.setup_mfa, core_rate_limit.SENSITIVE, id="mfa-setup"),
     pytest.param(users_profile_router.enable_mfa, core_rate_limit.SENSITIVE, id="mfa-enable"),
     pytest.param(users_profile_router.disable_mfa, core_rate_limit.SENSITIVE, id="mfa-disable"),

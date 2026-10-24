@@ -1247,3 +1247,39 @@ class TestDeleteMyIdentityProvider:
 
         assert response.status_code == 500
         assert "Failed to unlink" in response.json()["detail"]
+
+
+# ===================================================================
+# POST /profile/delete-account
+# ===================================================================
+
+
+class TestDeleteMyAccount:
+    """Tests for POST /profile/delete-account — delete_my_account."""
+
+    @patch("modules.users.users_profile.router.profile_service.delete_account")
+    def test_success(self, mock_delete, profile_client):
+        response = profile_client.post(
+            PREFIX + "/delete-account",
+            json={"current_password": "secret-password", "mfa_code": "123456"},
+        )
+
+        assert response.status_code == 204
+        assert mock_delete.call_args.args[0] == 1
+        assert mock_delete.call_args.args[1].current_password == "secret-password"
+
+    @patch("modules.users.users_profile.router.profile_service.delete_account")
+    def test_the_only_administrator_is_refused(self, mock_delete, profile_client):
+        mock_delete.side_effect = core_exceptions.ConflictError("The only administrator cannot be deleted")
+
+        response = profile_client.post(PREFIX + "/delete-account", json={"current_password": "secret-password"})
+
+        assert response.status_code == 409
+
+    @patch("modules.users.users_profile.router.profile_service.delete_account")
+    def test_step_up_failure_is_returned(self, mock_delete, profile_client):
+        mock_delete.side_effect = HTTPException(status_code=401, detail="Invalid credentials")
+
+        response = profile_client.post(PREFIX + "/delete-account", json={"current_password": "wrong"})
+
+        assert response.status_code == 401

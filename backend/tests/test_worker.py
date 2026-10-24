@@ -45,9 +45,11 @@ class TestRunWorkerProcess:
         module_registry.configure_activity_contributors.assert_called_once_with()
         module_registry.register_durable_handlers.assert_called_once_with(jobs_registry.registry)
         module_registry.configure_gear_contributors.assert_called_once_with()
-        assert module_registry.method_calls[1:4] == [
+        module_registry.configure_user_contributors.assert_called_once_with()
+        assert module_registry.method_calls[1:5] == [
             call.configure_activity_contributors(),
             call.configure_gear_contributors(),
+            call.configure_user_contributors(),
             call.register_durable_handlers(jobs_registry.registry),
         ]
         install_signals.assert_called_once_with(stop)

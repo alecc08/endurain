@@ -656,6 +656,7 @@
     "hidePassword": "Hide password",
     "mfaCode": "Authentication code",
     "mfaCodePlaceholder": "123456",
+    "confirmPhrase": "Type {phrase} to confirm",
     "loadError": {
       "title": "Couldn't load your security settings",
       "description": "Something went wrong. You can try again."
@@ -757,6 +758,17 @@
       "invalidCredentials": "Your password or code is incorrect.",
       "alreadyLinked": "That account is already linked.",
       "lastMethodError": "You can't unlink your only sign-in method. Set a password first."
+    },
+    "deleteAccount": {
+      "title": "Delete my account",
+      "subtitle": "Permanently delete your account and all of your data, including activities and their files, health records, gear, goals, integrations and sessions. This can't be undone. Export your data first if you want to keep a copy.",
+      "action": "Delete my account",
+      "dialogTitle": "Delete your account?",
+      "dialogDescription": "This permanently deletes your account and all of your data. Confirm your identity to continue.",
+      "confirm": "Delete my account",
+      "success": "Your account and data were deleted",
+      "error": "Couldn't delete your account. Please try again.",
+      "onlyAdminError": "You are the only administrator. Make another user an administrator before deleting your account."
     },
     "apiKeys": {
       "title": "API keys",

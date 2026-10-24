@@ -2512,13 +2512,11 @@ export interface paths {
          *
          *     Args:
          *         token_user_id: User ID from access token.
+         *         identity_service: Identity service dependency.
          *         db: Database session.
          *
          *     Returns:
          *         User object with integration and privacy settings.
-         *
-         *     Raises:
-         *         HTTPException: If user or settings not found.
          */
         get: operations["read_users_me_api_v1_profile_get"];
         /**
@@ -2532,6 +2530,7 @@ export interface paths {
          *     endpoint, even if a malicious client submits them.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_attributtes: Allow-listed profile updates.
          *         token_user_id: User ID from access token.
          *         db: Database session.
@@ -2697,6 +2696,7 @@ export interface paths {
          * @description Update default gear settings for authenticated user.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_default_gear: Updated gear settings.
          *         token_user_id: User ID from access token.
          *         db: Database session dependency.
@@ -2706,6 +2706,38 @@ export interface paths {
          */
         put: operations["edit_user_default_gear_api_v1_profile_default_gear_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/profile/delete-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete My Account
+         * @description Delete the authenticated user's account and all of their data.
+         *
+         *     Requires step-up verification: the current password, and an MFA code when MFA is enabled. The
+         *     deletion is permanent and cannot be undone. Export the profile first to keep a copy.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         step_up: Step-up verification payload.
+         *         token_user_id: User ID from access token.
+         *         identity_service: Identity service dependency.
+         *         step_up_store: Step-up lockout store.
+         *         storage: The platform storage provider.
+         *         db: Database session.
+         */
+        post: operations["delete_my_account_api_v1_profile_delete_account_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2725,13 +2757,11 @@ export interface paths {
          *
          *     Args:
          *         token_user_id: User ID from access token.
+         *         storage: The platform storage provider.
          *         db: Database session.
          *
          *     Returns:
          *         Streaming response with ZIP archive.
-         *
-         *     Raises:
-         *         HTTPException: If user not found or export fails.
          */
         get: operations["export_profile_data_api_v1_profile_export_get"];
         put?: never;
@@ -2769,6 +2799,7 @@ export interface paths {
          * @description Update an existing goal for the authenticated user.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_goal: Updated goal data.
          *         token_user_id: User ID from access token.
          *         db: Database session dependency.
@@ -2782,6 +2813,7 @@ export interface paths {
          * @description Create a new goal for the authenticated user.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_goal: Goal data to create.
          *         token_user_id: User ID from access token.
          *         db: Database session dependency.
@@ -2838,6 +2870,7 @@ export interface paths {
          * @description Delete a goal for the authenticated user.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         goal_id: ID of the goal to delete.
          *         token_user_id: User ID from access token.
          *         db: Database session dependency.
@@ -2858,14 +2891,16 @@ export interface paths {
         /**
          * Get My Identity Providers
          * @description Retrieve all identity provider links for the authenticated user.
+         *
          *     This endpoint fetches all external identity provider (IdP) connections associated
          *     with the current user's account. Each link includes connection metadata and enriched
          *     details about the identity provider (name, slug, icon, and provider type).
+         *
          *     Args:
          *         token_user_id (int): The authenticated user's ID extracted from the JWT access token.
          *             Injected automatically via dependency injection.
-         *         db (Session): Database session for executing queries.
-         *             Injected automatically via dependency injection.
+         *         identity_service: Identity service dependency.
+         *
          *     Returns:
          *         list[dict]: A list of dictionaries representing the user's IdP links. Each dictionary contains:
          *             - id (int): Unique identifier for the user-IdP link
@@ -2880,6 +2915,7 @@ export interface paths {
          *             - idp_slug (str): URL-safe identifier for the IdP (if available)
          *             - idp_icon (str): Icon/logo URL for the IdP (if available)
          *             - idp_provider_type (str): Type of provider (e.g., "oauth2", "oidc") (if available)
+         *
          *     Raises:
          *         HTTPException: May raise authentication/authorization errors via the dependency injection.
          */
@@ -2916,18 +2952,12 @@ export interface paths {
          *         idp_id (int): The ID of the identity provider to link.
          *         link_token (str): One-time link token from query parameter.
          *         request (Request): The FastAPI request object containing request context.
-         *         db (Session): The database session for performing CRUD operations.
+         *         identity_service: Identity service dependency.
+         *         redirect: Optional frontend return path after linking.
          *
          *     Returns:
          *         RedirectResponse: A redirect to the identity provider's authorization URL
          *             with HTTP 307 status code.
-         *
-         *     Raises:
-         *         HTTPException:
-         *             - 401 UNAUTHORIZED: If the link token is invalid, expired, or already used.
-         *             - 404 NOT_FOUND: If the identity provider doesn't exist or is disabled.
-         *             - 409 CONFLICT: If the identity provider is already linked to the user's account.
-         *             - 500 INTERNAL_SERVER_ERROR: If an unexpected error occurs during the linking process.
          */
         get: operations["link_identity_provider_api_v1_profile_idp__idp_id__link_get"];
         put?: never;
@@ -2973,6 +3003,7 @@ export interface paths {
          *         request (Request): The FastAPI request object.
          *         token_user_id (int): The authenticated user's ID extracted from the access token.
          *         identity_service: Identity service dependency.
+         *         step_up_store: Step-up lockout store.
          *
          *     Returns:
          *         IdpLinkTokenResponse: Contains the one-time token and expiration time.
@@ -3017,6 +3048,7 @@ export interface paths {
          *         request (Request): The FastAPI request object.
          *         token_user_id (int): User ID extracted from the access token.
          *         identity_service: Identity service dependency.
+         *         step_up_store: Step-up lockout store.
          *
          *     Returns:
          *         None: Returns 204 No Content on successful deletion.
@@ -3058,15 +3090,14 @@ export interface paths {
          * @description Upload user profile image with security validation.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         file: Image file to upload.
          *         token_user_id: User ID from access token.
+         *         storage: The platform storage provider.
          *         db: Database session.
          *
          *     Returns:
-         *         Result of save operation.
-         *
-         *     Raises:
-         *         HTTPException: If validation or save fails.
+         *         The storage key of the saved photo.
          */
         post: operations["upload_profile_image_api_v1_profile_image_post"];
         delete?: never;
@@ -3089,15 +3120,14 @@ export interface paths {
          * @description Import profile data from ZIP with security validation.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         file: ZIP file containing profile data.
          *         token_user_id: User ID from access token.
+         *         storage: The platform storage provider.
          *         db: Database session.
          *
          *     Returns:
          *         Import results with counts of imported items.
-         *
-         *     Raises:
-         *         HTTPException: If validation or import fails.
          */
         post: operations["import_profile_data_api_v1_profile_import_post"];
         delete?: never;
@@ -3131,6 +3161,7 @@ export interface paths {
          *         step_up: Step-up verification payload.
          *         token_user_id: User ID from access token.
          *         identity_service: Identity service for code generation.
+         *         step_up_store: Step-up lockout store.
          *
          *     Returns:
          *         Response with generated backup codes and timestamp.
@@ -3195,10 +3226,12 @@ export interface paths {
          *     :func:`modules.auth.mfa.service.disable_user_mfa` only clears state.
          *
          *     Args:
-         *         request: MFA disable request with current password and
+         *         request: The incoming request, read by the rate limiter.
+         *         mfa_request: MFA disable request with current password and
          *             MFA code.
          *         token_user_id: User ID from access token.
          *         identity_service: Identity service dependency.
+         *         step_up_store: Step-up lockout store.
          *
          *     Returns:
          *         Success message.
@@ -3241,12 +3274,14 @@ export interface paths {
          *     :func:`modules.auth._internal.services.step_up_service.verify_step_up_credentials`).
          *
          *     Args:
-         *         request: MFA setup request with TOTP code and (when the
+         *         request: The incoming request, read by the rate limiter.
+         *         mfa_request: MFA setup request with TOTP code and (when the
          *             account has a local password) current password.
          *         token_user_id: User ID from access token.
          *         identity_service: Identity service instance for backup code
          *             generation and step-up verification.
          *         mfa_secret_store: Temporary secret storage.
+         *         step_up_store: Step-up lockout store.
          *
          *     Returns:
          *         Success message and the freshly issued backup codes.
@@ -3277,6 +3312,7 @@ export interface paths {
          * @description Initiate MFA setup for authenticated user.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         token_user_id: User ID from access token.
          *         identity_service: Identity service dependency.
          *         mfa_secret_store: Temporary secret storage.
@@ -3332,7 +3368,8 @@ export interface paths {
          * @description Verify MFA code for authenticated user.
          *
          *     Args:
-         *         request: MFA request with code to verify.
+         *         request: The incoming request, read by the rate limiter.
+         *         mfa_request: MFA request with code to verify.
          *         token_user_id: User ID from access token.
          *         identity_service: Identity service instance for backup code verification.
          *
@@ -3373,6 +3410,7 @@ export interface paths {
          *     evict a suspected attacker without logging the caller out.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_attributtes: Schema with current password, new
          *             password, optional MFA code, and the optional
          *             ``revoke_other_sessions`` flag.
@@ -3411,11 +3449,10 @@ export interface paths {
          * @description Delete authenticated user's profile photo.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         token_user_id: User ID from access token.
+         *         storage: The platform storage provider.
          *         db: Database session.
-         *
-         *     Returns:
-         *         Success message.
          */
         put: operations["delete_profile_photo_api_v1_profile_photo_put"];
         post?: never;
@@ -3438,6 +3475,7 @@ export interface paths {
          * @description Edit privacy settings for authenticated user.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_privacy_settings: New privacy settings.
          *         token_user_id: User ID from access token.
          *         db: Database session.
@@ -3485,6 +3523,7 @@ export interface paths {
          *     ``revoke_other_sessions`` option.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         token_user_id: User ID from access token.
          *         token_session_id: The caller's current session, preserved.
          *         identity_service: Identity service dependency.
@@ -3513,6 +3552,7 @@ export interface paths {
          * @description Delete user session from database.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         session_id: Session identifier to delete.
          *         token_user_id: User ID from access token.
          *         identity_service: Identity service dependency.
@@ -3944,7 +3984,6 @@ export interface paths {
          *
          *     Args:
          *         user_id: The user ID to retrieve.
-         *         _validate_id: User ID validation dependency.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -4576,6 +4615,7 @@ export interface paths {
          *     Args:
          *         _validate_pagination_values: Pagination validation.
          *         db: Database session dependency.
+         *         identity_service: Identity service dependency.
          *         page_number: Optional page number to retrieve.
          *         num_records: Optional number of records per page.
          *         show_inactive: Optional filter by inactive status.
@@ -4594,6 +4634,7 @@ export interface paths {
          * @description Create a new user (admin operation).
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user: User creation data.
          *         _check_scope: Authorization check.
          *         identity_service: Identity service dependency.
@@ -4649,7 +4690,6 @@ export interface paths {
          *
          *     Args:
          *         user_id: User ID to retrieve.
-         *         _validate_id: User ID validation dependency.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -4731,10 +4771,11 @@ export interface paths {
          * @description Update user information.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of user to update.
-         *         _validate_id: User ID validation dependency.
          *         user_attributtes: User data to update.
          *         db: Database session dependency.
+         *         identity_service: Identity service dependency.
          *
          *     Returns:
          *         Updated user data.
@@ -4746,8 +4787,9 @@ export interface paths {
          * @description Delete user account.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of user to delete.
-         *         _validate_id: User ID validation dependency.
+         *         storage: The platform storage provider.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -4772,9 +4814,10 @@ export interface paths {
          * @description Approve pending user account.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of user to approve.
-         *         _validate_id: User ID validation dependency.
          *         db: Database session dependency.
+         *         identity_service: Identity service dependency.
          *
          *     Returns:
          *         Success message.
@@ -4800,7 +4843,6 @@ export interface paths {
          *
          *     Args:
          *         user_id: ID of the user whose identity provider links to retrieve.
-         *         _validate_id: User ID validation dependency.
          *         identity_service: Identity service dependency.
          *
          *     Returns:
@@ -4830,9 +4872,9 @@ export interface paths {
          * @description Unlink an identity provider from a specific user (admin).
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of the user to unlink the identity provider from.
          *         idp_id: ID of the identity provider to unlink.
-         *         _validate_id: User ID validation dependency.
          *         identity_service: Identity service dependency.
          *
          *     Returns:
@@ -4858,9 +4900,10 @@ export interface paths {
          * @description Upload user profile image.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of user to upload image for.
-         *         _validate_id: User ID validation dependency.
          *         file: Uploaded image file.
+         *         storage: The platform storage provider.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -4886,8 +4929,8 @@ export interface paths {
          * @description Update user password.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of user to update password for.
-         *         _validate_id: User ID validation dependency.
          *         user_attributes: New password data.
          *         _check_scope: Authorization check.
          *         identity_service: Identity service dependency.
@@ -4916,14 +4959,11 @@ export interface paths {
          *
          *     Args:
          *         user_id: The user whose photo to serve.
+         *         storage: The platform storage provider.
          *         token: The signed access token (``?t=``) minted at serialization time.
          *
          *     Returns:
          *         The image bytes.
-         *
-         *     Raises:
-         *         HTTPException: 404 when the token is invalid/forged or no photo exists
-         *             (a 404 — rather than 403 — avoids confirming the user id).
          */
         get: operations["read_user_photo_api_v1_users__user_id__photo_get"];
         put?: never;
@@ -4933,8 +4973,9 @@ export interface paths {
          * @description Delete user profile photo.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of user whose photo to delete.
-         *         _validate_id: User ID validation dependency.
+         *         storage: The platform storage provider.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -16610,6 +16651,46 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UsersDefaultGearRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    delete_my_account_api_v1_profile_delete_account_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepUpVerification"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

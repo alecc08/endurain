@@ -235,6 +235,7 @@ async def startup_event(fastapi_app: FastAPI) -> None:
     # in that module.
     runtime_module_registry.configure_activity_contributors()
     runtime_module_registry.configure_gear_contributors()
+    runtime_module_registry.configure_user_contributors()
     runtime_module_registry.register_bus_subscribers(platform.events)
     runtime_module_registry.register_durable_handlers(jobs_registry.registry)
     # Providers register themselves with ingestion; ingestion imports none of

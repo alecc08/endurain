@@ -235,6 +235,21 @@ def delete_user_photo(user_id: int, storage: platform_providers.StorageProvider,
     users_photo_service.delete_photo(user_id, storage, db)
 
 
+def delete_user(user_id: int, storage: platform_providers.StorageProvider, db: Session) -> None:
+    """Delete a user with their data and stored photo, and commit.
+
+    Args:
+        user_id: The user to delete.
+        storage: The platform storage provider.
+        db: Database session.
+
+    Raises:
+        NotFoundError: If the user does not exist.
+        ConflictError: If the user is the only administrator.
+    """
+    users_service.delete_user(user_id, storage, db)
+
+
 def local_today(user_id: int, db: Session) -> date:
     """Return today's calendar date in the user's own timezone.
 
