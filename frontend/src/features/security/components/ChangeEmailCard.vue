@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { useToasts } from '@/composables/useToasts'
 import { HttpError } from '@/services/http'
 import { useChangeEmailMutation } from '@/features/security/composables/useSecurity'
@@ -30,6 +31,7 @@ const changeMutation = useChangeEmailMutation()
 
 const isDialogOpen = ref(false)
 const newEmail = ref('')
+const revokeOtherSessions = ref(false)
 
 const invalidMessage = t('settings.security.email.invalid')
 const trimmedEmail = computed(() => newEmail.value.trim())
@@ -40,13 +42,14 @@ const showInvalid = computed(() => trimmedEmail.value.length > 0 && !isEmailVali
 watch(isDialogOpen, (isOpen) => {
   if (isOpen) {
     newEmail.value = ''
+    revokeOtherSessions.value = false
   }
 })
 
 /** Changes the email after step-up, then closes and tells the user to verify the new address. */
 function onConfirm(stepUp: StepUpInput): void {
   changeMutation.mutate(
-    { email: trimmedEmail.value, stepUp },
+    { email: trimmedEmail.value, stepUp, revokeOtherSessions: revokeOtherSessions.value },
     {
       onSuccess: () => {
         isDialogOpen.value = false
@@ -109,6 +112,9 @@ function onConfirm(stepUp: StepUpInput): void {
         />
         <p v-if="showInvalid" class="text-hint text-destructive">{{ invalidMessage }}</p>
       </div>
+      <Switch v-model="revokeOtherSessions" :disabled="changeMutation.isPending.value">
+        {{ t('settings.security.password.revokeOthers') }}
+      </Switch>
     </StepUpDialog>
   </Card>
 </template>

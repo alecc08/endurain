@@ -232,7 +232,7 @@ def edit_profile_email(
     The address is where password resets go, so the caller must re-prove identity with the
     current password (and an MFA code when MFA is enabled). The new address starts unverified and
     a verification link is emailed to it.
-    The user's other sessions are revoked.
+    The user's other sessions are revoked when the request asks for it.
 
     Args:
         request: The incoming request, read by the rate limiter.

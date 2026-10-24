@@ -43,10 +43,15 @@ class TestEdits:
 
 class TestChangeEmail:
     @staticmethod
-    def _change(identity, store, mock_db):
+    def _change(identity, store, mock_db, *, revoke_other_sessions=True):
         import modules.users.users.schema as users_schema
 
-        change = users_schema.EmailChange(email="New@Example.com", current_password="pw", mfa_code="123456")
+        change = users_schema.EmailChange(
+            email="New@Example.com",
+            current_password="pw",
+            mfa_code="123456",
+            revoke_other_sessions=revoke_other_sessions,
+        )
         profile_service.change_email(1, change, "sid-1", identity, store, mock_db)
 
     @patch(f"{_MODULE}.users_integration")
@@ -93,6 +98,16 @@ class TestChangeEmail:
         mock_db.rollback.assert_called_once()
         mock_db.commit.assert_not_called()
         identity.request_email_reverification.assert_not_called()
+
+    @patch(f"{_MODULE}.users_integration")
+    def test_other_sessions_stay_signed_in_unless_asked(self, mock_users, mock_db):
+        identity = MagicMock()
+        mock_users.stage_email_change.return_value = True
+
+        self._change(identity, MagicMock(), mock_db, revoke_other_sessions=False)
+
+        mock_db.commit.assert_called_once()
+        identity.delete_other_user_sessions.assert_not_called()
 
     @patch(f"{_MODULE}.users_integration")
     def test_resubmitting_the_current_address_changes_and_sends_nothing(self, mock_users, mock_db):

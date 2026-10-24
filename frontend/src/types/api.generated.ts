@@ -2761,7 +2761,7 @@ export interface paths {
          *     The address is where password resets go, so the caller must re-prove identity with the
          *     current password (and an MFA code when MFA is enabled). The new address starts unverified and
          *     a verification link is emailed to it.
-         *     The user's other sessions are revoked.
+         *     The user's other sessions are revoked when the request asks for it.
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
@@ -5959,6 +5959,7 @@ export interface components {
          *
          *     Attributes:
          *         email: The new email address.
+         *         revoke_other_sessions: Whether to sign out the user's other sessions after the change.
          */
         EmailChange: {
             /**
@@ -5977,6 +5978,12 @@ export interface components {
              * @description TOTP or backup code, required when MFA is enabled
              */
             mfa_code?: string | null;
+            /**
+             * Revoke Other Sessions
+             * @description When true, revoke all of the user's other sessions (keeping the current one) after the change
+             * @default false
+             */
+            revoke_other_sessions: boolean;
         };
         /**
          * EmailStatus

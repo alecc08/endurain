@@ -294,9 +294,14 @@ export function useDeleteAccountMutation() {
 export function useChangeEmailMutation() {
   const client = useQueryClient()
 
-  return useMutation<void, Error, { email: string; stepUp: StepUpInput }>({
+  return useMutation<
+    void,
+    Error,
+    { email: string; stepUp: StepUpInput; revokeOtherSessions: boolean }
+  >({
     mutationKey: queryKeys.security.all(),
-    mutationFn: ({ email, stepUp }) => changeEmail(email, stepUp),
+    mutationFn: ({ email, stepUp, revokeOtherSessions }) =>
+      changeEmail(email, stepUp, revokeOtherSessions),
     onSettled: () => {
       void client.invalidateQueries({ queryKey: queryKeys.profile.all() })
       void client.invalidateQueries({ queryKey: queryKeys.currentUser() })

@@ -123,13 +123,13 @@ def change_email(
 
     The address is where password resets go, so a stolen access token alone must not be able to
     redirect it. The new address starts unverified; a verification link is emailed to it when the
-    server can send mail. The user's other sessions are revoked, so a session an attacker holds does
-    not outlive the change.
+    server can send mail. When the request asks for it, the user's other sessions are revoked, so a
+    session an attacker holds does not outlive the change.
 
     Args:
         user_id: The authenticated user.
         change: The new address with the step-up credentials.
-        session_id: The caller's current session, which stays signed in.
+        session_id: The caller's current session, which stays signed in when other sessions are revoked.
         identity_service: Identity service that verifies the step-up and queues the email.
         step_up_store: Step-up lockout store.
         db: Database session.
@@ -140,7 +140,9 @@ def change_email(
         ConflictError: If the email is already taken.
     """
     identity_service.verify_step_up(
-        users_schema.StepUpVerification(**change.model_dump(exclude={"email"})), user_id, step_up_store
+        users_schema.StepUpVerification(**change.model_dump(exclude={"email", "revoke_other_sessions"})),
+        user_id,
+        step_up_store,
     )
     try:
         changed = users_integration.stage_email_change(user_id, change.email, db)
@@ -152,7 +154,8 @@ def change_email(
     db.commit()
     logger.info("Email changed", extra=core_logger.context(user_id=user_id))
 
-    identity_service.delete_other_user_sessions(user_id, session_id)
+    if change.revoke_other_sessions:
+        identity_service.delete_other_user_sessions(user_id, session_id)
     if not identity_service.request_email_reverification(user_id):
         logger.warning(
             "Email changed but cannot be verified: outgoing email is not configured",

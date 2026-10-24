@@ -594,9 +594,14 @@ class EmailChange(StepUpVerification):
 
     Attributes:
         email: The new email address.
+        revoke_other_sessions: Whether to sign out the user's other sessions after the change.
     """
 
     email: EmailStr = Field(..., max_length=250, description="The new email address")
+    revoke_other_sessions: StrictBool = Field(
+        default=False,
+        description="When true, revoke all of the user's other sessions (keeping the current one) after the change",
+    )
 
 
 class ProfileUpdate(BaseModel):

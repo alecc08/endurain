@@ -259,7 +259,7 @@ describe('changeEmail', () => {
   it('PUTs the new address together with the step-up credentials', async () => {
     vi.mocked(apiFetch).mockResolvedValue(undefined)
 
-    await changeEmail('new@example.com', { currentPassword: 'pw', mfaCode: '123456' })
+    await changeEmail('new@example.com', { currentPassword: 'pw', mfaCode: '123456' }, true)
 
     expect(apiFetch).toHaveBeenCalledWith('/profile/email', {
       method: 'PUT',
@@ -267,6 +267,7 @@ describe('changeEmail', () => {
         email: 'new@example.com',
         current_password: 'pw',
         mfa_code: '123456',
+        revoke_other_sessions: true,
       }),
       responseType: 'void',
     })

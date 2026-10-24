@@ -355,10 +355,19 @@ export async function deleteAccount(input: StepUpInput): Promise<void> {
  *
  * @param email - The new email address.
  * @param input - The step-up credentials (password and, with MFA, a code).
+ * @param revokeOtherSessions - Whether to sign out every other session after the change.
  * @throws {HttpError} When the request fails (401 step-up, 409 address already in use).
  */
-export async function changeEmail(email: string, input: StepUpInput): Promise<void> {
-  const payload: EmailChangeDto = { email, ...toStepUpWire(input) }
+export async function changeEmail(
+  email: string,
+  input: StepUpInput,
+  revokeOtherSessions: boolean,
+): Promise<void> {
+  const payload: EmailChangeDto = {
+    email,
+    ...toStepUpWire(input),
+    revoke_other_sessions: revokeOtherSessions,
+  }
   await apiFetch('/profile/email', {
     method: 'PUT',
     body: JSON.stringify(payload),
