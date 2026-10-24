@@ -17,6 +17,16 @@ import modules.strava.utils as strava_utils
 # ---------------------------------------------------------------------------
 
 
+def _integrations(client_id: str = "app-a") -> Mock:
+    """Integrations whose (already plain) client id is *client_id*; decryption is the identity."""
+    return Mock(strava_client_id=client_id)
+
+
+@pytest.fixture(autouse=True)
+def _plain_client_id(monkeypatch):
+    monkeypatch.setattr(strava_utils.core_cryptography, "decrypt_token_fernet", lambda value: value)
+
+
 def _make_strava_fault(status_code: int) -> StravaFault:
     """Return a StravaFault whose .response.status_code equals *status_code*."""
     response = Mock()
@@ -39,6 +49,7 @@ class TestFetchAndProcessActivityStreamsNotFound:
             strava_client=client,
             strava_activity_id=99,
             user_id=1,
+            user_integrations=_integrations(),
         )
 
     def test_not_found_fault_returns_empty_streams(self, monkeypatch):
@@ -46,7 +57,7 @@ class TestFetchAndProcessActivityStreamsNotFound:
         client = Mock()
         client.get_activity_streams.side_effect = _make_strava_fault(404)
 
-        monkeypatch.setattr(strava_utils.rate_limit_tracker, "is_rate_limited", lambda: False)
+        monkeypatch.setattr(strava_utils.rate_limit_tracker, "is_rate_limited", lambda client_id: False)
         monkeypatch.setattr(activity_utils, "logger", Mock())
 
         result = self._call(client)
@@ -72,7 +83,7 @@ class TestFetchAndProcessActivityStreamsNotFound:
         client = Mock()
         client.get_activity_streams.side_effect = RuntimeError("404 not found")
 
-        monkeypatch.setattr(strava_utils.rate_limit_tracker, "is_rate_limited", lambda: False)
+        monkeypatch.setattr(strava_utils.rate_limit_tracker, "is_rate_limited", lambda client_id: False)
         monkeypatch.setattr(activity_utils, "logger", Mock())
 
         result = self._call(client)
@@ -98,7 +109,7 @@ class TestFetchAndProcessActivityStreamsNotFound:
         client = Mock()
         client.get_activity_streams.side_effect = _make_strava_fault(429)
 
-        monkeypatch.setattr(strava_utils.rate_limit_tracker, "is_rate_limited", lambda: False)
+        monkeypatch.setattr(strava_utils.rate_limit_tracker, "is_rate_limited", lambda client_id: False)
         monkeypatch.setattr(strava_utils.rate_limit_tracker, "mark_rate_limited", Mock())
         monkeypatch.setattr(activity_utils, "logger", Mock())
 
@@ -111,7 +122,7 @@ class TestFetchAndProcessActivityStreamsNotFound:
         """When already rate-limited, raises HTTPException 429 before any API call."""
         client = Mock()
 
-        monkeypatch.setattr(strava_utils.rate_limit_tracker, "is_rate_limited", lambda: True)
+        monkeypatch.setattr(strava_utils.rate_limit_tracker, "is_rate_limited", lambda client_id: True)
         monkeypatch.setattr(activity_utils, "logger", Mock())
 
         with pytest.raises(HTTPException) as exc_info:
@@ -120,12 +131,33 @@ class TestFetchAndProcessActivityStreamsNotFound:
         assert exc_info.value.status_code == 429
         client.get_activity_streams.assert_not_called()
 
+    def test_a_limit_on_another_app_does_not_block_the_fetch(self, monkeypatch):
+        client = Mock()
+        client.get_activity_streams.side_effect = _make_strava_fault(404)
+        strava_utils.rate_limit_tracker.mark_rate_limited("app-b", is_long_term=True)
+        monkeypatch.setattr(activity_utils, "logger", Mock())
+
+        self._call(client)
+
+        client.get_activity_streams.assert_called_once()
+
+    def test_a_limit_hit_here_is_recorded_against_this_app_only(self, monkeypatch):
+        client = Mock()
+        client.get_activity_streams.side_effect = _make_strava_fault(429)
+        monkeypatch.setattr(activity_utils, "logger", Mock())
+
+        with pytest.raises(HTTPException):
+            self._call(client)
+
+        assert strava_utils.rate_limit_tracker.is_rate_limited("app-a") is True
+        assert strava_utils.rate_limit_tracker.is_rate_limited("app-b") is False
+
     def test_unrelated_exception_raises_424(self, monkeypatch):
         """An unrelated exception raises HTTPException 424."""
         client = Mock()
         client.get_activity_streams.side_effect = RuntimeError("network failure")
 
-        monkeypatch.setattr(strava_utils.rate_limit_tracker, "is_rate_limited", lambda: False)
+        monkeypatch.setattr(strava_utils.rate_limit_tracker, "is_rate_limited", lambda client_id: False)
         monkeypatch.setattr(activity_utils, "logger", Mock())
 
         with pytest.raises(HTTPException) as exc_info:
@@ -255,6 +287,47 @@ class TestProcessActivity:
         assert seen == {}
 
 
+class TestFetchAndProcessActivityLapsRateLimit:
+    """Laps count against the same per-app Strava quota as streams."""
+
+    def _call(self, client: Mock):
+        return activity_utils.fetch_and_process_activity_laps(client, 1, 1, [], _integrations())
+
+    def test_a_limited_app_raises_429_before_any_api_call(self):
+        client = Mock()
+        strava_utils.rate_limit_tracker.mark_rate_limited("app-a", is_long_term=True)
+
+        with pytest.raises(HTTPException) as exc_info:
+            self._call(client)
+
+        assert exc_info.value.status_code == 429
+        client.get_activity_laps.assert_not_called()
+
+    def test_a_limit_on_another_app_does_not_block_the_fetch(self):
+        client = Mock()
+        client.get_activity_laps.return_value = []
+        strava_utils.rate_limit_tracker.mark_rate_limited("app-b", is_long_term=True)
+
+        assert self._call(client) == []
+
+    def test_a_429_is_recorded_against_this_app_and_raised(self):
+        client = Mock()
+        client.get_activity_laps.side_effect = _make_strava_fault(429)
+
+        with pytest.raises(HTTPException) as exc_info:
+            self._call(client)
+
+        assert exc_info.value.status_code == 429
+        assert strava_utils.rate_limit_tracker.is_rate_limited("app-a") is True
+        assert strava_utils.rate_limit_tracker.is_rate_limited("app-b") is False
+
+    def test_another_failure_still_returns_none(self):
+        client = Mock()
+        client.get_activity_laps.side_effect = RuntimeError("network failure")
+
+        assert self._call(client) is None
+
+
 class TestFetchAndProcessActivityLapsElevation:
     """Lap ascent/descent computed from the Strava altitude stream."""
 
@@ -272,7 +345,7 @@ class TestFetchAndProcessActivityLapsElevation:
     def _process(self, ele_stream: list[dict]) -> dict:
         client = Mock()
         client.get_activity_laps.return_value = [self._lap()]
-        laps = activity_utils.fetch_and_process_activity_laps(client, 1, 1, [(True, 4, ele_stream)])
+        laps = activity_utils.fetch_and_process_activity_laps(client, 1, 1, [(True, 4, ele_stream)], _integrations())
         return laps[0]
 
     def test_invalid_altitude_stream_leaves_lap_elevation_none(self):

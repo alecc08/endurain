@@ -55,7 +55,8 @@ def fetch_and_process_activities(
         HTTPException: When Strava rejects the request or the user is missing.
     """
     # Check if we're currently rate-limited before making any Strava API calls
-    if strava_utils.rate_limit_tracker.is_rate_limited():
+    client_id = strava_utils.get_client_id(user_integrations)
+    if strava_utils.rate_limit_tracker.is_rate_limited(client_id):
         logger.warning(
             f"User {user_id}: Strava rate limit active, skipping activity fetch",
             extra=core_logger.context(console=True),
@@ -76,7 +77,7 @@ def fetch_and_process_activities(
         if strava_utils.is_strava_rate_limit_error(err):
             err_str = str(err).lower()
             is_long = "long" in err_str or ("daily" in err_str)
-            strava_utils.rate_limit_tracker.mark_rate_limited(is_long_term=is_long)
+            strava_utils.rate_limit_tracker.mark_rate_limited(client_id, is_long_term=is_long)
             logger.warning(f"User {user_id}: Strava rate limit exceeded, skipping activity fetch")
             raise HTTPException(
                 status_code=(status.HTTP_429_TOO_MANY_REQUESTS),
@@ -129,7 +130,8 @@ def parse_activity(
     timezone = (owner.timezone if owner and owner.timezone else None) or core_config.settings.TZ
 
     # Check rate limit before detailed activity fetch
-    if strava_utils.rate_limit_tracker.is_rate_limited():
+    client_id = strava_utils.get_client_id(user_integrations)
+    if strava_utils.rate_limit_tracker.is_rate_limited(client_id):
         logger.warning(f"User {user_id}: Strava rate limit active, skipping activity parse")
         raise HTTPException(
             status_code=(status.HTTP_429_TOO_MANY_REQUESTS),
@@ -144,7 +146,7 @@ def parse_activity(
         if strava_utils.is_strava_rate_limit_error(err):
             err_str = str(err).lower()
             is_long = "long" in err_str or ("daily" in err_str)
-            strava_utils.rate_limit_tracker.mark_rate_limited(is_long_term=is_long)
+            strava_utils.rate_limit_tracker.mark_rate_limited(client_id, is_long_term=is_long)
             raise HTTPException(
                 status_code=(status.HTTP_429_TOO_MANY_REQUESTS),
                 detail=("Strava API rate limit exceeded. Please try again later."),
@@ -211,6 +213,7 @@ def parse_activity(
         strava_client,
         activity.id,
         user_id,
+        user_integrations,
     )
 
     ele_gain, ele_loss = None, None
@@ -353,6 +356,7 @@ def parse_activity(
         activity.id,
         user_id,
         stream_data,
+        user_integrations,
     )
 
     # Return the activity and stream data
@@ -464,9 +468,11 @@ def fetch_and_process_activity_streams(
     strava_client: Client,
     strava_activity_id: int,
     user_id: int,
+    user_integrations: user_integrations_schema.UsersIntegrationsRead,
 ):
     # Check rate limit before fetching streams
-    if strava_utils.rate_limit_tracker.is_rate_limited():
+    client_id = strava_utils.get_client_id(user_integrations)
+    if strava_utils.rate_limit_tracker.is_rate_limited(client_id):
         logger.warning(f"User {user_id}: Strava rate limit active, skipping streams fetch")
         raise HTTPException(
             status_code=(status.HTTP_429_TOO_MANY_REQUESTS),
@@ -492,7 +498,7 @@ def fetch_and_process_activity_streams(
         if strava_utils.is_strava_rate_limit_error(err):
             err_str = str(err).lower()
             is_long = "long" in err_str or ("daily" in err_str)
-            strava_utils.rate_limit_tracker.mark_rate_limited(is_long_term=is_long)
+            strava_utils.rate_limit_tracker.mark_rate_limited(client_id, is_long_term=is_long)
             raise HTTPException(
                 status_code=(status.HTTP_429_TOO_MANY_REQUESTS),
                 detail=("Strava API rate limit exceeded. Please try again later."),
@@ -611,11 +617,30 @@ def fetch_and_process_activity_laps(
     strava_activity_id: int,
     user_id: int,
     stream_data: list,
+    user_integrations: user_integrations_schema.UsersIntegrationsRead,
 ):
+    # Check rate limit before fetching laps
+    client_id = strava_utils.get_client_id(user_integrations)
+    if strava_utils.rate_limit_tracker.is_rate_limited(client_id):
+        logger.warning(f"User {user_id}: Strava rate limit active, skipping laps fetch")
+        raise HTTPException(
+            status_code=(status.HTTP_429_TOO_MANY_REQUESTS),
+            detail=("Strava API rate limit exceeded. Please try again later."),
+        )
+
     # Fetch the activity laps
     try:
         laps = strava_client.get_activity_laps(strava_activity_id)
     except Exception as err:
+        # Check if this is a rate limit error
+        if strava_utils.is_strava_rate_limit_error(err):
+            err_str = str(err).lower()
+            is_long = "long" in err_str or ("daily" in err_str)
+            strava_utils.rate_limit_tracker.mark_rate_limited(client_id, is_long_term=is_long)
+            raise HTTPException(
+                status_code=(status.HTTP_429_TOO_MANY_REQUESTS),
+                detail=("Strava API rate limit exceeded. Please try again later."),
+            ) from err
         # Log an error event if an exception occurred
         logger.error(
             f"User {user_id}: Error fetching Strava activity laps for Strava activity {strava_activity_id}: {err!s}",
