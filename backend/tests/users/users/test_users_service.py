@@ -105,10 +105,10 @@ class TestPublicProjection:
         assert set(dumped) == {"id", "name", "username", "city", "photo_path"}
 
     @patch(_CRUD)
-    def test_an_inactive_account_is_not_visible(self, mock_crud, mock_db):
+    def test_an_inactive_account_keeps_its_public_identity(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = _user(3, active=False)
 
-        assert users_service.get_public_profile(3, mock_db) is None
+        assert users_service.get_public_profile(3, mock_db).id == 3
 
     @patch(_CRUD)
     def test_missing_user_is_none(self, mock_crud, mock_db):

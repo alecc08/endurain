@@ -4732,7 +4732,7 @@ export interface paths {
          *         db: Database session dependency.
          *
          *     Returns:
-         *         The public projection if the user exists and is active, None otherwise.
+         *         The public projection if the user exists, None otherwise.
          */
         get: operations["read_users_id_api_v1_users_id__user_id__get"];
         put?: never;

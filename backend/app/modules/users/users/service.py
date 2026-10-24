@@ -107,12 +107,9 @@ def _to_public(user: users_schema.UsersRead | None) -> users_schema.UserPublicRe
         user: The full user record, or None.
 
     Returns:
-        The public projection, or None if there is no user or the account is inactive.
+        The public projection, or None if there is no user.
     """
-    if user is None or not user.active:
-        return None
-
-    return users_schema.UserPublicRead.model_validate(user)
+    return users_schema.UserPublicRead.model_validate(user) if user is not None else None
 
 
 def get_public_profile(user_id: int, db: Session) -> users_schema.UserPublicRead | None:
@@ -123,7 +120,7 @@ def get_public_profile(user_id: int, db: Session) -> users_schema.UserPublicRead
         db: Database session.
 
     Returns:
-        The public projection, or None if there is none or the account is inactive.
+        The public projection, or None if there is none.
     """
     return _to_public(users_crud.get_user_by_id(user_id, db))
 

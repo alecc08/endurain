@@ -182,7 +182,7 @@ def read_users_id(
         db: Database session dependency.
 
     Returns:
-        The public projection if the user exists and is active, None otherwise.
+        The public projection if the user exists, None otherwise.
     """
     return users_service.get_public_profile(user_id, db)
 
