@@ -428,7 +428,7 @@ class TestImportServiceUserData:
         ):
             await service.collect_and_import_user_privacy_settings([{"default_activity_visibility": "bogus"}])
             await service.collect_and_import_user_integrations([{"strava_sync_gear": "not-a-bool"}])
-            await service.collect_and_import_user_default_gear([{"run_gear_id": "x"}], {})
+            await service.collect_and_import_user_default_gear([{"unknown_field": 1}], {})
 
         privacy.assert_not_called()
         integrations.assert_not_called()

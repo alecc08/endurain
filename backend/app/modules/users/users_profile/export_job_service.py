@@ -13,7 +13,6 @@ import time
 from collections.abc import Generator
 
 import jasil.providers as platform_providers
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 import core.database as core_database
@@ -129,18 +128,6 @@ def open_export(
     return chunks(), state.size_bytes
 
 
-def _is_transient(err: Exception) -> bool:
-    """Whether a failure may pass on its own, so building the export again can succeed.
-
-    Args:
-        err: What the export raised.
-
-    Returns:
-        True for a database or storage failure.
-    """
-    return isinstance(err, SQLAlchemyError | OSError | core_exceptions.ServiceUnavailableError)
-
-
 def run_export(
     payload: profile_events.ProfileExportRequestedPayload,
     states: profile_export_state_store.ProfileExportStateStore,
@@ -171,7 +158,7 @@ def run_export(
         with core_database.SessionLocal() as db:
             size = profile_service.stage_export(user_id, storage, db)
     except Exception as err:
-        if will_retry and _is_transient(err):
+        if will_retry and profile_exceptions.is_transient(err):
             logger.warning(
                 "Profile export failed; it will be retried", exc_info=err, extra=core_logger.context(user_id=user_id)
             )
@@ -201,8 +188,29 @@ def sweep_staged_exports(storage: platform_providers.StorageProvider, older_than
     """
     cutoff = time.time() - older_than_seconds
     stale = [key for key, modified in storage.iter_objects(profile_constants.EXPORT_STAGING_AREA) if modified < cutoff]
+    removed = 0
     for key in stale:
-        storage.delete(profile_constants.EXPORT_STAGING_AREA, key)
-    if stale:
-        logger.info("Removed stale staged profile exports", extra=core_logger.context(removed=len(stale)))
-    return len(stale)
+        try:
+            storage.delete(profile_constants.EXPORT_STAGING_AREA, key)
+        except Exception as err:
+            logger.warning("Could not delete a stale staged profile export", exc_info=err)
+        else:
+            removed += 1
+    if removed:
+        logger.info("Removed stale staged profile exports", extra=core_logger.context(removed=removed))
+    return removed
+
+
+def discard_staged_export(user_id: int, storage: platform_providers.StorageProvider) -> None:
+    """Delete a user's staged export, leaving the sweep to catch it if storage fails.
+
+    Args:
+        user_id: The user whose export to remove.
+        storage: The platform storage provider.
+    """
+    try:
+        storage.delete(profile_constants.EXPORT_STAGING_AREA, profile_constants.export_staged_key(user_id))
+    except Exception as err:
+        logger.warning(
+            "Could not delete a user's staged profile export", exc_info=err, extra=core_logger.context(user_id=user_id)
+        )

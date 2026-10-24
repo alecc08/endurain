@@ -590,15 +590,14 @@ class ImportService:
             logger.info("No user default gear data to import")
             return
 
-        current_user_default_gear = users_default_gear_integration.get_default_gear(self.user_id, self.db)
-
-        if current_user_default_gear is None:
+        if users_default_gear_integration.get_default_gear(self.user_id, self.db) is None:
             logger.info("No existing user default gear, creating new record")
-            current_user_default_gear = users_default_gear_integration.create_default_gear(self.user_id, self.db)
+            users_default_gear_integration.create_default_gear(self.user_id, self.db)
 
         gear_data = user_default_gear_data[0]
-        gear_data["id"] = current_user_default_gear.id
-        gear_data["user_id"] = self.user_id
+        # The archive's record and owner are the exporting account's; the update names neither.
+        gear_data.pop("id", None)
+        gear_data.pop("user_id", None)
 
         # Map gear IDs
         gear_fields = [

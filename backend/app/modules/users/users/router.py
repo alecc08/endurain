@@ -301,7 +301,7 @@ def edit_user(
 @router.put(
     "/{user_id}/approve",
     status_code=status.HTTP_200_OK,
-    response_model=dict[str, str],
+    response_model=users_schema.MessageResponse,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
@@ -313,7 +313,7 @@ def approve_user(
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
-) -> dict[str, str]:
+) -> users_schema.MessageResponse:
     """Approve pending user account.
 
     Args:
@@ -329,10 +329,10 @@ def approve_user(
     identity_service.request_sign_up_approved_email(user_id)
 
     # Return success message
-    return {"message": f"User ID {user_id} approved successfully."}
+    return users_schema.MessageResponse(message=f"User ID {user_id} approved successfully.")
 
 
-@router.put("/{user_id}/password", status_code=status.HTTP_200_OK, response_model=dict[str, str])
+@router.put("/{user_id}/password", status_code=status.HTTP_200_OK, response_model=users_schema.MessageResponse)
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def edit_user_password(
     request: Request,
@@ -343,7 +343,7 @@ def edit_user_password(
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
-) -> dict[str, str]:
+) -> users_schema.MessageResponse:
     """Update user password.
 
     Args:
@@ -362,7 +362,7 @@ def edit_user_password(
     )
 
     # Return success message
-    return {"message": f"User ID {user_id} password updated successfully"}
+    return users_schema.MessageResponse(message=f"User ID {user_id} password updated successfully")
 
 
 @router.delete(

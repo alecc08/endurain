@@ -540,6 +540,16 @@ class UsersAdminEditPassword(BaseModel):
     )
 
 
+class MessageResponse(BaseModel):
+    """Acknowledgement of a change.
+
+    Attributes:
+        message: What was done, for display.
+    """
+
+    message: str
+
+
 class StepUpVerification(BaseModel):
     """Generic step-up verification payload.
 

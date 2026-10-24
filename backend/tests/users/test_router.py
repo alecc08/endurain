@@ -32,4 +32,4 @@ class TestEditUserPassword:
             user_id,
             new_password,
         )
-        assert result == {"message": f"User ID {user_id} password updated successfully"}
+        assert result.message == f"User ID {user_id} password updated successfully"

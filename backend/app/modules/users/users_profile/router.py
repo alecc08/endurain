@@ -177,14 +177,14 @@ def upload_profile_image(
     return users_integration.upload_user_photo(token_user_id, file, storage, db)
 
 
-@router.put("", status_code=status.HTTP_200_OK, response_model=dict)
+@router.put("", status_code=status.HTTP_200_OK, response_model=users_schema.MessageResponse)
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_user(
     request: Request,
     user_attributtes: users_schema.ProfileUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-) -> dict:
+) -> users_schema.MessageResponse:
     """Edit self-service profile fields for the authenticated user.
 
     Uses an explicit allow-list (:class:`users_schema.ProfileUpdate`)
@@ -204,15 +204,19 @@ def edit_user(
     """
     profile_service.edit_profile(token_user_id, user_attributtes, db)
 
-    return {"message": f"User ID {token_user_id} updated successfully"}
+    return users_schema.MessageResponse(message=f"User ID {token_user_id} updated successfully")
 
 
-@router.put("/email", status_code=status.HTTP_200_OK, response_model=dict)
+@router.put("/email", status_code=status.HTTP_200_OK, response_model=users_schema.MessageResponse)
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def edit_profile_email(
     request: Request,
     email_change: users_schema.EmailChange,
     token_user_id: auth_dependencies.CurrentUserId,
+    token_session_id: Annotated[
+        str,
+        Depends(auth_dependencies.get_sid_from_access_token),
+    ],
     identity_service: Annotated[
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
@@ -222,17 +226,19 @@ def edit_profile_email(
         Depends(auth_dependencies.get_step_up_attempts),
     ],
     db: core_dependencies.DbSession,
-) -> dict:
+) -> users_schema.MessageResponse:
     """Change the authenticated user's email after step-up verification.
 
     The address is where password resets go, so the caller must re-prove identity with the
     current password (and an MFA code when MFA is enabled). The new address starts unverified and
     a verification link is emailed to it.
+    The user's other sessions are revoked.
 
     Args:
         request: The incoming request, read by the rate limiter.
         email_change: The new address with the step-up credentials.
         token_user_id: User ID from access token.
+        token_session_id: Session ID of the caller, preserved when other sessions are revoked.
         identity_service: Identity service dependency.
         step_up_store: Step-up lockout store.
         db: Database session.
@@ -240,19 +246,19 @@ def edit_profile_email(
     Returns:
         Success message.
     """
-    profile_service.change_email(token_user_id, email_change, identity_service, step_up_store, db)
+    profile_service.change_email(token_user_id, email_change, token_session_id, identity_service, step_up_store, db)
 
-    return {"message": f"User ID {token_user_id} email updated successfully"}
+    return users_schema.MessageResponse(message=f"User ID {token_user_id} email updated successfully")
 
 
-@router.put("/privacy", status_code=status.HTTP_200_OK, response_model=dict)
+@router.put("/privacy", status_code=status.HTTP_200_OK, response_model=users_schema.MessageResponse)
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_profile_privacy_settings(
     request: Request,
     user_privacy_settings: users_privacy_settings_schema.UsersPrivacySettingsUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-) -> dict:
+) -> users_schema.MessageResponse:
     """Edit privacy settings for authenticated user.
 
     Args:
@@ -266,10 +272,10 @@ def edit_profile_privacy_settings(
     """
     profile_service.edit_privacy_settings(token_user_id, user_privacy_settings, db)
 
-    return {"message": f"User ID {token_user_id} privacy settings updated successfully"}
+    return users_schema.MessageResponse(message=f"User ID {token_user_id} privacy settings updated successfully")
 
 
-@router.put("/password", status_code=status.HTTP_200_OK, response_model=dict)
+@router.put("/password", status_code=status.HTTP_200_OK, response_model=users_schema.MessageResponse)
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def edit_profile_password(
     request: Request,
@@ -287,7 +293,7 @@ def edit_profile_password(
         auth_dependencies.StepUpStore,
         Depends(auth_dependencies.get_step_up_attempts),
     ],
-) -> dict:
+) -> users_schema.MessageResponse:
     """Update user password after step-up verification.
 
     Requires the caller to re-prove identity with the current
@@ -314,7 +320,7 @@ def edit_profile_password(
         step_up_store: Step-up lockout store.
 
     Returns:
-        dict: A success message indicating the user's password
+        MessageResponse: A success message indicating the user's password
         was updated.
 
     Raises:
@@ -330,10 +336,10 @@ def edit_profile_password(
         current_session_id=token_session_id,
     )
 
-    return {"message": f"User ID {token_user_id} password updated successfully"}
+    return users_schema.MessageResponse(message=f"User ID {token_user_id} password updated successfully")
 
 
-@router.put("/photo", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@router.delete("/photo", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def delete_profile_photo(
     request: Request,

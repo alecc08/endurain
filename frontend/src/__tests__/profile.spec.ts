@@ -218,13 +218,13 @@ describe('profile service requests', () => {
     expect((uploaded as File).name).toBe('me.png')
   })
 
-  it('deleteProfilePhoto issues a PUT to /profile/photo', async () => {
+  it('deleteProfilePhoto issues a DELETE to /profile/photo', async () => {
     vi.mocked(apiFetch).mockResolvedValue(undefined)
 
     await deleteProfilePhoto()
 
     expect(apiFetch).toHaveBeenCalledWith('/profile/photo', {
-      method: 'PUT',
+      method: 'DELETE',
       responseType: 'void',
     })
   })

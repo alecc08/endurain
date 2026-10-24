@@ -8,6 +8,7 @@ This module defines custom exceptions for profile operations:
 """
 
 from fastapi import status
+from sqlalchemy.exc import SQLAlchemyError
 
 import core.exceptions as core_exceptions
 
@@ -203,3 +204,22 @@ def to_domain_error(error: Exception, operation: str) -> core_exceptions.DomainE
     if isinstance(error, MemoryAllocationError):
         return InsufficientStorageError(f"Insufficient memory for {operation}. Please try again or contact support.")
     return core_exceptions.ProcessingError(f"Unexpected error during {operation}. Please contact support.")
+
+
+def is_transient(error: BaseException) -> bool:
+    """Whether a failure may pass on its own, so running the job again can succeed.
+
+    A collector wraps the database error it hit in a profile error, so the cause chain is read too.
+
+    Args:
+        error: What the import or export raised.
+
+    Returns:
+        True for a database, storage or availability failure; the archive's own faults and resource
+        limits are final.
+    """
+    while error is not None:
+        if isinstance(error, SQLAlchemyError | OSError | core_exceptions.ServiceUnavailableError):
+            return True
+        error = error.__cause__
+    return False

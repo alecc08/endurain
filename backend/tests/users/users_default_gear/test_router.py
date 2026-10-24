@@ -42,7 +42,7 @@ class TestEditUserDefaultGear:
 
         response = client.put(
             "/user_default_gear",
-            json={"id": 1, "user_id": 1},
+            json={"run_gear_id": 2},
             headers={"Authorization": "Bearer x"},
         )
         assert response.status_code == 200

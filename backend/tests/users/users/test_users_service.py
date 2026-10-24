@@ -446,12 +446,14 @@ class TestDeleteUser:
         order.attach_mock(mock_crud.delete_user, "row")
         order.attach_mock(mock_db.commit, "commit")
         order.attach_mock(mock_photos.delete_photo_files, "photos")
+        order.attach_mock(mock_registry.erasers.return_value.delete_staged_files, "staged")
 
         users_service.delete_user(1, storage, mock_db)
 
-        assert [call[0] for call in order.mock_calls] == ["activities", "row", "commit", "photos"]
+        assert [call[0] for call in order.mock_calls] == ["activities", "row", "commit", "photos", "staged"]
         mock_registry.erasers.return_value.delete_activities.assert_called_once_with(1, mock_db)
         mock_photos.delete_photo_files.assert_called_once_with(1, storage)
+        mock_registry.erasers.return_value.delete_staged_files.assert_called_once_with(1, storage)
 
     @patch("modules.users.users.service.users_contributor_registry")
     @patch(_CRUD)
@@ -576,16 +578,18 @@ class TestStageEmailChange:
     def test_stores_the_lower_cased_address_as_unverified(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1, email="old@example.com")
 
-        users_service.stage_email_change(1, "New@Example.COM", mock_db)
+        changed = users_service.stage_email_change(1, "New@Example.COM", mock_db)
 
+        assert changed is True
         mock_crud.update_user.assert_called_once_with(1, {"email": "new@example.com", "email_verified": False}, mock_db)
 
     @patch(_CRUD)
     def test_resubmitting_the_current_address_keeps_it_verified(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1, email="same@example.com")
 
-        users_service.stage_email_change(1, "SAME@example.com", mock_db)
+        changed = users_service.stage_email_change(1, "SAME@example.com", mock_db)
 
+        assert changed is False
         mock_crud.update_user.assert_not_called()
 
     @patch(_CRUD)

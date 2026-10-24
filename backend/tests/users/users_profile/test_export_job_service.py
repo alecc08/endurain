@@ -101,6 +101,19 @@ class TestRunExport:
 
         assert states.get(1).status == _Status.QUEUED
 
+    def test_a_database_failure_wrapped_by_the_collection_is_retried(self, states):
+        states.begin(1)
+        try:
+            raise OperationalError("s", {}, Exception("db down"))
+        except OperationalError as db_err:
+            wrapped = profile_exceptions.TransferUnprocessableError("Data collection failed")
+            wrapped.__cause__ = db_err
+
+        with pytest.raises(profile_exceptions.TransferUnprocessableError):
+            _run(states, wrapped, will_retry=True)
+
+        assert states.get(1).status == _Status.QUEUED
+
     def test_a_transient_failure_on_the_last_attempt_is_final(self, states):
         states.begin(1)
 
@@ -165,3 +178,31 @@ class TestSweepStagedExports:
 
         assert removed == 1
         storage.delete.assert_called_once_with(_AREA, "1.zip")
+
+
+class TestSweepSurvivesAFailedDelete:
+    def test_one_failing_delete_does_not_stop_the_rest(self):
+        storage = MagicMock()
+        now = time.time()
+        storage.iter_objects.return_value = iter([("1.zip", now - 100_000), ("2.zip", now - 100_000)])
+        storage.delete.side_effect = [OSError("busy"), None]
+
+        removed = job_service.sweep_staged_exports(storage, 3600)
+
+        assert removed == 1
+        assert storage.delete.call_count == 2
+
+
+class TestDiscardStagedExport:
+    def test_removes_the_users_archive(self):
+        storage = MagicMock()
+
+        job_service.discard_staged_export(7, storage)
+
+        storage.delete.assert_called_once_with(_AREA, "7.zip")
+
+    def test_a_storage_failure_is_logged_not_raised(self):
+        storage = MagicMock()
+        storage.delete.side_effect = OSError("down")
+
+        job_service.discard_staged_export(7, storage)

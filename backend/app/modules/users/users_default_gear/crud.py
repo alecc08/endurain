@@ -97,7 +97,7 @@ def edit_user_default_gear(
     if db_default_gear is None:
         raise core_exceptions.NotFoundError("User default gear not found")
 
-    changes: dict[str, Any] = user_default_gear.model_dump(exclude_unset=True, exclude={"user_id", "id"})
+    changes: dict[str, Any] = user_default_gear.model_dump(exclude_unset=True)
     for key, value in changes.items():
         setattr(db_default_gear, key, value)
 

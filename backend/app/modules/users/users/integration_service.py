@@ -196,7 +196,7 @@ def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session)
     return users_service.stage_profile_edit(user_id, profile, db)
 
 
-def stage_email_change(user_id: int, email: str, db: Session) -> users_schema.UsersRead:
+def stage_email_change(user_id: int, email: str, db: Session) -> bool:
     """Stage a new email address for a user and mark it unverified.
 
     Args:
@@ -205,7 +205,7 @@ def stage_email_change(user_id: int, email: str, db: Session) -> users_schema.Us
         db: Database session.
 
     Returns:
-        The user after the change.
+        True when the address changed, False when it was already the user's.
 
     Raises:
         NotFoundError: If the user does not exist.

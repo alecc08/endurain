@@ -47,22 +47,25 @@ class TestChangeEmail:
         import modules.users.users.schema as users_schema
 
         change = users_schema.EmailChange(email="New@Example.com", current_password="pw", mfa_code="123456")
-        profile_service.change_email(1, change, identity, store, mock_db)
+        profile_service.change_email(1, change, "sid-1", identity, store, mock_db)
 
     @patch(f"{_MODULE}.users_integration")
     def test_changes_only_after_the_step_up_passes_then_commits_and_asks_for_verification(self, mock_users, mock_db):
         identity = MagicMock()
         identity.request_email_reverification.return_value = True
+        mock_users.stage_email_change.return_value = True
         store = MagicMock()
         order = MagicMock()
         order.attach_mock(identity.verify_step_up, "step_up")
         order.attach_mock(mock_users.stage_email_change, "stage")
         order.attach_mock(mock_db.commit, "commit")
         order.attach_mock(identity.request_email_reverification, "verify")
+        order.attach_mock(identity.delete_other_user_sessions, "revoke")
 
         self._change(identity, store, mock_db)
 
-        assert [call[0] for call in order.mock_calls] == ["step_up", "stage", "commit", "verify"]
+        assert [call[0] for call in order.mock_calls] == ["step_up", "stage", "commit", "revoke", "verify"]
+        identity.delete_other_user_sessions.assert_called_once_with(1, "sid-1")
         verification = identity.verify_step_up.call_args.args
         assert (verification[0].current_password, verification[0].mfa_code) == ("pw", "123456")
         assert verification[1:] == (1, store)
@@ -90,6 +93,17 @@ class TestChangeEmail:
         mock_db.rollback.assert_called_once()
         mock_db.commit.assert_not_called()
         identity.request_email_reverification.assert_not_called()
+
+    @patch(f"{_MODULE}.users_integration")
+    def test_resubmitting_the_current_address_changes_and_sends_nothing(self, mock_users, mock_db):
+        identity = MagicMock()
+        mock_users.stage_email_change.return_value = False
+
+        self._change(identity, MagicMock(), mock_db)
+
+        mock_db.commit.assert_not_called()
+        identity.request_email_reverification.assert_not_called()
+        identity.delete_other_user_sessions.assert_not_called()
 
     @patch(f"{_MODULE}.users_integration")
     def test_an_instance_that_cannot_send_mail_still_changes_the_address(self, mock_users, mock_db):

@@ -134,9 +134,9 @@ class UsersDefaultGearRead(UsersDefaultGearBase):
     user_id: StrictInt = Field(..., ge=1, description="User ID")
 
 
-class UsersDefaultGearUpdate(UsersDefaultGearRead):
+class UsersDefaultGearUpdate(UsersDefaultGearBase):
     """Schema for updating user default gear settings.
 
-    Inherits all gear assignment fields from read schema.
-    All fields are optional for partial updates.
+    Carries only the gear assignments, all optional for partial updates. The record is the
+    authenticated user's own, so the body names neither the record nor the user.
     """

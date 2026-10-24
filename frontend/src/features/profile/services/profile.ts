@@ -160,5 +160,5 @@ export async function uploadProfilePhoto(file: File): Promise<void> {
  * @throws {HttpError} When the request fails.
  */
 export async function deleteProfilePhoto(): Promise<void> {
-  await apiFetch('/profile/photo', { method: 'PUT', responseType: 'void' })
+  await apiFetch('/profile/photo', { method: 'DELETE', responseType: 'void' })
 }

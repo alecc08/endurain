@@ -2761,11 +2761,13 @@ export interface paths {
          *     The address is where password resets go, so the caller must re-prove identity with the
          *     current password (and an MFA code when MFA is enabled). The new address starts unverified and
          *     a verification link is emailed to it.
+         *     The user's other sessions are revoked.
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         email_change: The new address with the step-up credentials.
          *         token_user_id: User ID from access token.
+         *         token_session_id: Session ID of the caller, preserved when other sessions are revoked.
          *         identity_service: Identity service dependency.
          *         step_up_store: Step-up lockout store.
          *         db: Database session.
@@ -3518,7 +3520,7 @@ export interface paths {
          *         step_up_store: Step-up lockout store.
          *
          *     Returns:
-         *         dict: A success message indicating the user's password
+         *         MessageResponse: A success message indicating the user's password
          *         was updated.
          *
          *     Raises:
@@ -3540,6 +3542,8 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
+        post?: never;
         /**
          * Delete Profile Photo
          * @description Delete authenticated user's profile photo.
@@ -3550,9 +3554,7 @@ export interface paths {
          *         storage: The platform storage provider.
          *         db: Database session.
          */
-        put: operations["delete_profile_photo_api_v1_profile_photo_put"];
-        post?: never;
-        delete?: never;
+        delete: operations["delete_profile_photo_api_v1_profile_photo_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -9358,6 +9360,17 @@ export interface components {
             username: string | null;
         };
         /**
+         * MessageResponse
+         * @description Acknowledgement of a change.
+         *
+         *     Attributes:
+         *         message: What was done, for display.
+         */
+        MessageResponse: {
+            /** Message */
+            message: string;
+        };
+        /**
          * MobileSessionResponse
          * @description Response for mobile password login with PKCE exchange flow.
          *
@@ -11139,8 +11152,8 @@ export interface components {
          * UsersDefaultGearUpdate
          * @description Schema for updating user default gear settings.
          *
-         *     Inherits all gear assignment fields from read schema.
-         *     All fields are optional for partial updates.
+         *     Carries only the gear assignments, all optional for partial updates. The record is the
+         *     authenticated user's own, so the body names neither the record nor the user.
          */
         UsersDefaultGearUpdate: {
             /**
@@ -11158,11 +11171,6 @@ export interface components {
              * @description Default gear for hike activities
              */
             hike_gear_id?: number | null;
-            /**
-             * Id
-             * @description Unique identifier
-             */
-            id: number;
             /**
              * Mtb Ride Gear Id
              * @description Default gear for MTB ride activities
@@ -11203,11 +11211,6 @@ export interface components {
              * @description Default gear for trail run activities
              */
             trail_run_gear_id?: number | null;
-            /**
-             * User Id
-             * @description User ID
-             */
-            user_id: number;
             /**
              * Virtual Ride Gear Id
              * @description Default gear for virtual ride activities
@@ -16679,9 +16682,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16981,9 +16982,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17837,9 +17836,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17862,7 +17859,7 @@ export interface operations {
             };
         };
     };
-    delete_profile_photo_api_v1_profile_photo_put: {
+    delete_profile_photo_api_v1_profile_photo_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -17908,9 +17905,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Validation Error */
@@ -19924,9 +19919,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Validation Error */
@@ -20093,9 +20086,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Validation Error */

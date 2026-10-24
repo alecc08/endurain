@@ -55,8 +55,10 @@ describe('mapDefaultGear', () => {
 })
 
 describe('toDefaultGearWire', () => {
-  it('round-trips every field, including id and user id', () => {
-    expect(toDefaultGearWire(mapDefaultGear(makeDefaultGearDto()))).toEqual(makeDefaultGearDto())
+  it('round-trips every assignment and leaves out the record and user ids', () => {
+    const { id: _id, user_id: _userId, ...assignments } = makeDefaultGearDto()
+
+    expect(toDefaultGearWire(mapDefaultGear(makeDefaultGearDto()))).toEqual(assignments)
   })
 })
 
@@ -91,8 +93,8 @@ describe('default gear service requests', () => {
       expect.objectContaining({ method: 'PUT' }),
     )
     const parsed = JSON.parse(body as string) as Record<string, unknown>
-    expect(parsed.id).toBe(1)
-    expect(parsed.user_id).toBe(5)
+    expect(parsed).not.toHaveProperty('id')
+    expect(parsed).not.toHaveProperty('user_id')
     expect(parsed.run_gear_id).toBe(10)
     expect(parsed.hike_gear_id).toBe(30)
     expect(parsed.windsurf_gear_id).toBeNull()

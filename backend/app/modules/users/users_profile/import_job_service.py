@@ -17,7 +17,6 @@ from uuid import uuid4
 
 import jasil.providers as platform_providers
 from pydantic import ValidationError
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 import core.database as core_database
@@ -142,18 +141,6 @@ def _rejection_code(err: Exception) -> profile_constants.ImportFailure | None:
     return None
 
 
-def _is_transient(err: Exception) -> bool:
-    """Whether a failure may pass on its own, so retrying the import can succeed.
-
-    Args:
-        err: What the import raised.
-
-    Returns:
-        True for a database or storage failure; the archive's own faults and resource limits are final.
-    """
-    return isinstance(err, SQLAlchemyError | OSError | core_exceptions.ServiceUnavailableError)
-
-
 def _run_importer(
     user_id: int,
     zip_data: bytes,
@@ -244,7 +231,7 @@ def run_import(
         imported = _run_importer(user_id, zip_data, storage, mark_committed)
     except Exception as err:
         code = _rejection_code(err)
-        if code is None and not committed and will_retry and _is_transient(err):
+        if code is None and not committed and will_retry and profile_exceptions.is_transient(err):
             logger.warning(
                 "Profile import failed before committing; it will be retried",
                 exc_info=err,
@@ -278,8 +265,30 @@ def sweep_staged_imports(storage: platform_providers.StorageProvider, older_than
     """
     cutoff = time.time() - older_than_seconds
     stale = [key for key, modified in storage.iter_objects(profile_constants.IMPORT_STAGING_AREA) if modified < cutoff]
+    removed = 0
     for key in stale:
-        storage.delete(profile_constants.IMPORT_STAGING_AREA, key)
-    if stale:
-        logger.info("Removed stale staged profile imports", extra=core_logger.context(removed=len(stale)))
-    return len(stale)
+        try:
+            storage.delete(profile_constants.IMPORT_STAGING_AREA, key)
+        except Exception as err:
+            logger.warning("Could not delete a stale staged profile import", exc_info=err)
+        else:
+            removed += 1
+    if removed:
+        logger.info("Removed stale staged profile imports", extra=core_logger.context(removed=removed))
+    return removed
+
+
+def discard_staged_imports(user_id: int, storage: platform_providers.StorageProvider) -> None:
+    """Delete every archive staged for a user, leaving the sweep to catch them if storage fails.
+
+    Args:
+        user_id: The user whose staged archives to remove.
+        storage: The platform storage provider.
+    """
+    try:
+        for key in storage.list_keys(profile_constants.IMPORT_STAGING_AREA, f"{user_id}/"):
+            storage.delete(profile_constants.IMPORT_STAGING_AREA, key)
+    except Exception as err:
+        logger.warning(
+            "Could not delete a user's staged profile imports", exc_info=err, extra=core_logger.context(user_id=user_id)
+        )

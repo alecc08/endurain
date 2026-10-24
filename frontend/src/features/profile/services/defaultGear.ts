@@ -32,17 +32,15 @@ export function mapDefaultGear(dto: DefaultGearDto): DefaultGear {
 }
 
 /**
- * Rebuilds the full update wire payload from a {@link DefaultGear}. The id and
- * user id round-trip so the backend (which forbids extra fields and replaces
- * the record) keeps ownership intact.
+ * Rebuilds the update wire payload from a {@link DefaultGear}. The backend
+ * forbids extra fields and ties the record to the authenticated user, so the
+ * body carries only the assignments.
  *
  * @param gear - The default gear (already merged with any edits).
  * @returns The snake-cased update body.
  */
 export function toDefaultGearWire(gear: DefaultGear): DefaultGearUpdateDto {
   return {
-    id: gear.id,
-    user_id: gear.userId,
     run_gear_id: gear.runGearId,
     trail_run_gear_id: gear.trailRunGearId,
     virtual_run_gear_id: gear.virtualRunGearId,

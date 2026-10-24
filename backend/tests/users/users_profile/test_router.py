@@ -2,7 +2,7 @@
 
 import io
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -367,7 +367,7 @@ class TestUploadProfileImage:
 class TestEditUser:
     """Tests for PUT /profile — edit_user."""
 
-    @patch("modules.users.users_profile.router.users_integration.edit_profile", new_callable=AsyncMock)
+    @patch("modules.users.users_profile.router.users_integration.edit_profile")
     def test_success(self, mock_edit, profile_client):
         """Happy path: update profile."""
         response = profile_client.put(
@@ -377,6 +377,7 @@ class TestEditUser:
 
         assert response.status_code == 200
         assert "updated successfully" in response.json()["message"]
+        mock_edit.assert_called_once()
 
 
 # ===================================================================
@@ -487,21 +488,20 @@ class TestEditProfilePassword:
 
 
 # ===================================================================
-# PUT /profile/photo
+# DELETE /profile/photo
 # ===================================================================
 
 
 class TestDeleteProfilePhoto:
-    """Tests for PUT /profile/photo — delete_profile_photo."""
+    """Tests for DELETE /profile/photo — delete_profile_photo."""
 
-    @patch("modules.users.users_profile.router.users_integration.delete_user_photo", new_callable=AsyncMock)
+    @patch("modules.users.users_profile.router.users_integration.delete_user_photo")
     def test_success(self, mock_update, profile_client):
         """Happy path: delete profile photo."""
-        mock_update.return_value = None
-
-        response = profile_client.put(PREFIX + "/photo")
+        response = profile_client.delete(PREFIX + "/photo")
 
         assert response.status_code == 204
+        mock_update.assert_called_once()
 
 
 # ===================================================================

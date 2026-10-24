@@ -160,7 +160,7 @@ export interface ProfileEditInput {
 /** Raw default-gear payload (snake_case wire shape). */
 export type DefaultGearDto = Schemas['UsersDefaultGearRead']
 
-/** Update body for the user's default gear (round-trips id + user_id). */
+/** Update body for the user's default gear (the assignments only). */
 export type DefaultGearUpdateDto = Schemas['UsersDefaultGearUpdate']
 
 /**
@@ -168,8 +168,8 @@ export type DefaultGearUpdateDto = Schemas['UsersDefaultGearUpdate']
  * as the default for that activity (or `null` for none). Mapped from
  * {@link DefaultGearDto} at the service boundary.
  *
- * @property id - Stable record identifier (round-tripped on save).
- * @property userId - Owning user id (round-tripped on save).
+ * @property id - Stable record identifier.
+ * @property userId - Owning user id.
  */
 export interface DefaultGear {
   id: number
@@ -193,7 +193,7 @@ export interface DefaultGear {
 
 /**
  * The editable activity→gear assignments. Excludes `id`/`userId`, which
- * round-trip from the loaded record at save time. Every value is a gear id or
+ * identify the loaded record and are not part of the save body. Every value is a gear id or
  * `null`, so a single homogeneous shape backs the per-activity selectors.
  */
 export type DefaultGearValues = Omit<DefaultGear, 'id' | 'userId'>

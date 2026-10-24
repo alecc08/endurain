@@ -13,7 +13,7 @@ import modules.users.users_default_gear.service as user_default_gear_service
 @patch("modules.users.users_default_gear.service.gears_integration")
 class TestEditDefaultGear:
     def test_checks_ownership_stages_and_commits(self, mock_gears, mock_crud, mock_db):
-        update = user_default_gear_schema.UsersDefaultGearUpdate(id=1, user_id=1, run_gear_id=10)
+        update = user_default_gear_schema.UsersDefaultGearUpdate(run_gear_id=10)
 
         result = user_default_gear_service.edit_default_gear(update, 1, mock_db)
 
@@ -21,17 +21,8 @@ class TestEditDefaultGear:
         assert list(mock_gears.require_owned_gears.call_args.args[1]) == [10]
         mock_db.commit.assert_called_once()
 
-    def test_refuses_another_users_settings(self, mock_gears, mock_crud, mock_db):
-        update = user_default_gear_schema.UsersDefaultGearUpdate(id=1, user_id=2, run_gear_id=10)
-
-        with pytest.raises(core_exceptions.PermissionDeniedError):
-            user_default_gear_service.edit_default_gear(update, 1, mock_db)
-
-        mock_crud.edit_user_default_gear.assert_not_called()
-        mock_db.commit.assert_not_called()
-
     def test_refuses_a_gear_the_user_does_not_own(self, mock_gears, mock_crud, mock_db):
-        update = user_default_gear_schema.UsersDefaultGearUpdate(id=1, user_id=1, run_gear_id=10)
+        update = user_default_gear_schema.UsersDefaultGearUpdate(run_gear_id=10)
         mock_gears.require_owned_gears.side_effect = core_exceptions.NotFoundError("Gear not found")
 
         with pytest.raises(core_exceptions.NotFoundError):

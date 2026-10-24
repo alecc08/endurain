@@ -533,7 +533,7 @@ def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session)
     return updated
 
 
-def stage_email_change(user_id: int, email: str, db: Session) -> users_schema.UsersRead:
+def stage_email_change(user_id: int, email: str, db: Session) -> bool:
     """Stage a new email address for a user and mark it unverified.
 
     Does nothing when the address is the one the user already has, so re-submitting it does not
@@ -545,7 +545,7 @@ def stage_email_change(user_id: int, email: str, db: Session) -> users_schema.Us
         db: Database session.
 
     Returns:
-        The user after the change.
+        True when the address changed, False when it was already the user's.
 
     Raises:
         NotFoundError: If the user does not exist.
@@ -554,9 +554,10 @@ def stage_email_change(user_id: int, email: str, db: Session) -> users_schema.Us
     existing = require_user(user_id, db)
     normalized = email.lower()
     if existing.email == normalized:
-        return existing
+        return False
 
-    return users_crud.update_user(user_id, {"email": normalized, "email_verified": False}, db)
+    users_crud.update_user(user_id, {"email": normalized, "email_verified": False}, db)
+    return True
 
 
 def approve_user(user_id: int, db: Session) -> None:
@@ -622,12 +623,14 @@ def delete_user(user_id: int, storage: platform_providers.StorageProvider, db: S
     user = require_user(user_id, db)
     _refuse_to_remove_last_admin(user, "deleted", db)
 
-    users_contributor_registry.erasers().delete_activities(user_id, db)
+    erasers = users_contributor_registry.erasers()
+    erasers.delete_activities(user_id, db)
     users_crud.delete_user(user_id, db)
     db.commit()
     logger.info("User deleted", extra=core_logger.context(user_id=user_id))
 
     users_photo_service.delete_photo_files(user_id, storage)
+    erasers.delete_staged_files(user_id, storage)
 
 
 def timezone_or_default(timezone: str | None) -> str:
