@@ -10,8 +10,10 @@ import core.database as core_database
 import core.dependencies as core_dependencies
 import core.exceptions as core_exceptions
 import core.pagination as core_pagination
+import modules.auth.constants as auth_constants
 import modules.auth.dependencies as auth_dependencies
 import modules.auth.identity_service as auth_identity_service
+import modules.auth.principal as auth_principal
 import modules.users.users.schema as users_schema
 
 _SERVICE = "modules.users.users.router.users_service"
@@ -283,3 +285,66 @@ class TestReadScopes:
         body = client.get("/users/id/4").json()
 
         assert set(body) == {"id", "name", "username", "city", "photo_path"}
+
+
+class TestReadScopeEnforcement:
+    """The real scope check, run with the scopes a regular and an admin token carry."""
+
+    @staticmethod
+    def _client(scopes: tuple[str, ...]) -> TestClient:
+        from modules.users.users.router import router
+
+        identity = auth_identity_service.DefaultIdentityService(MagicMock(), MagicMock(), MagicMock())
+        principal = auth_principal.Principal(
+            user_id=9,
+            username="member",
+            email="member@example.com",
+            is_active=True,
+            is_superuser=False,
+            scopes=frozenset(scopes),
+            credential=auth_principal.AccessTokenCred(session_id="sid"),
+        )
+        identity.resolve_from_access_token = lambda _token: principal
+
+        app = FastAPI()
+        app.include_router(router, prefix="/users")
+        core_exceptions.register_exception_handlers(app)
+        app.dependency_overrides[auth_dependencies.get_access_token] = lambda: "token"
+        app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: identity
+        app.dependency_overrides[core_database.get_db] = lambda: MagicMock()
+        return TestClient(app)
+
+    @pytest.mark.parametrize(
+        "path",
+        ["/users", "/users/email/admin@example.com", "/users/username/admin", "/users/1"],
+    )
+    def test_regular_token_cannot_read_full_records(self, path):
+        response = self._client(auth_constants.REGULAR_ACCESS_SCOPE).get(path)
+
+        assert response.status_code == 403
+        assert "users:read_all" in response.json()["detail"]
+
+    @pytest.mark.parametrize(
+        ("path", "target"),
+        [
+            ("/users", "list_users"),
+            ("/users/email/admin@example.com", "require_user_by_email"),
+            ("/users/username/admin", "require_user_by_username"),
+            ("/users/1", "require_user"),
+        ],
+    )
+    def test_admin_token_passes_the_scope_check(self, path, target):
+        with patch(f"{_SERVICE}.{target}", side_effect=core_exceptions.NotFoundError("stop")) as mock_target:
+            response = self._client(auth_constants.ADMIN_ACCESS_SCOPE).get(path)
+
+        assert response.status_code != 403
+        mock_target.assert_called_once()
+
+    @patch(f"{_SERVICE}.get_public_profile")
+    def test_regular_token_reads_only_the_public_projection(self, mock_get):
+        mock_get.return_value = users_schema.UserPublicRead(id=4, name="Dee", username="dee")
+
+        response = self._client(auth_constants.REGULAR_ACCESS_SCOPE).get("/users/id/4")
+
+        assert response.status_code == 200
+        assert set(response.json()) == {"id", "name", "username", "city", "photo_path"}
