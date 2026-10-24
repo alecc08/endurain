@@ -125,23 +125,25 @@ def stage_upsert_health_steps(
 def create_health_steps(
     user_id: int, health_steps: health_steps_schema.HealthStepsCreate, db: Session
 ) -> health_steps_schema.HealthStepsRead:
-    """Create a steps record, or update the user's record for the same date, and commit.
+    """Create a steps record for the user's day, and commit.
 
     Args:
         user_id: The record's owner.
-        health_steps: The record to store.
+        health_steps: The record to create; a missing date is the user's local today.
         db: Database session.
 
     Returns:
-        The stored record.
+        The created record.
 
     Raises:
-        ConflictError: If the date's record cannot be created or found.
+        ConflictError: If the user already has a record for that date.
     """
-    stored = stage_upsert_health_steps(user_id, health_steps, db)
+    if health_steps.date is None:
+        health_steps.date = users_integration.local_today(user_id, db)
+    created = health_steps_crud.create_health_steps(user_id, health_steps, db)
     db.commit()
     logger.debug("Stored a steps record", extra=core_logger.context(user_id=user_id))
-    return stored
+    return created
 
 
 def edit_health_steps(

@@ -63,22 +63,20 @@ def create_health_steps(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
 ) -> health_steps_schema.HealthStepsRead:
-    """Create or update health steps data for a user.
+    """Create health steps data for a user.
 
-    This endpoint creates new health steps data or updates existing data if an entry
-    for the specified date already exists. The operation is determined automatically
-    based on whether steps data exists for the given date.
+    A date that already has a record is answered with a 409; change it with ``PATCH /{id}``.
 
     Args:
         request: The incoming request, read by the rate limiter.
-        health_steps (health_steps_schema.HealthSteps): The health steps data to create
-            or update, including the date and step count.
+        health_steps (health_steps_schema.HealthSteps): The health steps data to create,
+            including the date and step count.
         token_user_id (int): The ID of the authenticated user extracted from the
             access token.
         db (Session): Database session dependency for database operations.
 
     Returns:
-        health_steps_schema.HealthSteps: The created or updated health steps data.
+        health_steps_schema.HealthSteps: The created health steps data.
 
     """
     return health_steps_service.create_health_steps(token_user_id, health_steps, db)

@@ -178,23 +178,25 @@ def stage_upsert_health_weight(
 def create_health_weight(
     user_id: int, health_weight: health_weight_schema.HealthWeightCreate, db: Session
 ) -> health_weight_schema.HealthWeightRead:
-    """Create a weight record, or update the user's record for the same date, and commit.
+    """Create a weight record for the user's day, and commit.
 
     Args:
         user_id: The record's owner.
-        health_weight: The record to store.
+        health_weight: The record to create; a missing date is the user's local today.
         db: Database session.
 
     Returns:
-        The stored record.
+        The created record.
 
     Raises:
-        ConflictError: If the date's record cannot be created or found.
+        ConflictError: If the user already has a record for that date.
     """
-    stored = stage_upsert_health_weight(user_id, health_weight, db)
+    if health_weight.date is None:
+        health_weight.date = users_integration.local_today(user_id, db)
+    created = stage_create_health_weight(user_id, health_weight, db)
     db.commit()
     logger.debug("Stored a weight record", extra=core_logger.context(user_id=user_id))
-    return stored
+    return created
 
 
 def edit_health_weight(

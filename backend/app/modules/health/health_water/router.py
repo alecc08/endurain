@@ -84,10 +84,9 @@ def create_health_water(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
 ) -> health_water_schema.HealthWaterRead:
-    """Create or update a water intake record for the user.
+    """Record a water intake for the user's day.
 
-    If a record already exists for the given date, it will be
-    updated instead of creating a duplicate.
+    The intake is added to the day's total, so several intakes in one day are all counted.
 
     Args:
         request: The incoming request, read by the rate limiter.
@@ -96,7 +95,7 @@ def create_health_water(
         db: Database session dependency.
 
     Returns:
-        Created or updated HealthWaterRead record.
+        The day's HealthWaterRead record, with the intake added.
 
     """
     return health_water_service.create_health_water(token_user_id, health_water, db)

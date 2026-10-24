@@ -128,24 +128,26 @@ def stage_upsert_health_sleep(
 def create_health_sleep(
     user_id: int, health_sleep: health_sleep_schema.HealthSleepCreate, db: Session
 ) -> health_sleep_schema.HealthSleepRead:
-    """Score a sleep record, then create it or update the user's record for the same date, and commit.
+    """Create a sleep record for the user's day, and commit.
 
     Args:
         user_id: The record's owner.
-        health_sleep: The record to store.
+        health_sleep: The record to create; a missing date is the user's local today.
         db: Database session.
 
     Returns:
-        The stored record.
+        The created record.
 
     Raises:
-        ConflictError: If the date's record cannot be created or found.
+        ConflictError: If the user already has a record for that date.
     """
+    if health_sleep.date is None:
+        health_sleep.date = users_integration.local_today(user_id, db)
     health_sleep_sleep_scoring.calculate_and_set_sleep_scores(health_sleep)
-    stored = stage_upsert_health_sleep(user_id, health_sleep, db)
+    created = health_sleep_crud.create_health_sleep(user_id, health_sleep, db)
     db.commit()
     logger.debug("Stored a sleep record", extra=core_logger.context(user_id=user_id))
-    return stored
+    return created
 
 
 def edit_health_sleep(

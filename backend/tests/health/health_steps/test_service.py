@@ -34,16 +34,15 @@ class TestCreateHealthSteps:
         mock_db.commit.assert_called_once()
 
     @patch(f"{_PREFIX}.health_steps_crud.edit_health_steps")
-    @patch(f"{_PREFIX}.health_steps_crud.get_health_steps_by_date_and_user_id")
-    def test_edits_the_existing_record_of_the_date(self, mock_get_by_date, mock_edit, mock_db):
-        mock_get_by_date.return_value = MagicMock(id=7)
+    @patch(f"{_PREFIX}.health_steps_crud.create_health_steps", side_effect=core_exceptions.ConflictError("duplicate"))
+    def test_a_date_that_already_has_a_record_is_a_conflict(self, _create, mock_edit, mock_db):
         record = health_steps_schema.HealthStepsCreate(date=datetime_date(2024, 1, 15), steps=9000)
 
-        health_steps_service.create_health_steps(1, record, mock_db)
+        with pytest.raises(core_exceptions.ConflictError):
+            health_steps_service.create_health_steps(1, record, mock_db)
 
-        assert mock_edit.call_args.args[:2] == (1, 7)
-        assert mock_edit.call_args.args[2].date == datetime_date(2024, 1, 15)
-        mock_db.commit.assert_called_once()
+        mock_edit.assert_not_called()
+        mock_db.commit.assert_not_called()
 
 
 class TestRaceForTheDate:
@@ -54,7 +53,7 @@ class TestRaceForTheDate:
         mock_get_by_date.side_effect = [None, MagicMock(id=7)]
         record = health_steps_schema.HealthStepsCreate(date=datetime_date(2024, 1, 15), steps=9000)
 
-        health_steps_service.create_health_steps(1, record, mock_db)
+        health_steps_service.stage_upsert_health_steps(1, record, mock_db)
 
         assert mock_edit.call_args.args[1] == 7
         mock_db.begin_nested.assert_called_once()
@@ -65,7 +64,21 @@ class TestRaceForTheDate:
         record = health_steps_schema.HealthStepsCreate(date=datetime_date(2024, 1, 15), steps=9000)
 
         with pytest.raises(core_exceptions.ConflictError):
-            health_steps_service.create_health_steps(1, record, mock_db)
+            health_steps_service.stage_upsert_health_steps(1, record, mock_db)
+
+
+class TestUpsertHealthSteps:
+    @patch(f"{_PREFIX}.health_steps_crud.edit_health_steps")
+    @patch(f"{_PREFIX}.health_steps_crud.get_health_steps_by_date_and_user_id")
+    def test_updates_the_existing_record_of_the_date(self, mock_get_by_date, mock_edit, mock_db):
+        mock_get_by_date.return_value = MagicMock(id=7)
+        record = health_steps_schema.HealthStepsCreate(date=datetime_date(2024, 1, 15), steps=9000)
+
+        health_steps_service.stage_upsert_health_steps(1, record, mock_db)
+
+        assert mock_edit.call_args.args[:2] == (1, 7)
+        assert mock_edit.call_args.args[2].date == datetime_date(2024, 1, 15)
+        mock_db.commit.assert_not_called()
 
 
 class TestEditAndDelete:

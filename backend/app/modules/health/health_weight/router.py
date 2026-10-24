@@ -63,20 +63,19 @@ def create_health_weight(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
 ) -> health_weight_schema.HealthWeightRead:
-    """Create or update a health weight record for the authenticated user.
+    """Create a health weight record for the authenticated user.
 
-    This endpoint creates a new health weight record if one doesn't exist for the given date,
-    or updates an existing record if one is already present for that date.
+    A date that already has a record is answered with a 409; change it with ``PATCH /{id}``.
 
     Args:
         request: The incoming request, read by the rate limiter.
-        health_weight (health_weight_schema.HealthWeightCreate): The health weight data to create or update.
+        health_weight (health_weight_schema.HealthWeightCreate): The health weight data to create.
             Must include a date field.
         token_user_id (int): The ID of the authenticated user extracted from the access token.
         db (Session): Database session dependency for performing database operations.
 
     Returns:
-        health_weight_schema.HealthWeightRead: The created or updated health weight record.
+        health_weight_schema.HealthWeightRead: The created health weight record.
 
     """
     return health_weight_service.create_health_weight(token_user_id, health_weight, db)

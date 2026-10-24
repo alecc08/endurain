@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import core.exceptions as core_exceptions
 import modules.health.constants as health_constants
 import modules.health.health_weight.schema as health_weight_schema
 import modules.health.health_weight.service as health_weight_service
@@ -69,16 +70,29 @@ class TestCreateHealthWeight:
         mock_db.commit.assert_called_once()
 
     @patch(f"{_PREFIX}.health_weight_crud.edit_health_weight")
+    @patch(f"{_PREFIX}.health_weight_crud.create_health_weight", side_effect=core_exceptions.ConflictError("duplicate"))
+    def test_a_date_that_already_has_a_record_is_a_conflict(self, _create, mock_edit, mock_db):
+        record = health_weight_schema.HealthWeightCreate(date=datetime_date(2024, 1, 15), weight=72.0, bmi=22.0)
+
+        with pytest.raises(core_exceptions.ConflictError):
+            health_weight_service.create_health_weight(1, record, mock_db)
+
+        mock_edit.assert_not_called()
+        mock_db.commit.assert_not_called()
+
+
+class TestUpsertHealthWeight:
+    @patch(f"{_PREFIX}.health_weight_crud.edit_health_weight")
     @patch(f"{_PREFIX}.health_weight_crud.get_health_weight_by_date_and_user_id")
-    def test_edits_the_existing_record_of_the_date(self, mock_get_by_date, mock_edit, mock_db):
+    def test_updates_the_existing_record_of_the_date(self, mock_get_by_date, mock_edit, mock_db):
         mock_get_by_date.return_value = MagicMock(id=7)
         record = health_weight_schema.HealthWeightCreate(date=datetime_date(2024, 1, 15), weight=75.0, bmi=22.0)
 
-        health_weight_service.create_health_weight(1, record, mock_db)
+        health_weight_service.stage_upsert_health_weight(1, record, mock_db)
 
         assert mock_edit.call_args.args[:2] == (1, 7)
         assert mock_edit.call_args.args[2].date == datetime_date(2024, 1, 15)
-        mock_db.commit.assert_called_once()
+        mock_db.commit.assert_not_called()
 
 
 class TestEditAndDelete:

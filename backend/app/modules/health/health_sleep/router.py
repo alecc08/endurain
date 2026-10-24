@@ -63,22 +63,20 @@ def create_health_sleep(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
 ) -> health_sleep_schema.HealthSleepRead:
-    """Create or update health sleep data for a user.
+    """Create health sleep data for a user.
 
-    This endpoint creates new health sleep data or updates existing data if an entry
-    for the specified date already exists. The operation is determined automatically
-    based on whether sleep data exists for the given date.
+    A date that already has a record is answered with a 409; change it with ``PATCH /{id}``.
 
     Args:
         request: The incoming request, read by the rate limiter.
-        health_sleep (health_sleep_schema.HealthSleepCreate): The health sleep data to create
-            or update, including the date and sleep duration.
+        health_sleep (health_sleep_schema.HealthSleepCreate): The health sleep data to create,
+            including the date and sleep duration.
         token_user_id (int): The ID of the authenticated user extracted from the
             access token.
         db (Session): Database session dependency for database operations.
 
     Returns:
-        health_sleep_schema.HealthSleepRead: The created or updated health sleep data.
+        health_sleep_schema.HealthSleepRead: The created health sleep data.
 
     """
     return health_sleep_service.create_health_sleep(token_user_id, health_sleep, db)

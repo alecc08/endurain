@@ -1624,22 +1624,20 @@ export interface paths {
         put?: never;
         /**
          * Create Health Sleep
-         * @description Create or update health sleep data for a user.
+         * @description Create health sleep data for a user.
          *
-         *     This endpoint creates new health sleep data or updates existing data if an entry
-         *     for the specified date already exists. The operation is determined automatically
-         *     based on whether sleep data exists for the given date.
+         *     A date that already has a record is answered with a 409; change it with ``PATCH /{id}``.
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
-         *         health_sleep (health_sleep_schema.HealthSleepCreate): The health sleep data to create
-         *             or update, including the date and sleep duration.
+         *         health_sleep (health_sleep_schema.HealthSleepCreate): The health sleep data to create,
+         *             including the date and sleep duration.
          *         token_user_id (int): The ID of the authenticated user extracted from the
          *             access token.
          *         db (Session): Database session dependency for database operations.
          *
          *     Returns:
-         *         health_sleep_schema.HealthSleepRead: The created or updated health sleep data.
+         *         health_sleep_schema.HealthSleepRead: The created health sleep data.
          */
         post: operations["create_health_sleep_api_v1_health_sleep_post"];
         delete?: never;
@@ -1774,22 +1772,20 @@ export interface paths {
         put?: never;
         /**
          * Create Health Steps
-         * @description Create or update health steps data for a user.
+         * @description Create health steps data for a user.
          *
-         *     This endpoint creates new health steps data or updates existing data if an entry
-         *     for the specified date already exists. The operation is determined automatically
-         *     based on whether steps data exists for the given date.
+         *     A date that already has a record is answered with a 409; change it with ``PATCH /{id}``.
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
-         *         health_steps (health_steps_schema.HealthSteps): The health steps data to create
-         *             or update, including the date and step count.
+         *         health_steps (health_steps_schema.HealthSteps): The health steps data to create,
+         *             including the date and step count.
          *         token_user_id (int): The ID of the authenticated user extracted from the
          *             access token.
          *         db (Session): Database session dependency for database operations.
          *
          *     Returns:
-         *         health_steps_schema.HealthSteps: The created or updated health steps data.
+         *         health_steps_schema.HealthSteps: The created health steps data.
          */
         post: operations["create_health_steps_api_v1_health_steps_post"];
         delete?: never;
@@ -1950,10 +1946,9 @@ export interface paths {
         put?: never;
         /**
          * Create Health Water
-         * @description Create or update a water intake record for the user.
+         * @description Record a water intake for the user's day.
          *
-         *     If a record already exists for the given date, it will be
-         *     updated instead of creating a duplicate.
+         *     The intake is added to the day's total, so several intakes in one day are all counted.
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
@@ -1962,7 +1957,7 @@ export interface paths {
          *         db: Database session dependency.
          *
          *     Returns:
-         *         Created or updated HealthWaterRead record.
+         *         The day's HealthWaterRead record, with the intake added.
          */
         post: operations["create_health_water_api_v1_health_water_post"];
         delete?: never;
@@ -2044,20 +2039,19 @@ export interface paths {
         put?: never;
         /**
          * Create Health Weight
-         * @description Create or update a health weight record for the authenticated user.
+         * @description Create a health weight record for the authenticated user.
          *
-         *     This endpoint creates a new health weight record if one doesn't exist for the given date,
-         *     or updates an existing record if one is already present for that date.
+         *     A date that already has a record is answered with a 409; change it with ``PATCH /{id}``.
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
-         *         health_weight (health_weight_schema.HealthWeightCreate): The health weight data to create or update.
+         *         health_weight (health_weight_schema.HealthWeightCreate): The health weight data to create.
          *             Must include a date field.
          *         token_user_id (int): The ID of the authenticated user extracted from the access token.
          *         db (Session): Database session dependency for performing database operations.
          *
          *     Returns:
-         *         health_weight_schema.HealthWeightRead: The created or updated health weight record.
+         *         health_weight_schema.HealthWeightRead: The created health weight record.
          */
         post: operations["create_health_weight_api_v1_health_weight_post"];
         delete?: never;
