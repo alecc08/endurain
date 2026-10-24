@@ -16,6 +16,7 @@ import json
 import os
 import time
 import zipfile
+from collections.abc import Callable
 from io import BytesIO
 from typing import Any
 
@@ -63,6 +64,9 @@ from modules.users.users_profile.exceptions import (
 )
 
 logger = core_logger.get_logger(__name__)
+
+#: Archive folders holding the files written after the database rows are committed.
+_FILE_FOLDERS = ("activity_files/", "activity_media/", "user_images/")
 
 
 class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
@@ -154,11 +158,22 @@ class ImportService:
         storage: platform_providers.StorageProvider,
         db: Session,
         performance_config: ImportPerformanceConfig | None = None,
+        on_database_committed: Callable[[], None] | None = None,
     ):
-        """Bind the import to a user, the platform storage and a database session."""
+        """Bind the import to a user, the platform storage and a database session.
+
+        Args:
+            user_id: The user the archive is imported into.
+            storage: The platform storage provider.
+            db: Database session.
+            performance_config: Limits for this import; derived from the machine when omitted.
+            on_database_committed: Called once the database rows are committed and the files
+                are about to be written, so a caller can record that point.
+        """
         self.user_id = user_id
         self.storage = storage
         self.db = db
+        self.on_database_committed = on_database_committed
         self.counts = profile_utils.initialize_operation_counts(include_user_count=False)
         self.performance_config: ImportPerformanceConfig = (
             performance_config or ImportPerformanceConfig.get_auto_config()
@@ -274,10 +289,20 @@ class ImportService:
                 await self.collect_and_import_health_weight(health_weight_data, health_targets_data)
                 del health_weight_data, health_targets_data
 
+                # Guard: if nothing was imported and there are no files to write, fail visibly
+                # instead of returning a misleading "success" with zero counts.
+                has_files = any(name.startswith(_FILE_FOLDERS) for name in file_list)
+                if not has_files and all(v == 0 for v in self.counts.values()):
+                    raise FileFormatError(
+                        "Import completed with zero items imported. The ZIP file contains no importable data."
+                    )
+
                 # Everything above only staged rows, so the database part of the import is one unit:
                 # it lands together here or, on any failure, not at all.
                 self.db.commit()
                 committed = True
+                if self.on_database_committed is not None:
+                    self.on_database_committed()
                 logger.info(
                     "Profile import committed its database rows", extra=core_logger.context(user_id=self.user_id)
                 )
@@ -299,13 +324,6 @@ class ImportService:
                 logger.warning(
                     "Profile import rolled back; nothing was imported", extra=core_logger.context(user_id=self.user_id)
                 )
-
-        # Guard: if nothing was imported, fail visibly instead of
-        # returning a misleading "success" with zero counts.
-        if all(v == 0 for v in self.counts.values()):
-            raise FileFormatError(
-                "Import completed with zero items imported. The ZIP file contains no importable data."
-            )
 
         return {"detail": "Import completed", "imported": self.counts}
 

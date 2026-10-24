@@ -795,10 +795,10 @@ limitations rather than half-done:
   notification handlers live in `modules/notifications` and subscribe to
   `followers.events` (`TestLayerRules`). `strava`
   still imports another module's `utils`/`manager` directly.
-- **Profile import runs its own event loop.** `users_profile.service.import_profile` calls
-  `asyncio.run` on the request's worker thread, because `ImportService` awaits file validation. The
-  importer shares no loop-bound resource, so this is safe, but the importer should become synchronous
-  once the validation helpers have synchronous forms.
+- **Profile import runs its own event loop.** `users_profile.import_job_service` calls `asyncio.run` on the
+  worker's thread, because `ImportService` awaits file validation. The importer shares no loop-bound
+  resource, so this is safe, but the importer should become synchronous once the validation helpers have
+  synchronous forms.
 - **Legacy model scan.** Converted modules declare their ORM module in
   `model_registry.py` and use scalar foreign keys with database `ON DELETE`
   behaviour. `app/model_registry.py` keeps a filesystem scan only for modules not

@@ -10,7 +10,6 @@ from fastapi import HTTPException
 import core.config as core_config
 import core.exceptions as core_exceptions
 import modules.auth.mfa.schema as mfa_schema
-import modules.users.users_profile.exceptions as profile_exceptions
 
 PREFIX = core_config.ROOT_PATH + "/profile"  # /api/v1/profile
 
@@ -627,196 +626,69 @@ class TestExportProfileData:
 class TestImportProfileData:
     """Tests for POST /profile/import — import_profile_data."""
 
-    @patch("modules.users.users_profile.service.profile_import_service.ImportService")
+    _PUBLISH = "modules.users.users_profile.import_job_service.profile_event_publishers.publish_import_requested"
+
     @patch("modules.users.users_profile.router.core_file_uploads.read_validated_upload_sync")
-    def test_success(
-        self,
-        mock_validate,
-        mock_import_service,
-        profile_client,
-    ):
-        """Happy path: import ZIP data."""
+    def test_accepts_the_archive_and_queues_it(self, mock_validate, profile_client, import_states):
         mock_validate.return_value = b"zip-data"
-        mock_instance = mock_import_service.return_value
-        mock_instance.import_from_zip_data = AsyncMock(
-            return_value={
-                "imported": {"activities": 5},
-            }
-        )
 
-        response = profile_client.post(
-            PREFIX + "/import",
-            files={"file": ("test.zip", b"zip-data", "application/zip")},
-        )
+        with patch(self._PUBLISH) as publish:
+            response = profile_client.post(
+                PREFIX + "/import",
+                files={"file": ("test.zip", b"zip-data", "application/zip")},
+            )
 
-        assert response.status_code == 201
-        assert response.json()["imported"]["activities"] == 5
+        assert response.status_code == 202
+        assert response.json() == {"status": "queued", "failure": None, "imported": None}
+        publish.assert_called_once()
+        assert publish.call_args.args[0] == 1
+        assert publish.call_args.args[1].startswith("1/")
+        assert import_states.get(1).status == "queued"
 
-    @pytest.mark.parametrize(
-        "exc,expected_status",
-        [
-            (profile_exceptions.ImportValidationError("test"), 400),
-            (profile_exceptions.FileFormatError("test"), 400),
-            (profile_exceptions.FileSizeError("test"), 413),
-            (profile_exceptions.ActivityLimitError("test"), 413),
-            (profile_exceptions.ZipStructureError("test"), 400),
-            (profile_exceptions.JSONParseError("test"), 400),
-            (profile_exceptions.SchemaValidationError("test"), 400),
-        ],
-    )
-    @patch("modules.users.users_profile.service.profile_import_service.ImportService")
     @patch("modules.users.users_profile.router.core_file_uploads.read_validated_upload_sync")
-    def test_import_validation_exceptions(
-        self,
-        mock_validate,
-        mock_import_service,
-        exc,
-        expected_status,
-        profile_client,
-    ):
-        """Import validation errors mapped to correct HTTP status."""
+    def test_a_second_import_while_one_is_pending_is_a_conflict(self, mock_validate, profile_client):
         mock_validate.return_value = b"zip-data"
-        mock_instance = mock_import_service.return_value
-        mock_instance.import_from_zip_data = AsyncMock(side_effect=exc)
+        files = {"file": ("test.zip", b"zip-data", "application/zip")}
 
-        response = profile_client.post(
-            PREFIX + "/import",
-            files={"file": ("test.zip", b"data", "application/zip")},
-        )
+        with patch(self._PUBLISH) as publish:
+            first = profile_client.post(PREFIX + "/import", files=files)
+            second = profile_client.post(PREFIX + "/import", files=files)
 
-        assert response.status_code == expected_status
+        assert (first.status_code, second.status_code) == (202, 409)
+        publish.assert_called_once()
 
-    @pytest.mark.parametrize(
-        "exc,expected_status",
-        [
-            (profile_exceptions.DataIntegrityError("test"), 422),
-            (profile_exceptions.ImportTimeoutError("test"), 408),
-            (profile_exceptions.DiskSpaceError("test"), 507),
-        ],
-    )
-    @patch("modules.users.users_profile.service.profile_import_service.ImportService")
     @patch("modules.users.users_profile.router.core_file_uploads.read_validated_upload_sync")
-    def test_import_operation_exceptions(
-        self,
-        mock_validate,
-        mock_import_service,
-        exc,
-        expected_status,
-        profile_client,
-    ):
-        """Import operation errors mapped to correct HTTP status."""
+    def test_a_queueing_failure_frees_the_user_to_retry(self, mock_validate, profile_client, import_states):
         mock_validate.return_value = b"zip-data"
-        mock_instance = mock_import_service.return_value
-        mock_instance.import_from_zip_data = AsyncMock(side_effect=exc)
+        files = {"file": ("test.zip", b"zip-data", "application/zip")}
 
-        response = profile_client.post(
-            PREFIX + "/import",
-            files={"file": ("test.zip", b"data", "application/zip")},
-        )
+        with patch(self._PUBLISH, side_effect=RuntimeError("outbox down")), pytest.raises(RuntimeError):
+            profile_client.post(PREFIX + "/import", files=files)
 
-        assert response.status_code == expected_status
+        assert import_states.get(1).status == "failed"
+        with patch(self._PUBLISH):
+            assert profile_client.post(PREFIX + "/import", files=files).status_code == 202
 
-    @patch("modules.users.users_profile.service.profile_import_service.ImportService")
-    @patch("modules.users.users_profile.router.core_file_uploads.read_validated_upload_sync")
-    def test_value_error(
-        self,
-        mock_validate,
-        mock_import_service,
-        profile_client,
-    ):
-        """ValueError → 400."""
-        mock_validate.return_value = b"zip-data"
-        mock_instance = mock_import_service.return_value
-        mock_instance.import_from_zip_data = AsyncMock(side_effect=ValueError("bad data"))
 
-        response = profile_client.post(
-            PREFIX + "/import",
-            files={"file": ("test.zip", b"data", "application/zip")},
-        )
+class TestReadProfileImportStatus:
+    """Tests for GET /profile/import — read_profile_import_status."""
 
-        assert response.status_code == 400
+    def test_reports_the_recorded_state(self, profile_client, import_states):
+        import_states.begin(1)
+        import_states.set_status(1, "completed", imported={"activities": 5})
 
-    @pytest.mark.parametrize(
-        "exc,expected_status",
-        [
-            (profile_exceptions.MemoryAllocationError("test"), 507),
-            (MemoryError("test"), 500),
-        ],
-    )
-    @patch("modules.users.users_profile.service.profile_import_service.ImportService")
-    @patch("modules.users.users_profile.router.core_file_uploads.read_validated_upload_sync")
-    def test_memory_errors(
-        self,
-        mock_validate,
-        mock_import_service,
-        exc,
-        expected_status,
-        profile_client,
-    ):
-        """Memory errors mapped to correct HTTP status."""
-        mock_validate.return_value = b"zip-data"
-        mock_instance = mock_import_service.return_value
-        mock_instance.import_from_zip_data = AsyncMock(side_effect=exc)
+        response = profile_client.get(PREFIX + "/import")
 
-        response = profile_client.post(
-            PREFIX + "/import",
-            files={"file": ("test.zip", b"data", "application/zip")},
-        )
+        assert response.status_code == 200
+        assert response.json() == {"status": "completed", "failure": None, "imported": {"activities": 5}}
 
-        assert response.status_code == expected_status
+    def test_is_not_found_when_nothing_was_imported(self, profile_client):
+        assert profile_client.get(PREFIX + "/import").status_code == 404
 
-    @pytest.mark.parametrize(
-        "exc,expected_status",
-        [
-            (profile_exceptions.DatabaseConnectionError("test"), 503),
-            (profile_exceptions.FileSystemError("test"), 507),
-            (profile_exceptions.ZipCreationError("test"), 422),
-            (profile_exceptions.DataCollectionError("test"), 422),
-            (profile_exceptions.ExportTimeoutError("test"), 408),
-        ],
-    )
-    @patch("modules.users.users_profile.service.profile_import_service.ImportService")
-    @patch("modules.users.users_profile.router.core_file_uploads.read_validated_upload_sync")
-    def test_import_system_errors(
-        self,
-        mock_validate,
-        mock_import_service,
-        exc,
-        expected_status,
-        profile_client,
-    ):
-        """Import system errors (overlap with export) → mapped status."""
-        mock_validate.return_value = b"zip-data"
-        mock_instance = mock_import_service.return_value
-        mock_instance.import_from_zip_data = AsyncMock(side_effect=exc)
+    def test_one_user_cannot_read_another_users_import(self, profile_client, import_states):
+        import_states.begin(2)
 
-        response = profile_client.post(
-            PREFIX + "/import",
-            files={"file": ("test.zip", b"data", "application/zip")},
-        )
-
-        assert response.status_code == expected_status
-
-    @patch("modules.users.users_profile.service.profile_import_service.ImportService")
-    @patch("modules.users.users_profile.router.core_file_uploads.read_validated_upload_sync")
-    def test_unexpected_exception(
-        self,
-        mock_validate,
-        mock_import_service,
-        profile_client,
-    ):
-        """Unexpected exception → 500."""
-        mock_validate.return_value = b"zip-data"
-        mock_instance = mock_import_service.return_value
-        mock_instance.import_from_zip_data = AsyncMock(side_effect=RuntimeError("boom"))
-
-        response = profile_client.post(
-            PREFIX + "/import",
-            files={"file": ("test.zip", b"data", "application/zip")},
-        )
-
-        assert response.status_code == 500
-        assert "Import failed" in response.json()["detail"]
+        assert profile_client.get(PREFIX + "/import").status_code == 404
 
 
 # ===================================================================

@@ -911,7 +911,7 @@ class TestImportServiceFromZip:
 
     async def test_a_failure_writing_files_keeps_the_committed_rows(self) -> None:
         service, mock_db = self._atomic_service()
-        zip_data = _make_zip_with_json({"data/gears.json": []})
+        zip_data = _make_zip_with_json({"data/gears.json": [], "activity_files/1.gpx": []})
 
         with (
             patch.object(service, "collect_and_import_gears_data", new_callable=AsyncMock, return_value={}),
@@ -925,6 +925,49 @@ class TestImportServiceFromZip:
 
         mock_db.commit.assert_called_once()
         mock_db.rollback.assert_not_called()
+
+    async def test_an_archive_with_nothing_to_import_is_rejected_before_the_commit(self) -> None:
+        service, mock_db = self._atomic_service()
+        zip_data = _make_zip_with_json({"data/gears.json": []})
+
+        with (
+            patch.object(service, "collect_and_import_gears_data", new_callable=AsyncMock, return_value={}),
+            patch.object(
+                service, "collect_and_import_activities_data_batched", new_callable=AsyncMock, return_value={}
+            ),
+            pytest.raises(FileFormatError, match="zero items"),
+        ):
+            await service.import_from_zip_data(zip_data)
+
+        mock_db.commit.assert_not_called()
+        mock_db.rollback.assert_called_once()
+
+    async def test_the_commit_callback_fires_once_the_rows_are_committed(self) -> None:
+        mock_db = MagicMock(spec=Session)
+        calls = []
+        service = profile_import_service.ImportService(
+            user_id=1,
+            storage=MagicMock(),
+            db=mock_db,
+            on_database_committed=lambda: calls.append(mock_db.commit.call_count),
+        )
+        service.performance_config.enable_memory_monitoring = False
+        service.performance_config.max_file_size_mb = 100
+        zip_data = _make_zip_with_json({"data/gears.json": [], "user_images/a.png": []})
+
+        with (
+            patch.object(service, "collect_and_import_gears_data", new_callable=AsyncMock, return_value={}),
+            patch.object(
+                service, "collect_and_import_activities_data_batched", new_callable=AsyncMock, return_value={}
+            ),
+            patch.object(service, "add_activity_files_from_zip", new_callable=AsyncMock),
+            patch.object(service, "add_activity_media_from_zip", new_callable=AsyncMock),
+            patch.object(service, "add_user_images_from_zip", new_callable=AsyncMock),
+        ):
+            service.counts["user_images"] = 1
+            await service.import_from_zip_data(zip_data)
+
+        assert calls == [1]
 
     async def test_a_rejected_archive_rolls_back(self) -> None:
         service, mock_db = self._atomic_service()

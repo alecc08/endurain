@@ -49,6 +49,8 @@ import modules.notifications.subscriber_registry as notifications_subscriber_reg
 import modules.server_settings.integration_service as server_settings_integration
 import modules.users.contributor_registry as users_contributor_registry
 import modules.users.contributors as users_contributors
+import modules.users.users_profile.scheduled_jobs as users_profile_scheduled_jobs
+import modules.users.users_profile.subscriber_registry as users_profile_subscriber_registry
 import modules.websocket.subscriber_registry as websocket_subscriber_registry
 
 logger = core_logger.get_logger(__name__)
@@ -231,6 +233,13 @@ MODULES: tuple[RuntimeModule, ...] = (
         register_durable=notifications_subscriber_registry.register_all_notification_durable_handlers,
         nets=notifications_subscriber_registry.NOTIFICATION_DURABLE_SUBSCRIBER_NETS,
         recurring_jobs=notifications_scheduled_jobs.recurring_jobs,
+    ),
+    RuntimeModule(
+        name="users_profile",
+        register_bus=users_profile_subscriber_registry.register_bus_subscribers,
+        register_durable=users_profile_subscriber_registry.register_durable_handlers,
+        nets=users_profile_subscriber_registry.DURABLE_SUBSCRIBER_NETS,
+        recurring_jobs=users_profile_scheduled_jobs.recurring_jobs,
     ),
     RuntimeModule(
         name="garmin",

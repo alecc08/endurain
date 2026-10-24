@@ -29,6 +29,8 @@ import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
 import modules.users.users_profile.dependencies as profile_dependencies
+import modules.users.users_profile.import_job_service as profile_import_job_service
+import modules.users.users_profile.schema as profile_schema
 import modules.users.users_profile.service as profile_service
 
 # Define the API router
@@ -491,31 +493,55 @@ def export_profile_data(
     )
 
 
-@router.post("/import", status_code=status.HTTP_201_CREATED, response_model=dict)
+@router.post("/import", status_code=status.HTTP_202_ACCEPTED, response_model=profile_schema.ProfileImportStatus)
 @core_rate_limit.limiter.limit(core_rate_limit.UPLOAD)
 def import_profile_data(
     request: Request,
     file: UploadFile,
     token_user_id: auth_dependencies.CurrentUserId,
+    import_states: profile_dependencies.ProfileImportStateStoreDep,
     storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
-) -> dict:
-    """Import profile data from ZIP with security validation.
+) -> profile_schema.ProfileImportStatus:
+    """Queue a profile import from a ZIP archive.
+
+    The archive is validated and staged, and a worker imports it; poll ``GET /profile/import`` for
+    the outcome. The database part is all-or-nothing, so a failed import leaves nothing behind.
 
     Args:
         request: The incoming request, read by the rate limiter.
         file: ZIP file containing profile data.
         token_user_id: User ID from access token.
+        import_states: Shared store of the import's state.
         storage: The platform storage provider.
         db: Database session.
 
     Returns:
-        Import results with counts of imported items.
+        The queued import's state.
     """
     # Comprehensive security validation via the unified pipeline.
     zip_data = core_file_uploads.read_validated_upload_sync(file, kind=core_file_uploads.UploadKind.ZIP)
 
-    return profile_service.import_profile(token_user_id, zip_data, storage, db)
+    state = profile_import_job_service.request_import(token_user_id, zip_data, import_states, storage, db)
+    return profile_schema.ProfileImportStatus.model_validate(state)
+
+
+@router.get("/import", status_code=status.HTTP_200_OK, response_model=profile_schema.ProfileImportStatus)
+def read_profile_import_status(
+    token_user_id: auth_dependencies.CurrentUserId,
+    import_states: profile_dependencies.ProfileImportStateStoreDep,
+) -> profile_schema.ProfileImportStatus:
+    """Report where the authenticated user's profile import is.
+
+    Args:
+        token_user_id: User ID from access token.
+        import_states: Shared store of the import's state.
+
+    Returns:
+        The import's state.
+    """
+    state = profile_import_job_service.get_import_status(token_user_id, import_states)
+    return profile_schema.ProfileImportStatus.model_validate(state)
 
 
 # MFA logic

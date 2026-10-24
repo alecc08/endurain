@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from jasil.backends.state_memory import MemoryState
 from sqlalchemy.orm import Session
 
 import core.config as core_config
@@ -15,6 +16,8 @@ import modules.auth.dependencies as auth_dependencies
 import modules.auth.identity_service as auth_identity_service
 import modules.auth.mfa.setup_store as auth_mfa_setup_store
 import modules.users.users_profile.browser_redirect_router as profile_browser_redirect_router
+import modules.users.users_profile.dependencies as profile_dependencies
+import modules.users.users_profile.import_state_store as profile_import_state_store
 import modules.users.users_profile.router as profile_router
 
 
@@ -42,6 +45,11 @@ def local_mock_db() -> MagicMock:
 @pytest.fixture
 def fake_mfa_secret_store() -> FakeMFASecretStore:
     return FakeMFASecretStore()
+
+
+@pytest.fixture
+def import_states() -> profile_import_state_store.ProfileImportStateStore:
+    return profile_import_state_store.ProfileImportStateStore(MemoryState())
 
 
 @pytest.fixture
@@ -73,6 +81,7 @@ def profile_app(
     local_mock_db,
     fake_mfa_secret_store,
     mock_identity_service,
+    import_states,
 ) -> FastAPI:
     app = FastAPI()
 
@@ -89,6 +98,7 @@ def profile_app(
     app.dependency_overrides[auth_dependencies.get_sid_from_access_token] = lambda: "session-1"
     app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: mock_identity_service
     app.dependency_overrides[auth_mfa_setup_store.get_mfa_secret_store] = lambda: fake_mfa_secret_store
+    app.dependency_overrides[profile_dependencies.get_profile_import_state_store] = lambda: import_states
 
     return app
 

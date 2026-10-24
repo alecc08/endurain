@@ -5,10 +5,9 @@ runs the profile export and import. Authentication concerns (sessions, MFA, iden
 links) stay behind the auth boundary and are called straight from the router.
 """
 
-import asyncio
 import os
 from collections.abc import Generator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import jasil.providers as platform_providers
 from sqlalchemy.orm import Session
@@ -22,7 +21,6 @@ import modules.users.users_privacy_settings.integration_service as users_privacy
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
 import modules.users.users_profile.exceptions as profile_exceptions
 import modules.users.users_profile.export_service as profile_export_service
-import modules.users.users_profile.import_service as profile_import_service
 import modules.users.users_profile.utils as profile_utils
 
 if TYPE_CHECKING:
@@ -40,17 +38,6 @@ _NON_EXPORTED_USER_FIELDS = (
     "mfa_enabled",
     "email_verified",
     "pending_admin_approval",
-)
-
-#: Import failures caused by the file the user supplied, which are reported as a refusal.
-_REJECTED_FILE_ERRORS = (
-    profile_exceptions.ImportValidationError,
-    profile_exceptions.FileFormatError,
-    profile_exceptions.FileSizeError,
-    profile_exceptions.ActivityLimitError,
-    profile_exceptions.ZipStructureError,
-    profile_exceptions.JSONParseError,
-    profile_exceptions.SchemaValidationError,
 )
 
 
@@ -256,52 +243,3 @@ def export_profile(
     archive.seek(0)
     logger.info("Profile data exported", extra=core_logger.context(user_id=user_id, size_bytes=size))
     return profile_export_service.stream_archive(archive), size
-
-
-def import_profile(
-    user_id: int,
-    zip_data: bytes,
-    storage: platform_providers.StorageProvider,
-    db: Session,
-) -> dict[str, Any]:
-    """Import profile data from a ZIP archive.
-
-    Args:
-        user_id: The authenticated user.
-        zip_data: The validated archive.
-        storage: The platform storage provider.
-        db: Database session.
-
-    Returns:
-        The import result with the counts of imported items.
-
-    Raises:
-        DomainError: If the archive is rejected or the import fails.
-    """
-    importer = profile_import_service.ImportService(user_id, storage, db)
-    try:
-        # The importer awaits file validation, so it needs a loop; this runs on a worker thread
-        # with none, and the importer shares no loop-bound resources.
-        result = asyncio.run(importer.import_from_zip_data(zip_data))
-    except _REJECTED_FILE_ERRORS as err:
-        logger.warning(
-            "Profile import rejected the archive",
-            extra=core_logger.context(user_id=user_id, reason=type(err).__name__),
-        )
-        raise profile_exceptions.to_domain_error(err, "profile data import") from err
-    except ValueError as err:
-        logger.warning(
-            "Profile import rejected the archive", extra=core_logger.context(user_id=user_id, reason=str(err))
-        )
-        raise core_exceptions.InvalidInputError(str(err)) from err
-    except (profile_exceptions.ProfileOperationError, MemoryError) as err:
-        logger.error("Profile import failed", exc_info=err, extra=core_logger.context(user_id=user_id))
-        raise profile_exceptions.to_domain_error(err, "profile data import") from err
-    except Exception as err:
-        logger.error("Profile import failed unexpectedly", exc_info=err, extra=core_logger.context(user_id=user_id))
-        raise core_exceptions.ProcessingError(
-            "Import failed due to an internal error. Please try again or contact support."
-        ) from err
-
-    logger.info("Profile data imported", extra=core_logger.context(user_id=user_id, imported=result["imported"]))
-    return result

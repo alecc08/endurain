@@ -1,7 +1,7 @@
 """Tests for users_profile.service module."""
 
 import io
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -147,37 +147,6 @@ class TestExportProfile:
 
         with pytest.raises(core_exceptions.NotFoundError):
             profile_service.export_profile(1, MagicMock(), mock_db)
-
-
-class TestImportProfile:
-    def _import(self, mock_db, *, result=None, error=None):
-        with patch(f"{_MODULE}.profile_import_service") as mock_import:
-            importer = mock_import.ImportService.return_value
-            importer.import_from_zip_data = AsyncMock(return_value=result, side_effect=error)
-            return profile_service.import_profile(1, b"zip", MagicMock(), mock_db)
-
-    def test_returns_the_import_result(self, mock_db):
-        assert self._import(mock_db, result={"imported": {"activities": 2}}) == {"imported": {"activities": 2}}
-
-    def test_a_rejected_archive_is_a_client_error(self, mock_db):
-        with pytest.raises(core_exceptions.PayloadTooLargeError):
-            self._import(mock_db, error=profile_exceptions.FileSizeError("too big"))
-
-    def test_a_value_error_is_invalid_input(self, mock_db):
-        with pytest.raises(core_exceptions.InvalidInputError) as exc:
-            self._import(mock_db, error=ValueError("bad value"))
-
-        assert exc.value.detail == "bad value"
-
-    def test_an_operation_failure_maps_to_its_domain_error(self, mock_db):
-        with pytest.raises(profile_exceptions.TransferTimeoutError):
-            self._import(mock_db, error=profile_exceptions.ImportTimeoutError("slow"))
-
-    def test_an_unexpected_failure_hides_its_cause(self, mock_db):
-        with pytest.raises(core_exceptions.ProcessingError) as exc:
-            self._import(mock_db, error=RuntimeError("secret internals"))
-
-        assert "secret internals" not in exc.value.detail
 
 
 class TestDeleteAccount:

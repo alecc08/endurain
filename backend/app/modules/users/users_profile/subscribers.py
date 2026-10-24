@@ -1,0 +1,89 @@
+"""Subscribers that run a queued profile import.
+
+The import route answers 202 and publishes ``users.profile_import_requested``. With durable jobs a
+worker runs the durable handler and retries a transient failure; without them the bus subscriber
+runs the same body on the in-process subscriber pool, where nothing retries it.
+"""
+
+import jasil.event_versioning as platform_event_versioning
+import jasil.runtime as platform_runtime
+from jasil.events import Event
+from jasil.jobs.registry import JobHandlerRegistry
+from jasil.providers import EventBusProvider
+from jasil.subscribers import best_effort
+
+import core.config as core_config
+import core.logger as core_logger
+import modules.users.users_profile.events as profile_events
+import modules.users.users_profile.import_job_service as profile_import_job_service
+import modules.users.users_profile.import_state_store as profile_import_state_store
+
+logger = core_logger.get_logger(__name__)
+
+IMPORT_REQUESTED_SUBSCRIBER_ID = "users.profile_import_requested"
+
+
+def _import(event: Event, *, will_retry: bool) -> int:
+    """Run the import the event names.
+
+    Args:
+        event: The ``users.profile_import_requested`` event.
+        will_retry: Whether a worker runs this again if it raises.
+
+    Returns:
+        The importing user's ID.
+    """
+    payload = platform_event_versioning.parse_payload(profile_events.ProfileImportRequestedPayload, event)
+    platform = platform_runtime.get_active_platform()
+    profile_import_job_service.run_import(
+        payload,
+        profile_import_state_store.ProfileImportStateStore(platform.state),
+        platform.storage,
+        will_retry=will_retry,
+    )
+    return payload.user_id
+
+
+def process_import_requested_for_event(event: Event) -> None:
+    """Durable handler: import one staged archive; raises on a transient failure so the worker retries.
+
+    Args:
+        event: The ``users.profile_import_requested`` event.
+    """
+    user_id = _import(event, will_retry=event.retry_count < core_config.settings.JOBS_MAX_ATTEMPTS)
+    logger.debug("Profile import job finished", extra=core_logger.context(user_id=user_id))
+
+
+def run_import_requested_on_bus(event: Event) -> None:
+    """Bus subscriber: import one staged archive; nothing retries it.
+
+    Args:
+        event: The ``users.profile_import_requested`` event.
+    """
+    user_id = _import(event, will_retry=False)
+    logger.debug("Profile import task finished", extra=core_logger.context(user_id=user_id))
+
+
+on_import_requested = best_effort(run_import_requested_on_bus)
+
+
+def register_bus_subscribers(events: EventBusProvider) -> None:
+    """Register the import consumer on the running bus.
+
+    Args:
+        events: The event bus.
+    """
+    events.subscribe(profile_events.USERS_PROFILE_IMPORT_REQUESTED, on_import_requested)
+
+
+def register_durable_handlers(registry: JobHandlerRegistry) -> None:
+    """Register the import handler as a durable job subscriber.
+
+    Args:
+        registry: The durable-subscriber registry to register on.
+    """
+    registry.register(
+        profile_events.USERS_PROFILE_IMPORT_REQUESTED,
+        IMPORT_REQUESTED_SUBSCRIBER_ID,
+        process_import_requested_for_event,
+    )
