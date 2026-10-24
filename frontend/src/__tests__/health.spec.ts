@@ -131,8 +131,10 @@ describe('weight service requests', () => {
   it('fetchWeightEntries builds the paginated, filtered URL and maps records', async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       total: 2,
-      records: [makeWeightDto(), makeWeightDto({ id: 6, source: null, weight: null, bmi: null })],
-    } satisfies Schemas['HealthWeightListResponse'])
+      page: 2,
+      num_records: 25,
+      items: [makeWeightDto(), makeWeightDto({ id: 6, source: null, weight: null, bmi: null })],
+    } satisfies Schemas['Page_HealthWeightRead_'])
 
     const page = await fetchWeightEntries({ page: 2, numRecords: 25, interval: 'last_30_days' })
 
@@ -265,8 +267,10 @@ describe('steps service requests', () => {
   it('fetchStepsEntries builds the paginated, filtered URL and maps records', async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       total: 2,
-      records: [makeStepsDto(), makeStepsDto({ id: 6, source: null, steps: null })],
-    } satisfies Schemas['HealthStepsListResponse'])
+      page: 2,
+      num_records: 25,
+      items: [makeStepsDto(), makeStepsDto({ id: 6, source: null, steps: null })],
+    } satisfies Schemas['Page_HealthStepsRead_'])
 
     const page = await fetchStepsEntries({ page: 2, numRecords: 25, interval: 'last_30_days' })
 
@@ -376,8 +380,10 @@ describe('water service requests', () => {
   it('fetchWaterEntries builds the paginated, filtered URL and maps records', async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       total: 2,
-      records: [makeWaterDto(), makeWaterDto({ id: 6, source: null, amount_ml: null })],
-    } satisfies Schemas['HealthWaterListResponse'])
+      page: 2,
+      num_records: 25,
+      items: [makeWaterDto(), makeWaterDto({ id: 6, source: null, amount_ml: null })],
+    } satisfies Schemas['Page_HealthWaterRead_'])
 
     const page = await fetchWaterEntries({ page: 2, numRecords: 25, interval: 'last_30_days' })
 
@@ -491,11 +497,10 @@ describe('poop service requests', () => {
   it('fetchPoopEntries builds the paginated, filtered URL and maps records', async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       total: 2,
-      records: [
-        makePoopDto(),
-        makePoopDto({ id: 6, bristol_type: null, color: null, notes: null }),
-      ],
-    } satisfies Schemas['HealthPoopListResponse'])
+      page: 2,
+      num_records: 25,
+      items: [makePoopDto(), makePoopDto({ id: 6, bristol_type: null, color: null, notes: null })],
+    } satisfies Schemas['Page_HealthPoopRead_'])
 
     const page = await fetchPoopEntries({ page: 2, numRecords: 25, interval: 'last_30_days' })
 
@@ -612,8 +617,10 @@ describe('resting heart rate service requests', () => {
   it('fetchRhrEntries reads the sleep history and maps records', async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       total: 2,
-      records: [makeSleepDto(), makeSleepDto({ id: 6, source: null })],
-    } satisfies Schemas['HealthSleepListResponse'])
+      page: 2,
+      num_records: 25,
+      items: [makeSleepDto(), makeSleepDto({ id: 6, source: null })],
+    } satisfies Schemas['Page_HealthSleepRead_'])
 
     const page = await fetchRhrEntries({ page: 2, numRecords: 25, interval: 'last_30_days' })
 
@@ -634,12 +641,14 @@ describe('resting heart rate service requests', () => {
   it('fetchRhrEntries drops sleep records without a resting heart rate but keeps the total', async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       total: 3,
-      records: [
+      page: 2,
+      num_records: 25,
+      items: [
         makeSleepDto(),
         makeSleepDto({ id: 6, resting_heart_rate: null }),
         makeSleepDto({ id: 7, resting_heart_rate: undefined }),
       ],
-    } satisfies Schemas['HealthSleepListResponse'])
+    } satisfies Schemas['Page_HealthSleepRead_'])
 
     const page = await fetchRhrEntries({ page: 1, numRecords: 25, interval: 'all_time' })
 
@@ -688,8 +697,10 @@ describe('fasting service requests', () => {
   it('fetchFastingEntries builds the paginated, filtered URL and maps records', async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       total: 2,
-      records: [makeFastingDto(), makeFastingDto({ id: 6, notes: null, source: 'garmin' })],
-    } satisfies Schemas['HealthFastingListResponse'])
+      page: 2,
+      num_records: 25,
+      items: [makeFastingDto(), makeFastingDto({ id: 6, notes: null, source: 'garmin' })],
+    } satisfies Schemas['Page_HealthFastingRead_'])
 
     const page = await fetchFastingEntries({ page: 2, numRecords: 25, interval: 'last_30_days' })
 
@@ -946,8 +957,10 @@ describe('sleep service requests', () => {
   it('fetchSleepEntries builds the paginated, filtered URL and maps records', async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       total: 2,
-      records: [makeFullSleepDto(), makeFullSleepDto({ id: 6, source: null, hrv_status: null })],
-    } satisfies Schemas['HealthSleepListResponse'])
+      page: 2,
+      num_records: 25,
+      items: [makeFullSleepDto(), makeFullSleepDto({ id: 6, source: null, hrv_status: null })],
+    } satisfies Schemas['Page_HealthSleepRead_'])
 
     const page = await fetchSleepEntries({ page: 2, numRecords: 25, interval: 'last_30_days' })
 

@@ -43,7 +43,7 @@ def calculate_user_goals(
     date: str | None,
     first_day_of_week: core_calendar.WeekdayValue,
     db: Session,
-) -> list[user_goals_schema.UsersGoalProgress] | None:
+) -> list[user_goals_schema.UsersGoalProgress]:
     """Calculate progress for all user goals on a specified date.
 
     Args:
@@ -54,8 +54,7 @@ def calculate_user_goals(
         first_day_of_week: User's configured first weekday.
 
     Returns:
-        List of UsersGoalProgress objects, or None if no
-            goals found.
+        List of UsersGoalProgress objects, empty if no goals found.
 
     Raises:
         InvalidInputError: If the date or interval is malformed.
@@ -68,9 +67,6 @@ def calculate_user_goals(
         date = users_integration.local_today(user_id, db).strftime("%Y-%m-%d")
     try:
         goals: list[user_goals_schema.UsersGoalRead] = user_goals_crud.get_user_goals_by_user_id(user_id, db)
-
-        if not goals:
-            return None
 
         return [
             calculate_goal_progress_by_activity_type(
@@ -189,7 +185,7 @@ def calculate_goal_progress_by_activity_type(
         raise core_exceptions.InvalidInputError("Invalid data provided") from err
 
 
-def get_goals_progress(user_id: int, db: Session) -> list[user_goals_schema.UsersGoalProgress] | None:
+def get_goals_progress(user_id: int, db: Session) -> list[user_goals_schema.UsersGoalProgress]:
     """Calculate goal progress for a user as of their own calendar day.
 
     Args:
@@ -197,7 +193,7 @@ def get_goals_progress(user_id: int, db: Session) -> list[user_goals_schema.User
         db: Database session.
 
     Returns:
-        The progress of each goal, or None if the user has no goals.
+        The progress of each goal, empty if the user has no goals.
 
     Raises:
         NotFoundError: If the user does not exist.

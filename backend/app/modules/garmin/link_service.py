@@ -4,9 +4,10 @@ Owns the dedicated login threads. Unlinking and the sessions a linked account's 
 :mod:`modules.garmin.service`.
 """
 
+import contextvars
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 
 import garminconnect
 
@@ -70,6 +71,20 @@ def wait_for_mfa_code(
     return None
 
 
+def _finish_link(future: Future) -> None:
+    """Give a link slot back and log an exception that escaped the login thread.
+
+    Args:
+        future: The finished link.
+    """
+    _link_slots.release()
+    if future.cancelled():
+        return
+    exc = future.exception()
+    if exc is not None:
+        logger.error("Garmin Connect link failed", exc_info=exc)
+
+
 def start_link(
     user_id: int,
     login: garmin_schema.GarminLogin,
@@ -101,6 +116,7 @@ def start_link(
             raise core_exceptions.ConflictError("A Garmin Connect link is already in progress")
         try:
             future = _LINK_EXECUTOR.submit(
+                contextvars.copy_context().run,
                 link_garminconnect,
                 user_id,
                 login.username,
@@ -116,7 +132,7 @@ def start_link(
     except BaseException:
         _link_slots.release()
         raise
-    future.add_done_callback(lambda _: _link_slots.release())
+    future.add_done_callback(_finish_link)
     return garmin_schema.GarminLinkStatus(status=garmin_constants.LinkStatus.PENDING)
 
 

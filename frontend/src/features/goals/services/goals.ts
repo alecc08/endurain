@@ -75,8 +75,8 @@ export function mapGoalProgress(dto: GoalProgressDto): GoalProgress {
  * @throws {HttpError} When the request fails.
  */
 export async function fetchGoalResults(signal?: AbortSignal): Promise<GoalProgress[]> {
-  const dtos = await apiFetch<GoalProgressDto[] | null>('/profile/goals/results', { signal })
-  return (dtos ?? []).map(mapGoalProgress)
+  const dtos = await apiFetch<GoalProgressDto[]>('/profile/goals/results', { signal })
+  return dtos.map(mapGoalProgress)
 }
 
 /**

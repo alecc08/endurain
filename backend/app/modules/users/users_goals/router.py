@@ -59,13 +59,13 @@ def get_user_goals(
 
 @router.get(
     "/results",
-    response_model=list[user_goals_schema.UsersGoalProgress] | None,
+    response_model=list[user_goals_schema.UsersGoalProgress],
     status_code=status.HTTP_200_OK,
 )
 def get_user_goals_results(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-) -> list[user_goals_schema.UsersGoalProgress] | None:
+) -> list[user_goals_schema.UsersGoalProgress]:
     """Calculate and retrieve goal progress for authenticated user.
 
     Args:
@@ -73,7 +73,7 @@ def get_user_goals_results(
         db: Database session dependency.
 
     Returns:
-        List of goal progress objects, or None if no goals.
+        List of goal progress objects, empty if no goals.
     """
     return user_goals_progress_service.get_goals_progress(token_user_id, db)
 

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 import core.exceptions as core_exceptions
 import core.logger as core_logger
+import core.pagination as core_pagination
 import modules.health.computation as health_computation
 import modules.health.constants as health_constants
 import modules.health.health_poop.crud as health_poop_crud
@@ -39,11 +40,12 @@ def _since(user_id: int, interval: health_constants.Interval | None, db: Session
 def list_health_poop(
     user_id: int,
     db: Session,
-    page_number: int | None = None,
-    num_records: int | None = None,
+    *,
+    page_number: int = 1,
+    num_records: int = core_pagination.DEFAULT_NUM_RECORDS,
     interval: health_constants.Interval | None = None,
-) -> health_poop_schema.HealthPoopListResponse:
-    """List a user's poop records with their total.
+) -> core_pagination.Page[health_poop_schema.HealthPoopRead]:
+    """List one page of a user's poop records with their total.
 
     Args:
         user_id: The records' owner.
@@ -53,15 +55,12 @@ def list_health_poop(
         interval: Return only records within this interval.
 
     Returns:
-        The page of records and the total.
+        The page of records; ``total`` counts every record within the interval.
     """
     since = _since(user_id, interval, db)
-    return health_poop_schema.HealthPoopListResponse(
-        total=health_poop_crud.get_health_poop_number_by_user_id(user_id, db, since),
-        num_records=num_records,
-        page_number=page_number,
-        records=health_poop_crud.get_health_poop_by_user_id(user_id, db, page_number, num_records, since),
-    )
+    total = health_poop_crud.get_health_poop_number_by_user_id(user_id, db, since)
+    records = health_poop_crud.get_health_poop_by_user_id(user_id, db, page_number, num_records, since)
+    return core_pagination.Page.build(records, total, page_number, num_records)
 
 
 def get_health_poop(user_id: int, health_poop_id: int, db: Session) -> health_poop_schema.HealthPoopRead:

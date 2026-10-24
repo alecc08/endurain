@@ -84,7 +84,12 @@ describe('users service requests', () => {
   })
 
   it('fetchUsers calls the paginated endpoint and maps records', async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ records: [makeUserDto()], total: 1 })
+    vi.mocked(apiFetch).mockResolvedValue({
+      items: [makeUserDto()],
+      total: 1,
+      page: 1,
+      num_records: 25,
+    })
 
     const page = await fetchUsers({
       page: 1,
@@ -105,7 +110,7 @@ describe('users service requests', () => {
   })
 
   it('fetchUsers sends the username search as a server-side filter', async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ records: [], total: 0 })
+    vi.mocked(apiFetch).mockResolvedValue({ items: [], total: 0, page: 1, num_records: 25 })
 
     await fetchUsers({
       page: 1,

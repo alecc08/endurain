@@ -11,8 +11,6 @@ from pydantic import (
     StrictInt,
 )
 
-import modules.health.schema as health_schema
-
 
 class Source(Enum):
     """Enumeration of data sources for health weight records.
@@ -99,24 +97,3 @@ class HealthWeightUpdate(HealthWeightRead):
     while allowing modifications to health weight data. This schema is used for
     PUT/PATCH requests to update existing health weight entries.
     """
-
-
-class HealthWeightListResponse(health_schema.HealthListResponse):
-    """Response model for listing health weight records.
-
-    Extends the base HealthListResponse to provide a typed response containing
-    a list of weight records. This model is used when returning multiple weight
-    entries from API endpoints.
-
-    Attributes:
-        records: A list of HealthWeightRead objects representing individual
-            weight records.
-    """
-
-    records: list[HealthWeightRead] = Field(..., description="List of health weight records")
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        extra="forbid",
-        validate_assignment=True,
-    )

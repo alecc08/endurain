@@ -13,12 +13,12 @@ router = APIRouter()
 @router.get(
     "/id/{user_id}",
     status_code=status.HTTP_200_OK,
-    response_model=users_schema.UserPublicRead | None,
+    response_model=users_schema.UserPublicRead,
 )
 def read_users_id(
     user_id: core_dependencies.PositiveId,
     db: core_dependencies.DbSession,
-) -> users_schema.UserPublicRead | None:
+) -> users_schema.UserPublicRead:
     """Get public user info by ID.
 
     Args:
@@ -27,5 +27,8 @@ def read_users_id(
 
     Returns:
         User data if found and public sharing enabled.
+
+    Raises:
+        NotFoundError: If the user does not exist or public sharing is off.
     """
     return users_service.get_public_user(user_id, db)

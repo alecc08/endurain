@@ -188,10 +188,7 @@ router.include_router(
     garmin_router.router,
     prefix=core_config.ROOT_PATH + "/garminconnect",
     tags=["garminconnect"],
-    dependencies=[
-        Depends(auth_dependencies.validate_access_token),
-        Security(auth_dependencies.check_scopes, scopes=["profile"]),
-    ],
+    dependencies=[Depends(auth_dependencies.validate_access_token)],
 )
 router.include_router(
     gear_components_router.router,

@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request, Security, WebSocket, WebSocketException, status
 from starlette.concurrency import run_in_threadpool
 
+import core.attempt_state as core_attempt_state
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
 import modules.websocket.dependencies as websocket_dependencies
@@ -66,7 +67,8 @@ async def websocket_endpoint(
 
     Refuses a browser origin the API does not serve, then validates the short-lived ticket before accepting the connection, then serves an
     authenticated WebSocket that receives "something changed, refetch" hints. The ticket
-    is consumed on first use (single-use). The ticket lookup goes to the shared state, so
+    is consumed on first use (single-use). A ticket store that cannot be reached closes the
+    connection with ``1013`` so the client retries. The ticket lookup goes to the shared state, so
     it runs off the event loop.
 
     Args:
@@ -75,7 +77,13 @@ async def websocket_endpoint(
         ticket_store: WsTicketStore for ticket validation.
         manager: Manager for WebSocket connections.
     """
-    user_id = await run_in_threadpool(ticket_store.consume_ticket, ticket)
+    try:
+        user_id = await run_in_threadpool(ticket_store.consume_ticket, ticket)
+    except core_attempt_state.StateUnavailableError as err:
+        raise WebSocketException(
+            code=status.WS_1013_TRY_AGAIN_LATER,
+            reason="Ticket storage unavailable",
+        ) from err
     if user_id is None:
         raise WebSocketException(
             code=status.WS_1008_POLICY_VIOLATION,

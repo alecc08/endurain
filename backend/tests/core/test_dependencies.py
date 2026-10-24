@@ -67,23 +67,3 @@ class TestValidatePaginationValues:
         with pytest.raises(HTTPException) as exc_info:
             core_dependencies.validate_pagination_values(-1, 20)
         assert exc_info.value.status_code == 422
-
-
-class TestValidatePaginationValuesOnQuery:
-    """Tests for validate_pagination_values_on_query function."""
-
-    def test_both_none(self):
-        assert core_dependencies.validate_pagination_values_on_query() is None
-
-    def test_valid_values(self):
-        assert core_dependencies.validate_pagination_values_on_query(1, 20) is None
-
-    def test_page_number_zero(self):
-        with pytest.raises(HTTPException) as exc_info:
-            core_dependencies.validate_pagination_values_on_query(0, 20)
-        assert exc_info.value.status_code == 422
-
-    def test_num_records_zero(self):
-        with pytest.raises(HTTPException) as exc_info:
-            core_dependencies.validate_pagination_values_on_query(1, 0)
-        assert exc_info.value.status_code == 422

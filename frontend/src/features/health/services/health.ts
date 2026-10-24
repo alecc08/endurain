@@ -122,7 +122,7 @@ interface HealthHistoryResponse<Dto> {
   /** Total matching rows across all pages. */
   total: number
   /** Records in the current page. */
-  records?: Dto[] | null
+  items: Dto[]
 }
 
 /** Shared clean page shape returned by health-history services. */
@@ -168,7 +168,7 @@ async function fetchHealthHistoryPage<Dto, Entry>(
     buildHealthHistoryPath(resource, params),
     { signal },
   )
-  return { records: (response.records ?? []).map(mapEntry), total: response.total }
+  return { records: response.items.map(mapEntry), total: response.total }
 }
 
 /** Creates a health resource and maps the returned record. */

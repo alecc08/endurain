@@ -47,7 +47,7 @@ class TestCalculateUserGoals:
 
     @patch("modules.users.users_goals.progress_service.user_goals_crud.get_user_goals_by_user_id")
     def test_calculate_user_goals_no_goals(self, mock_get_goals):
-        """Test calculation returns None when no goals exist."""
+        """Test calculation returns an empty list when no goals exist."""
         # Arrange
         user_id = 1
         date = "2024-01-15"
@@ -58,7 +58,7 @@ class TestCalculateUserGoals:
         result = user_goals_progress_service.calculate_user_goals(user_id, date, "monday", mock_db)
 
         # Assert
-        assert result is None
+        assert result == []
 
     @patch("modules.users.users_goals.progress_service.users_integration.local_today")
     @patch("modules.users.users_goals.progress_service.user_goals_crud.get_user_goals_by_user_id")
@@ -76,7 +76,7 @@ class TestCalculateUserGoals:
         result = user_goals_progress_service.calculate_user_goals(user_id, None, "monday", mock_db)
 
         # Assert
-        assert result is None
+        assert result == []
         mock_get_goals.assert_called_once()
         # Resolved from the user's timezone, not the server's UTC clock.
         mock_today.assert_called_once_with(user_id, mock_db)

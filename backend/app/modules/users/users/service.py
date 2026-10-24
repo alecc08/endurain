@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 import core.exceptions as core_exceptions
 import core.logger as core_logger
+import core.pagination as core_pagination
 import core.timezone as core_timezone
 import modules.health.health_targets.integration_service as health_targets_integration
 import modules.health.health_weight.integration_service as health_weight_integration
@@ -32,19 +33,6 @@ if TYPE_CHECKING:
     import modules.auth.identity_service as auth_identity_service
 
 logger = core_logger.get_logger(__name__)
-
-
-def get_user(user_id: int, db: Session) -> users_schema.UsersRead | None:
-    """Return a user by id.
-
-    Args:
-        user_id: The user to look up.
-        db: Database session.
-
-    Returns:
-        The user, or None if there is none.
-    """
-    return users_crud.get_user_by_id(user_id, db)
 
 
 def require_user(user_id: int, db: Session) -> users_schema.UsersRead:
@@ -100,19 +88,7 @@ def require_admin_users(db: Session) -> list[users_schema.UsersRead]:
     return admins
 
 
-def _to_public(user: users_schema.UsersRead | None) -> users_schema.UserPublicRead | None:
-    """Narrow a user record to what a non-admin viewer may see.
-
-    Args:
-        user: The full user record, or None.
-
-    Returns:
-        The public projection, or None if there is no user.
-    """
-    return users_schema.UserPublicRead.model_validate(user) if user is not None else None
-
-
-def get_public_profile(user_id: int, db: Session) -> users_schema.UserPublicRead | None:
+def get_public_profile(user_id: int, db: Session) -> users_schema.UserPublicRead:
     """Return a user's public projection for a signed-in viewer.
 
     Args:
@@ -120,12 +96,15 @@ def get_public_profile(user_id: int, db: Session) -> users_schema.UserPublicRead
         db: Database session.
 
     Returns:
-        The public projection, or None if there is none.
+        The public projection.
+
+    Raises:
+        NotFoundError: If the user does not exist.
     """
-    return _to_public(users_crud.get_user_by_id(user_id, db))
+    return users_schema.UserPublicRead.model_validate(require_user(user_id, db))
 
 
-def get_public_user(user_id: int, db: Session) -> users_schema.UserPublicRead | None:
+def get_public_user(user_id: int, db: Session) -> users_schema.UserPublicRead:
     """Return a user's public projection for an unauthenticated viewer, when sharing allows it.
 
     Args:
@@ -133,26 +112,36 @@ def get_public_user(user_id: int, db: Session) -> users_schema.UserPublicRead | 
         db: Database session.
 
     Returns:
-        The public projection, or None if there is none or public user info is not shared.
+        The public projection.
+
+    Raises:
+        NotFoundError: If the user does not exist or public user info is not shared, so a viewer
+            cannot tell the two apart.
     """
     server_settings = server_settings_integration.get_server_settings(db)
     if not server_settings.public_shareable_links or not server_settings.public_shareable_links_user_info:
-        return None
+        raise core_exceptions.NotFoundError("User not found")
 
     return get_public_profile(user_id, db)
 
 
-def get_user_by_username(username: str, db: Session) -> users_schema.UsersRead | None:
-    """Return a user by exact username.
+def require_user_by_username(username: str, db: Session) -> users_schema.UsersRead:
+    """Return a user by exact username, who must exist.
 
     Args:
         username: Username to search for.
         db: Database session.
 
     Returns:
-        The user, or None if there is none.
+        The user.
+
+    Raises:
+        NotFoundError: If there is no such user.
     """
-    return users_crud.get_user_by_username(username, db)
+    user = users_crud.get_user_by_username(username, db)
+    if user is None:
+        raise core_exceptions.NotFoundError("User not found")
+    return user
 
 
 def search_public_users(username: str, db: Session) -> list[users_schema.UserPublicRead]:
@@ -169,32 +158,38 @@ def search_public_users(username: str, db: Session) -> list[users_schema.UserPub
     return [users_schema.UserPublicRead.model_validate(user) for user in matches]
 
 
-def get_user_by_email(email: str, db: Session) -> users_schema.UsersRead | None:
-    """Return a user by email address.
+def require_user_by_email(email: str, db: Session) -> users_schema.UsersRead:
+    """Return a user by email address, who must exist.
 
     Args:
         email: Email address to search for.
         db: Database session.
 
     Returns:
-        The user, or None if there is none.
+        The user.
+
+    Raises:
+        NotFoundError: If there is no such user.
     """
-    return users_crud.get_user_by_email(email, db)
+    user = users_crud.get_user_by_email(email, db)
+    if user is None:
+        raise core_exceptions.NotFoundError("User not found")
+    return user
 
 
 def list_users(
     identity_service: "auth_identity_service.IdentityService",
     db: Session,
     *,
-    page_number: int | None = None,
-    num_records: int | None = None,
+    page_number: int = 1,
+    num_records: int = core_pagination.DEFAULT_NUM_RECORDS,
     show_inactive: bool | None = None,
     show_email_unverified: bool | None = None,
     show_pending_approval: bool | None = None,
     show_external_auth: bool | None = None,
     show_local_auth: bool | None = None,
     username: str | None = None,
-) -> users_schema.UsersListResponse:
+) -> core_pagination.Page[users_schema.UsersRead]:
     """List a page of users with their authentication status.
 
     The external/local filters are applied after the page is read, so a page may hold fewer
@@ -203,8 +198,8 @@ def list_users(
     Args:
         identity_service: Identity service that answers the authentication status.
         db: Database session.
-        page_number: Optional page number.
-        num_records: Optional number of records per page.
+        page_number: 1-based page number.
+        num_records: Records per page.
         show_inactive: If False, excludes inactive users.
         show_email_unverified: If False, excludes users with unverified emails.
         show_pending_approval: If False, excludes users pending admin approval.
@@ -237,12 +232,7 @@ def list_users(
 
         records.append(user)
 
-    return users_schema.UsersListResponse(
-        total=total,
-        num_records=num_records,
-        page_number=page_number,
-        records=records,
-    )
+    return core_pagination.Page.build(records, total, page_number, num_records)
 
 
 def _stage_default_data(user_id: int, identity_service: "auth_identity_service.IdentityService", db: Session) -> None:

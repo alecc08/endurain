@@ -1312,30 +1312,17 @@ export interface paths {
          * Read Health Fasting All Pagination
          * @description Retrieve health fasting records for the authenticated user.
          *
-         *     This endpoint fetches health fasting data with optional pagination and
-         *     filtering. Access is restricted to users with the 'health:read' scope.
+         *     One page of records, newest first, optionally limited to an interval. Access is
+         *     restricted to users with the 'health:read' scope.
          *
          *     Args:
-         *         _validate_pagination_values_on_query: Dependency that validates
-         *             pagination parameters.
-         *         token_user_id: The ID of the authenticated user extracted from the
-         *             access token.
+         *         token_user_id: The ID of the authenticated user extracted from the access token.
          *         db: Database session for executing queries.
-         *         page_number: Optional pagination page number to retrieve specific page
-         *             of results.
-         *         num_records: Optional number of records per page for pagination.
-         *         interval: Optional filter to retrieve records within a specific goal
-         *             interval.
+         *         page: The requested page and page size.
+         *         interval: Optional filter to retrieve records within a specific goal interval.
          *
          *     Returns:
-         *         HealthFastingListResponse: A response object containing:
-         *             - total: Total count of records matching the filter criteria
-         *             - num_records: Number of records returned per page
-         *             - page_number: Current page number
-         *             - records: List of paginated HealthFastingRead objects
-         *     Raises:
-         *         HTTPException: If the user lacks required 'health:read' scope or if
-         *             pagination values are invalid.
+         *         The page of records with the total matching the interval.
          */
         get: operations["read_health_fasting_all_pagination_api_v1_health_fasting_get"];
         /**
@@ -1511,23 +1498,17 @@ export interface paths {
          * Read Health Poop All Pagination
          * @description Retrieve paginated poop records for the user.
          *
+         *     One page of records, newest first, optionally limited to an interval. Access is
+         *     restricted to users with the 'health:read' scope.
+         *
          *     Args:
-         *         _validate_pagination_values_on_query: Dependency that
-         *             validates pagination parameters.
-         *         token_user_id: The ID of the authenticated user
-         *             extracted from the access token.
+         *         token_user_id: The ID of the authenticated user extracted from the access token.
          *         db: Database session for executing queries.
-         *         page_number: Optional pagination page number.
-         *         num_records: Optional number of records per page.
-         *         interval: Optional filter by goal interval.
+         *         page: The requested page and page size.
+         *         interval: Optional filter to retrieve records within a specific goal interval.
          *
          *     Returns:
-         *         HealthPoopListResponse containing total count,
-         *             pagination info, and poop records.
-         *
-         *     Raises:
-         *         HTTPException: If the user lacks required scope or
-         *             pagination values are invalid.
+         *         The page of records with the total matching the interval.
          */
         get: operations["read_health_poop_all_pagination_api_v1_health_poop_get"];
         /**
@@ -1625,30 +1606,17 @@ export interface paths {
          * Read Health Sleep All Pagination
          * @description Retrieve health sleep records for the authenticated user.
          *
-         *     This endpoint fetches health sleep data with optional pagination and
-         *     filtering. Access is restricted to users with the 'health:read' scope.
+         *     One page of records, newest first, optionally limited to an interval. Access is
+         *     restricted to users with the 'health:read' scope.
          *
          *     Args:
-         *         _validate_pagination_values_on_query: Dependency that validates
-         *             pagination parameters.
-         *         token_user_id: The ID of the authenticated user extracted from the
-         *             access token.
+         *         token_user_id: The ID of the authenticated user extracted from the access token.
          *         db: Database session for executing queries.
-         *         page_number: Optional pagination page number to retrieve specific page
-         *             of results.
-         *         num_records: Optional number of records per page for pagination.
-         *         interval: Optional filter to retrieve records within a specific goal
-         *             interval.
+         *         page: The requested page and page size.
+         *         interval: Optional filter to retrieve records within a specific goal interval.
          *
          *     Returns:
-         *         HealthSleepListResponse: A response object containing:
-         *             - total: Total count of records matching the filter criteria
-         *             - num_records: Number of records returned per page
-         *             - page_number: Current page number
-         *             - records: List of paginated HealthSleepRead objects
-         *     Raises:
-         *         HTTPException: If the user lacks required 'health:read' scope or if
-         *             pagination values are invalid.
+         *         The page of records with the total matching the interval.
          */
         get: operations["read_health_sleep_all_pagination_api_v1_health_sleep_get"];
         /**
@@ -1787,30 +1755,17 @@ export interface paths {
          * Read Health Steps All Pagination
          * @description Retrieve paginated health steps records for the authenticated user.
          *
-         *     This endpoint fetches health steps data with optional pagination and
-         *     filtering. Access is restricted to users with the 'health:read' scope.
+         *     One page of records, newest first, optionally limited to an interval. Access is
+         *     restricted to users with the 'health:read' scope.
          *
          *     Args:
-         *         _validate_pagination_values_on_query: Dependency that validates
-         *             pagination parameters.
-         *         token_user_id: The ID of the authenticated user extracted from the
-         *             access token.
+         *         token_user_id: The ID of the authenticated user extracted from the access token.
          *         db: Database session for executing queries.
-         *         page_number: Optional pagination page number to retrieve specific page
-         *             of results.
-         *         num_records: Optional number of records per page for pagination.
-         *         interval: Optional filter to retrieve records within a specific goal
-         *             interval.
+         *         page: The requested page and page size.
+         *         interval: Optional filter to retrieve records within a specific goal interval.
          *
          *     Returns:
-         *         HealthStepsListResponse: A response object containing:
-         *             - total: Total count of records matching the filter criteria
-         *             - num_records: Number of records returned per page
-         *             - page_number: Current page number
-         *             - records: List of paginated HealthStepsRead objects
-         *     Raises:
-         *         HTTPException: If the user lacks required 'health:read' scope or if
-         *             pagination values are invalid.
+         *         The page of records with the total matching the interval.
          */
         get: operations["read_health_steps_all_pagination_api_v1_health_steps_get"];
         /**
@@ -1975,23 +1930,17 @@ export interface paths {
          * Read Health Water All Pagination
          * @description Retrieve paginated water intake records for the user.
          *
+         *     One page of records, newest first, optionally limited to an interval. Access is
+         *     restricted to users with the 'health:read' scope.
+         *
          *     Args:
-         *         _validate_pagination_values_on_query: Dependency that
-         *             validates pagination parameters.
-         *         token_user_id: The ID of the authenticated user
-         *             extracted from the access token.
+         *         token_user_id: The ID of the authenticated user extracted from the access token.
          *         db: Database session for executing queries.
-         *         page_number: Optional pagination page number.
-         *         num_records: Optional number of records per page.
-         *         interval: Optional filter by goal interval.
+         *         page: The requested page and page size.
+         *         interval: Optional filter to retrieve records within a specific goal interval.
          *
          *     Returns:
-         *         HealthWaterListResponse containing total count,
-         *             pagination info, and water intake records.
-         *
-         *     Raises:
-         *         HTTPException: If the user lacks required scope or
-         *             pagination values are invalid.
+         *         The page of records with the total matching the interval.
          */
         get: operations["read_health_water_all_pagination_api_v1_health_water_get"];
         /**
@@ -2074,31 +2023,17 @@ export interface paths {
          * Read Health Weight All Pagination
          * @description Retrieve paginated health weight records for the authenticated user.
          *
-         *     This endpoint fetches health weight data with optional pagination and
-         *     filtering. Access is restricted to users with the 'health:read' scope.
+         *     One page of records, newest first, optionally limited to an interval. Access is
+         *     restricted to users with the 'health:read' scope.
          *
          *     Args:
-         *         _validate_pagination_values_on_query: Dependency that validates
-         *             pagination parameters.
-         *         token_user_id: The ID of the authenticated user extracted from the
-         *             access token.
+         *         token_user_id: The ID of the authenticated user extracted from the access token.
          *         db: Database session for executing queries.
-         *         page_number: Optional pagination page number to retrieve specific page
-         *             of results.
-         *         num_records: Optional number of records per page for pagination.
-         *         interval: Optional filter to retrieve records within a specific goal
-         *             interval.
+         *         page: The requested page and page size.
+         *         interval: Optional filter to retrieve records within a specific goal interval.
          *
          *     Returns:
-         *         HealthWeightListResponse: A response object containing:
-         *             - total: Total count of records matching the filter criteria
-         *             - num_records: Number of records returned per page
-         *             - page_number: Current page number
-         *             - records: List of paginated HealthWeightRead objects
-         *
-         *     Raises:
-         *         HTTPException: If the user lacks required 'health:read' scope or if
-         *             pagination values are invalid.
+         *         The page of records with the total matching the interval.
          */
         get: operations["read_health_weight_all_pagination_api_v1_health_weight_get"];
         /**
@@ -2927,7 +2862,7 @@ export interface paths {
          *         db: Database session dependency.
          *
          *     Returns:
-         *         List of goal progress objects, or None if no goals.
+         *         List of goal progress objects, empty if no goals.
          */
         get: operations["get_user_goals_results_api_v1_profile_goals_results_get"];
         put?: never;
@@ -4086,6 +4021,9 @@ export interface paths {
          *
          *     Returns:
          *         User data if found and public sharing enabled.
+         *
+         *     Raises:
+         *         NotFoundError: If the user does not exist or public sharing is off.
          */
         get: operations["read_users_id_api_v1_public_users_id__user_id__get"];
         put?: never;
@@ -4711,11 +4649,9 @@ export interface paths {
          * @description Retrieve paginated list of all users.
          *
          *     Args:
-         *         _validate_pagination_values: Pagination validation.
          *         db: Database session dependency.
          *         identity_service: Identity service dependency.
-         *         page_number: Optional page number to retrieve.
-         *         num_records: Optional number of records per page.
+         *         page: The requested page and page size.
          *         show_inactive: Optional filter by inactive status.
          *         show_email_unverified: Optional filter by email verification status.
          *         show_pending_approval: Optional filter by pending approval status.
@@ -4765,7 +4701,10 @@ export interface paths {
          *         db: Database session dependency.
          *
          *     Returns:
-         *         User if found, None otherwise.
+         *         The user.
+         *
+         *     Raises:
+         *         NotFoundError: If there is no such user.
          */
         get: operations["read_users_email_api_v1_users_email__email__get"];
         put?: never;
@@ -4792,7 +4731,10 @@ export interface paths {
          *         db: Database session dependency.
          *
          *     Returns:
-         *         The public projection if the user exists, None otherwise.
+         *         The public projection.
+         *
+         *     Raises:
+         *         NotFoundError: If the user does not exist.
          */
         get: operations["read_users_id_api_v1_users_id__user_id__get"];
         put?: never;
@@ -4846,7 +4788,10 @@ export interface paths {
          *         db: Database session dependency.
          *
          *     Returns:
-         *         User if found, None otherwise.
+         *         The user.
+         *
+         *     Raises:
+         *         NotFoundError: If there is no such user.
          */
         get: operations["read_users_username_api_v1_users_username__username__get"];
         put?: never;
@@ -4873,7 +4818,10 @@ export interface paths {
          *         db: Database session dependency.
          *
          *     Returns:
-         *         The full record if the user exists, None otherwise.
+         *         The full record.
+         *
+         *     Raises:
+         *         NotFoundError: If the user does not exist.
          */
         get: operations["read_users_full_api_v1_users__user_id__get"];
         /**
@@ -6813,40 +6761,6 @@ export interface components {
             status: string;
         };
         /**
-         * HealthFastingListResponse
-         * @description Response model for listing health fasting records.
-         *
-         *     Extends the base HealthListResponse to provide a typed response containing
-         *     a list of fasting records. This model is used when returning multiple
-         *     fasting entries from API endpoints.
-         *
-         *     Attributes:
-         *         records: A list of HealthFastingRead objects representing individual
-         *         fasting records.
-         */
-        HealthFastingListResponse: {
-            /**
-             * Num Records
-             * @description Number of records in this response
-             */
-            num_records?: number | null;
-            /**
-             * Page Number
-             * @description Current page number
-             */
-            page_number?: number | null;
-            /**
-             * Records
-             * @description List of fasting records
-             */
-            records: components["schemas"]["HealthFastingRead"][];
-            /**
-             * Total
-             * @description Total number of health records for the user
-             */
-            total: number;
-        };
-        /**
          * HealthFastingRead
          * @description Schema for reading a fasting record.
          *
@@ -7027,36 +6941,6 @@ export interface components {
              * @description Number of bowel movements recorded today
              */
             count: number;
-        };
-        /**
-         * HealthPoopListResponse
-         * @description Response model for listing health poop records.
-         *
-         *     Attributes:
-         *         records: A list of HealthPoopRead objects representing
-         *             individual bowel movement records.
-         */
-        HealthPoopListResponse: {
-            /**
-             * Num Records
-             * @description Number of records in this response
-             */
-            num_records?: number | null;
-            /**
-             * Page Number
-             * @description Current page number
-             */
-            page_number?: number | null;
-            /**
-             * Records
-             * @description List of health poop records
-             */
-            records: components["schemas"]["HealthPoopRead"][];
-            /**
-             * Total
-             * @description Total number of health records for the user
-             */
-            total: number;
         };
         /**
          * HealthPoopRead
@@ -7336,40 +7220,6 @@ export interface components {
              * @description Total sleep duration in seconds
              */
             total_sleep_seconds?: number | null;
-        };
-        /**
-         * HealthSleepListResponse
-         * @description Response model for listing health sleep records.
-         *
-         *     Extends the base HealthListResponse to provide a typed response containing
-         *     a list of sleep records. This model is used when returning multiple sleep
-         *     entries from API endpoints.
-         *
-         *     Attributes:
-         *         records: A list of HealthSleepRead objects representing individual
-         *             sleep records.
-         */
-        HealthSleepListResponse: {
-            /**
-             * Num Records
-             * @description Number of records in this response
-             */
-            num_records?: number | null;
-            /**
-             * Page Number
-             * @description Current page number
-             */
-            page_number?: number | null;
-            /**
-             * Records
-             * @description List of health sleep records
-             */
-            records: components["schemas"]["HealthSleepRead"][];
-            /**
-             * Total
-             * @description Total number of health records for the user
-             */
-            total: number;
         };
         /**
          * HealthSleepRead
@@ -7819,40 +7669,6 @@ export interface components {
             steps?: number | null;
         };
         /**
-         * HealthStepsListResponse
-         * @description Response model for listing health steps records.
-         *
-         *     Extends the base HealthListResponse to provide a typed response containing
-         *     a list of steps records. This model is used when returning multiple steps
-         *     entries from API endpoints.
-         *
-         *     Attributes:
-         *         records: A list of HealthStepsRead objects representing individual
-         *             steps records.
-         */
-        HealthStepsListResponse: {
-            /**
-             * Num Records
-             * @description Number of records in this response
-             */
-            num_records?: number | null;
-            /**
-             * Page Number
-             * @description Current page number
-             */
-            page_number?: number | null;
-            /**
-             * Records
-             * @description List of health steps records
-             */
-            records: components["schemas"]["HealthStepsRead"][];
-            /**
-             * Total
-             * @description Total number of health records for the user
-             */
-            total: number;
-        };
-        /**
          * HealthStepsRead
          * @description Schema for reading health steps records.
          *
@@ -8053,36 +7869,6 @@ export interface components {
             amount_ml?: number | null;
         };
         /**
-         * HealthWaterListResponse
-         * @description Response model for listing health water intake records.
-         *
-         *     Attributes:
-         *         records: A list of HealthWaterRead objects representing
-         *             individual water intake records.
-         */
-        HealthWaterListResponse: {
-            /**
-             * Num Records
-             * @description Number of records in this response
-             */
-            num_records?: number | null;
-            /**
-             * Page Number
-             * @description Current page number
-             */
-            page_number?: number | null;
-            /**
-             * Records
-             * @description List of health water intake records
-             */
-            records: components["schemas"]["HealthWaterRead"][];
-            /**
-             * Total
-             * @description Total number of health records for the user
-             */
-            total: number;
-        };
-        /**
          * HealthWaterRead
          * @description Schema for reading a water intake record.
          *
@@ -8224,40 +8010,6 @@ export interface components {
              * @description Weight in kilograms
              */
             weight?: number | null;
-        };
-        /**
-         * HealthWeightListResponse
-         * @description Response model for listing health weight records.
-         *
-         *     Extends the base HealthListResponse to provide a typed response containing
-         *     a list of weight records. This model is used when returning multiple weight
-         *     entries from API endpoints.
-         *
-         *     Attributes:
-         *         records: A list of HealthWeightRead objects representing individual
-         *             weight records.
-         */
-        HealthWeightListResponse: {
-            /**
-             * Num Records
-             * @description Number of records in this response
-             */
-            num_records?: number | null;
-            /**
-             * Page Number
-             * @description Current page number
-             */
-            page_number?: number | null;
-            /**
-             * Records
-             * @description List of health weight records
-             */
-            records: components["schemas"]["HealthWeightRead"][];
-            /**
-             * Total
-             * @description Total number of health records for the user
-             */
-            total: number;
         };
         /**
          * HealthWeightRead
@@ -9660,10 +9412,101 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[HealthFastingRead] */
+        Page_HealthFastingRead_: {
+            /** Items */
+            items: components["schemas"]["HealthFastingRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[HealthPoopRead] */
+        Page_HealthPoopRead_: {
+            /** Items */
+            items: components["schemas"]["HealthPoopRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[HealthSleepRead] */
+        Page_HealthSleepRead_: {
+            /** Items */
+            items: components["schemas"]["HealthSleepRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[HealthStepsRead] */
+        Page_HealthStepsRead_: {
+            /** Items */
+            items: components["schemas"]["HealthStepsRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[HealthWaterRead] */
+        Page_HealthWaterRead_: {
+            /** Items */
+            items: components["schemas"]["HealthWaterRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[HealthWeightRead] */
+        Page_HealthWeightRead_: {
+            /** Items */
+            items: components["schemas"]["HealthWeightRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+        };
         /** Page[NotificationRead] */
         Page_NotificationRead_: {
             /** Items */
             items: components["schemas"]["NotificationRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[UsersRead] */
+        Page_UsersRead_: {
+            /** Items */
+            items: components["schemas"]["UsersRead"][];
             /** Next */
             next?: number | null;
             /** Num Records */
@@ -11595,38 +11438,6 @@ export interface components {
              * @description User ID
              */
             user_id: number;
-        };
-        /**
-         * UsersListResponse
-         * @description Response model for paginated user listing.
-         *
-         *     Attributes:
-         *         total: Total number of user records.
-         *         num_records: Number of records in this response.
-         *         page_number: Current page number.
-         *         records: List of user records.
-         */
-        UsersListResponse: {
-            /**
-             * Num Records
-             * @description Number of records in this response
-             */
-            num_records?: number | null;
-            /**
-             * Page Number
-             * @description Current page number
-             */
-            page_number?: number | null;
-            /**
-             * Records
-             * @description List of user records
-             */
-            records: components["schemas"]["UsersRead"][];
-            /**
-             * Total
-             * @description Total number of user records
-             */
-            total: number;
         };
         /**
          * UsersMe
@@ -14922,12 +14733,10 @@ export interface operations {
     read_health_fasting_all_pagination_api_v1_health_fasting_get: {
         parameters: {
             query?: {
-                /** @description Pagination page number */
-                page_number?: number | null;
-                /** @description Number of records per page */
-                num_records?: number | null;
                 /** @description Filter by goal interval */
                 interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+                page_number?: number | null;
+                num_records?: number | null;
             };
             header?: never;
             path?: never;
@@ -14941,7 +14750,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthFastingListResponse"];
+                    "application/json": components["schemas"]["Page_HealthFastingRead_"];
                 };
             };
             /** @description Validation Error */
@@ -15231,12 +15040,10 @@ export interface operations {
     read_health_poop_all_pagination_api_v1_health_poop_get: {
         parameters: {
             query?: {
-                /** @description Pagination page number */
-                page_number?: number | null;
-                /** @description Number of records per page */
-                num_records?: number | null;
                 /** @description Filter by goal interval */
                 interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+                page_number?: number | null;
+                num_records?: number | null;
             };
             header?: never;
             path?: never;
@@ -15250,7 +15057,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthPoopListResponse"];
+                    "application/json": components["schemas"]["Page_HealthPoopRead_"];
                 };
             };
             /** @description Validation Error */
@@ -15438,12 +15245,10 @@ export interface operations {
     read_health_sleep_all_pagination_api_v1_health_sleep_get: {
         parameters: {
             query?: {
-                /** @description Pagination page number */
-                page_number?: number | null;
-                /** @description Number of records per page */
-                num_records?: number | null;
                 /** @description Filter by goal interval */
                 interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+                page_number?: number | null;
+                num_records?: number | null;
             };
             header?: never;
             path?: never;
@@ -15457,7 +15262,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthSleepListResponse"];
+                    "application/json": components["schemas"]["Page_HealthSleepRead_"];
                 };
             };
             /** @description Validation Error */
@@ -15634,12 +15439,10 @@ export interface operations {
     read_health_steps_all_pagination_api_v1_health_steps_get: {
         parameters: {
             query?: {
-                /** @description Pagination page number */
-                page_number?: number | null;
-                /** @description Number of records per page */
-                num_records?: number | null;
                 /** @description Filter by goal interval */
                 interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+                page_number?: number | null;
+                num_records?: number | null;
             };
             header?: never;
             path?: never;
@@ -15653,7 +15456,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthStepsListResponse"];
+                    "application/json": components["schemas"]["Page_HealthStepsRead_"];
                 };
             };
             /** @description Validation Error */
@@ -15872,12 +15675,10 @@ export interface operations {
     read_health_water_all_pagination_api_v1_health_water_get: {
         parameters: {
             query?: {
-                /** @description Pagination page number */
-                page_number?: number | null;
-                /** @description Number of records per page */
-                num_records?: number | null;
                 /** @description Filter by goal interval */
                 interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+                page_number?: number | null;
+                num_records?: number | null;
             };
             header?: never;
             path?: never;
@@ -15891,7 +15692,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthWaterListResponse"];
+                    "application/json": components["schemas"]["Page_HealthWaterRead_"];
                 };
             };
             /** @description Validation Error */
@@ -16039,12 +15840,10 @@ export interface operations {
     read_health_weight_all_pagination_api_v1_health_weight_get: {
         parameters: {
             query?: {
-                /** @description Pagination page number */
-                page_number?: number | null;
-                /** @description Number of records per page */
-                num_records?: number | null;
                 /** @description Filter by goal interval */
                 interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+                page_number?: number | null;
+                num_records?: number | null;
             };
             header?: never;
             path?: never;
@@ -16058,7 +15857,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthWeightListResponse"];
+                    "application/json": components["schemas"]["Page_HealthWeightRead_"];
                 };
             };
             /** @description Validation Error */
@@ -17244,7 +17043,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersGoalProgress"][] | null;
+                    "application/json": components["schemas"]["UsersGoalProgress"][];
                 };
             };
             /** @description Unexpected error */
@@ -18591,7 +18390,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserPublicRead"] | null;
+                    "application/json": components["schemas"]["UserPublicRead"];
                 };
             };
             /** @description Validation Error */
@@ -19536,10 +19335,6 @@ export interface operations {
     read_users_all_pagination_api_v1_users_get: {
         parameters: {
             query?: {
-                /** @description Pagination page number */
-                page_number?: number | null;
-                /** @description Number of records per page */
-                num_records?: number | null;
                 /** @description Filter by inactive status */
                 show_inactive?: boolean | null;
                 /** @description Filter by email verification status */
@@ -19552,6 +19347,8 @@ export interface operations {
                 show_local_auth?: boolean | null;
                 /** @description Keep only users whose username contains this text */
                 username?: string | null;
+                page_number?: number | null;
+                num_records?: number | null;
             };
             header?: never;
             path?: never;
@@ -19565,7 +19362,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersListResponse"];
+                    "application/json": components["schemas"]["Page_UsersRead_"];
                 };
             };
             /** @description Validation Error */
@@ -19647,7 +19444,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersRead"] | null;
+                    "application/json": components["schemas"]["UsersRead"];
                 };
             };
             /** @description Validation Error */
@@ -19687,7 +19484,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserPublicRead"] | null;
+                    "application/json": components["schemas"]["UserPublicRead"];
                 };
             };
             /** @description Validation Error */
@@ -19767,7 +19564,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersRead"] | null;
+                    "application/json": components["schemas"]["UsersRead"];
                 };
             };
             /** @description Validation Error */
@@ -19807,7 +19604,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersRead"] | null;
+                    "application/json": components["schemas"]["UsersRead"];
                 };
             };
             /** @description Validation Error */

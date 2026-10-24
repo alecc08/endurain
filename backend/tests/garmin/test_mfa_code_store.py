@@ -72,3 +72,13 @@ class TestGarminMFACodeStoreUnavailable:
     def test_delete_code_swallows_outage(self):
         # delete_code is best-effort (entries expire via TTL), so an outage must not raise.
         self._failing_store().delete_code(1)
+
+
+def test_the_code_is_not_stored_in_plaintext():
+    state = MemoryState()
+    mfa_code_store.GarminMFACodeStore(state=state).add_code(1, "123456")
+
+    stored = state.get(core_attempt_state.key("garmin", "mfa:code", "1"))
+
+    assert stored is not None
+    assert b"123456" not in stored

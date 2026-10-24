@@ -27,6 +27,7 @@ def _client(user_id: int = 1):
     core_exceptions.register_exception_handlers(app)
     app.include_router(router.router, prefix="/garminconnect")
     app.dependency_overrides[auth_deps.get_sub_from_access_token] = lambda: user_id
+    app.dependency_overrides[auth_deps.check_scopes] = lambda: None
     app.dependency_overrides[garmin_dependencies.get_garmin_link_state_store] = lambda: link_states
     app.dependency_overrides[garmin_dependencies.get_garmin_mfa_code_store] = lambda: mfa_code_store.GarminMFACodeStore(
         state=state
@@ -46,7 +47,7 @@ def test_link_returns_pending_at_once_and_starts_the_login(mock_start):
     assert response.status_code == 202
     assert response.json() == {"status": "pending", "reason": None}
     assert link_states.get(1).status == garmin_constants.LinkStatus.PENDING
-    assert mock_start.submit.call_args.args[1:3] == (1, "me@example.com")
+    assert mock_start.submit.call_args.args[2:4] == (1, "me@example.com")
 
 
 @patch("modules.garmin.link_service._LINK_EXECUTOR")
@@ -177,3 +178,21 @@ def test_a_reversed_health_range_is_a_client_error():
     response = client.post("/garminconnect/health", params={"start_date": "2026-01-02", "end_date": "2026-01-01"})
 
     assert response.status_code == 400
+
+
+def _route_scopes(path: str, method: str) -> set[str]:
+    import modules.garmin.router as router
+
+    route = next(r for r in router.router.routes if r.path == path and method in r.methods)
+    return {scope for dep in route.dependant.dependencies for scope in dep.own_oauth_scopes or []}
+
+
+def test_each_route_requires_the_scope_of_what_it_touches():
+    assert _route_scopes("/link", "POST") == {"profile"}
+    assert _route_scopes("/link", "DELETE") == {"profile"}
+    assert _route_scopes("/mfa", "POST") == {"profile"}
+    assert _route_scopes("/link/status", "GET") == {"profile"}
+    assert _route_scopes("/sync/{kind}", "GET") == {"profile"}
+    assert _route_scopes("/activities", "POST") == {"activities:write"}
+    assert _route_scopes("/gear", "POST") == {"gears:write"}
+    assert _route_scopes("/health", "POST") == {"health:write"}

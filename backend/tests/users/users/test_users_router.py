@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 import core.database as core_database
 import core.dependencies as core_dependencies
 import core.exceptions as core_exceptions
+import core.pagination as core_pagination
 import modules.auth.dependencies as auth_dependencies
 import modules.auth.identity_service as auth_identity_service
 import modules.users.users.schema as users_schema
@@ -39,7 +40,6 @@ def client(mock_db, identity_service):
     app.dependency_overrides[core_database.get_db] = lambda: mock_db
     app.dependency_overrides[core_dependencies.get_storage] = lambda: MagicMock()
     app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: identity_service
-    app.dependency_overrides[core_dependencies.validate_pagination_values_on_query] = lambda: None
     return TestClient(app)
 
 
@@ -59,14 +59,12 @@ def _user(user_id: int, **overrides) -> users_schema.UsersRead:
 class TestReadUsers:
     @patch(f"{_SERVICE}.list_users")
     def test_list_passes_the_query_through(self, mock_list, client, mock_db, identity_service):
-        mock_list.return_value = users_schema.UsersListResponse(
-            total=1, num_records=10, page_number=1, records=[_user(1, name="Alice")]
-        )
+        mock_list.return_value = core_pagination.Page(items=[_user(1, name="Alice")], total=1, page=1, num_records=10)
 
         response = client.get("/users?page_number=1&num_records=10&show_external_auth=false")
 
         assert response.status_code == 200
-        assert response.json()["records"][0]["name"] == "Alice"
+        assert response.json()["items"][0]["name"] == "Alice"
         mock_list.assert_called_once()
         assert mock_list.call_args.args == (identity_service, mock_db)
         assert mock_list.call_args.kwargs["page_number"] == 1
@@ -84,16 +82,15 @@ class TestReadUsers:
         assert response.status_code == 200
         assert [u["username"] for u in response.json()] == ["testuser1", "testuser2"]
 
-    @patch(f"{_SERVICE}.get_user_by_username")
-    def test_exact_username_not_found_is_null(self, mock_get, client):
-        mock_get.return_value = None
+    @patch(f"{_SERVICE}.require_user_by_username")
+    def test_exact_username_not_found_is_404(self, mock_get, client):
+        mock_get.side_effect = core_exceptions.NotFoundError("User not found")
 
         response = client.get("/users/username/nonexistent")
 
-        assert response.status_code == 200
-        assert response.json() is None
+        assert response.status_code == 404
 
-    @patch(f"{_SERVICE}.get_user_by_email")
+    @patch(f"{_SERVICE}.require_user_by_email")
     def test_email_found(self, mock_get, client):
         mock_get.return_value = _user(1, email="test@example.com")
 
@@ -101,7 +98,7 @@ class TestReadUsers:
 
         assert response.json()["email"] == "test@example.com"
 
-    @patch(f"{_SERVICE}.get_user")
+    @patch(f"{_SERVICE}.require_user")
     def test_full_record_by_id_is_served_on_the_admin_route(self, mock_get, client):
         mock_get.return_value = _user(42, name="ID User")
 
@@ -118,6 +115,12 @@ class TestReadUsers:
 
         assert response.status_code == 200
         assert response.json()["id"] == 42
+
+    @patch(f"{_SERVICE}.get_public_profile")
+    def test_id_not_found_is_404(self, mock_get, client):
+        mock_get.side_effect = core_exceptions.NotFoundError("User not found")
+
+        assert client.get("/users/id/42").status_code == 404
 
     def test_id_must_be_positive(self, client):
         assert client.get("/users/id/0").status_code == 422

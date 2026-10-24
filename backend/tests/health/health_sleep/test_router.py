@@ -2,6 +2,7 @@ from datetime import date as datetime_date
 from unittest.mock import patch
 
 import core.exceptions as core_exceptions
+import core.pagination as core_pagination
 import modules.health.health_sleep.schema as health_sleep_schema
 
 _SERVICE = "modules.health.health_sleep.router.health_sleep_service"
@@ -17,8 +18,8 @@ def _record(record_id: int = 1, day: int = 15, seconds: int = 28800) -> health_s
 class TestReadHealthSleepAll:
     @patch(f"{_SERVICE}.list_health_sleep")
     def test_returns_the_page_and_total(self, mock_list, fast_api_client, fast_api_app):
-        mock_list.return_value = health_sleep_schema.HealthSleepListResponse(
-            total=2, records=[_record(1, 15, 28800), _record(2, 16, 30000)]
+        mock_list.return_value = core_pagination.Page(
+            items=[_record(1, 15, 28800), _record(2, 16, 30000)], total=2, page=1, num_records=25
         )
 
         response = fast_api_client.get("/health_sleep", headers=_HEADERS)
@@ -26,32 +27,30 @@ class TestReadHealthSleepAll:
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 2
-        assert [r["total_sleep_seconds"] for r in data["records"]] == [28800, 30000]
+        assert [r["total_sleep_seconds"] for r in data["items"]] == [28800, 30000]
 
     @patch(f"{_SERVICE}.list_health_sleep")
     def test_empty(self, mock_list, fast_api_client, fast_api_app):
-        mock_list.return_value = health_sleep_schema.HealthSleepListResponse(total=0, records=[])
+        mock_list.return_value = core_pagination.Page(items=[], total=0, page=1, num_records=25)
 
         response = fast_api_client.get("/health_sleep", headers=_HEADERS)
 
         assert response.status_code == 200
-        assert response.json()["records"] == []
+        assert response.json()["items"] == []
 
     @patch(f"{_SERVICE}.list_health_sleep")
     def test_passes_pagination_and_interval_through(self, mock_list, fast_api_client, fast_api_app):
-        mock_list.return_value = health_sleep_schema.HealthSleepListResponse(
-            total=0, num_records=10, page_number=2, records=[]
-        )
+        mock_list.return_value = core_pagination.Page(items=[], total=0, page=2, num_records=10)
 
         response = fast_api_client.get(
             "/health_sleep?page_number=2&num_records=10&interval=last_30_days", headers=_HEADERS
         )
 
         assert response.status_code == 200
-        args = mock_list.call_args.args
-        assert args[0] == 1
-        assert args[2:4] == (2, 10)
-        assert args[4].value == "last_30_days"
+        args = mock_list.call_args
+        assert args.args[0] == 1
+        assert (args.kwargs["page_number"], args.kwargs["num_records"]) == (2, 10)
+        assert args.kwargs["interval"].value == "last_30_days"
 
 
 class TestCreateHealthSleep:

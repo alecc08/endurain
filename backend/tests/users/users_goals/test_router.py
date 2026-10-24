@@ -105,9 +105,9 @@ class TestGetUserGoalsResults:
 
     @patch("modules.users.users_goals.router.user_goals_progress_service.get_goals_progress")
     def test_get_user_goals_results_none(self, mock_calculate, fast_api_client, fast_api_app):
-        """Test calculation returns null when no goals."""
+        """Test calculation returns an empty list when no goals."""
         # Arrange
-        mock_calculate.return_value = None
+        mock_calculate.return_value = []
 
         # Act
         response = fast_api_client.get(
@@ -117,7 +117,7 @@ class TestGetUserGoalsResults:
 
         # Assert
         assert response.status_code == 200
-        assert response.json() is None
+        assert response.json() == []
 
 
 class TestCreateUserGoal:

@@ -15,8 +15,6 @@ from pydantic import (
     StrictInt,
 )
 
-import modules.health.schema as health_schema
-
 
 class Source(Enum):
     """Enumeration of data sources for water intake records.
@@ -93,17 +91,3 @@ class HealthWaterUpdate(HealthWaterRead):
     Inherits from HealthWaterRead for consistency with read
     operations while allowing modifications to water intake data.
     """
-
-
-class HealthWaterListResponse(health_schema.HealthListResponse):
-    """Response model for listing health water intake records.
-
-    Attributes:
-        records: A list of HealthWaterRead objects representing
-            individual water intake records.
-    """
-
-    records: list[HealthWaterRead] = Field(
-        ...,
-        description="List of health water intake records",
-    )

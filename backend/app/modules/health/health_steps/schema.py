@@ -5,8 +5,6 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
-import modules.health.schema as health_schema
-
 
 class Source(Enum):
     """An enumeration representing supported sources for the application.
@@ -77,18 +75,3 @@ class HealthStepsUpdate(HealthStepsRead):
     while allowing modifications to health steps data. This schema is used for
     PUT/PATCH requests to update existing health steps entries.
     """
-
-
-class HealthStepsListResponse(health_schema.HealthListResponse):
-    """Response model for listing health steps records.
-
-    Extends the base HealthListResponse to provide a typed response containing
-    a list of steps records. This model is used when returning multiple steps
-    entries from API endpoints.
-
-    Attributes:
-        records: A list of HealthStepsRead objects representing individual
-            steps records.
-    """
-
-    records: list[HealthStepsRead] = Field(..., description="List of health steps records")

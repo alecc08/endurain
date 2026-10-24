@@ -190,6 +190,15 @@ class TestRunSync:
         assert states.get(1, Kind.GEAR).status == Status.QUEUED
         assert states.begin(1, Kind.GEAR) is False
 
+    def test_a_rate_limited_sync_is_failed_without_a_retry(self, durable, states):
+        states.begin(1, Kind.GEAR)
+        error = garmin_sync_service.garminconnect.GarminConnectTooManyRequestsError("429")
+        with patch.object(garmin_sync_service.garmin_gear_service, "get_user_gear", side_effect=error):
+            garmin_sync_service.run_sync(garmin_events.SyncRequestedPayload(user_id=1, kind=Kind.GEAR), states)
+
+        assert states.get(1, Kind.GEAR).status == Status.FAILED
+        assert states.begin(1, Kind.GEAR) is True
+
     def test_a_sync_that_did_not_run_is_recorded_as_failed_without_a_retry(self, states):
         states.begin(1, Kind.GEAR)
         with patch.object(garmin_sync_service.garmin_gear_service, "get_user_gear", return_value=False):

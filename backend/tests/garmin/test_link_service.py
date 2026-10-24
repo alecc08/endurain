@@ -1,5 +1,6 @@
 """Tests for the Garmin Connect link flow in garmin_link_service."""
 
+from concurrent.futures import Future
 from unittest.mock import MagicMock, patch
 
 import garminconnect
@@ -140,7 +141,41 @@ def test_starting_a_link_hands_it_to_the_dedicated_executor(stores):
     with patch.object(garmin_link_service, "_LINK_EXECUTOR") as executor:
         garmin_link_service.start_link(1, garmin_schema.GarminLogin(username="me", password="pw"), *stores)
 
-    executor.submit.assert_called_once_with(garmin_link_service.link_garminconnect, 1, "me", "pw", *stores, False)
+    executor.submit.assert_called_once()
+    assert executor.submit.call_args.args[1:] == (garmin_link_service.link_garminconnect, 1, "me", "pw", *stores, False)
+
+
+def test_the_link_runs_under_a_copy_of_the_callers_context(stores):
+    with patch.object(garmin_link_service, "_LINK_EXECUTOR") as executor:
+        garmin_link_service.start_link(1, garmin_schema.GarminLogin(username="me", password="pw"), *stores)
+
+    assert getattr(executor.submit.call_args.args[0], "__self__", None).__class__.__name__ == "Context"
+
+
+class TestFinishLink:
+    def test_a_failed_link_is_logged_and_gives_its_slot_back(self, caplog):
+        future = Future()
+        future.set_exception(RuntimeError("state down"))
+        assert garmin_link_service._link_slots.acquire(blocking=False)
+
+        with caplog.at_level("ERROR"):
+            garmin_link_service._finish_link(future)
+
+        assert "Garmin Connect link failed" in caplog.text
+        assert garmin_link_service._link_slots.acquire(blocking=False)
+        garmin_link_service._link_slots.release()
+
+    def test_a_cancelled_link_gives_its_slot_back_quietly(self, caplog):
+        future = Future()
+        future.cancel()
+        assert garmin_link_service._link_slots.acquire(blocking=False)
+
+        with caplog.at_level("ERROR"):
+            garmin_link_service._finish_link(future)
+
+        assert caplog.text == ""
+        assert garmin_link_service._link_slots.acquire(blocking=False)
+        garmin_link_service._link_slots.release()
 
 
 def test_a_link_beyond_the_capacity_is_refused_and_leaves_no_attempt_behind(stores):

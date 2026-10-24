@@ -156,12 +156,14 @@ class TestListHealthFasting:
     @patch(f"{_CRUD}.get_health_fasting_number_by_user_id", return_value=0)
     @patch(f"{_PREFIX}.users_integration.local_today", return_value=date(2024, 1, 15))
     def test_resolves_the_interval_in_the_users_calendar(self, _today, mock_number, mock_list, mock_db):
-        result = health_fasting_service.list_health_fasting(1, mock_db, 2, 10, health_constants.Interval.LAST_30_DAYS)
+        result = health_fasting_service.list_health_fasting(
+            1, mock_db, page_number=2, num_records=10, interval=health_constants.Interval.LAST_30_DAYS
+        )
 
         since = date(2023, 12, 16)
         mock_number.assert_called_once_with(1, mock_db, since)
         mock_list.assert_called_once_with(1, mock_db, 2, 10, since)
-        assert (result.total, result.page_number, result.num_records) == (0, 2, 10)
+        assert (result.total, result.page, result.num_records) == (0, 2, 10)
 
     @patch(f"{_CRUD}.get_health_fasting_by_user_id", return_value=[])
     @patch(f"{_CRUD}.get_health_fasting_number_by_user_id", return_value=0)

@@ -6,6 +6,8 @@ import core.database as core_database
 import core.scheduler as core_scheduler
 import modules.activities.activity_thumbnail.service as activity_thumbnail_service
 
+SWEEP_LOCK_NAME = "thumbnail_sweep"
+
 
 def generate_missing_thumbnails() -> None:
     """Generate thumbnails for activities whose stored key is missing.
@@ -33,14 +35,12 @@ def sweep_orphaned_thumbnails() -> None:
     """Delete thumbnail blobs whose activity no longer exists.
 
     The storage-side net for the cleanup subscriber. Scheduler-invoked, so this
-    entry point resolves the providers and opens the session.
+    entry point resolves the providers and opens the session; the scheduler's
+    lock keeps it to one replica.
     """
     platform = platform_runtime.get_active_platform()
-    with platform.lock.try_acquire("thumbnail_sweep") as acquired:
-        if not acquired:
-            return
-        with core_database.SessionLocal() as db:
-            activity_thumbnail_service.sweep_orphaned_thumbnails(platform.storage, db)
+    with core_database.SessionLocal() as db:
+        activity_thumbnail_service.sweep_orphaned_thumbnails(platform.storage, db)
 
 
 def recurring_jobs() -> tuple[core_scheduler.ScheduledJob, ...]:
@@ -59,6 +59,7 @@ def recurring_jobs() -> tuple[core_scheduler.ScheduledJob, ...]:
             sweep_orphaned_thumbnails,
             1440,
             "remove thumbnails whose activity is gone",
+            lock_name=SWEEP_LOCK_NAME,
         ),
     )
 

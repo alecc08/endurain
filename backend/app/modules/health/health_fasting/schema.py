@@ -16,8 +16,6 @@ from pydantic import (
     model_validator,
 )
 
-import modules.health.schema as health_schema
-
 
 class Source(Enum):
     """Enumeration of data sources for fasting records.
@@ -210,24 +208,6 @@ class HealthFastingComplete(BaseModel):
         extra="forbid",
         validate_assignment=True,
         use_enum_values=True,
-    )
-
-
-class HealthFastingListResponse(health_schema.HealthListResponse):
-    """Response model for listing health fasting records.
-
-    Extends the base HealthListResponse to provide a typed response containing
-    a list of fasting records. This model is used when returning multiple
-    fasting entries from API endpoints.
-
-    Attributes:
-        records: A list of HealthFastingRead objects representing individual
-        fasting records.
-    """
-
-    records: list[HealthFastingRead] = Field(
-        ...,
-        description="List of fasting records",
     )
 
 

@@ -4,7 +4,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import core.exceptions as core_exceptions
-from modules.health.health_water.schema import HealthWaterListResponse, HealthWaterRead
+import core.pagination as core_pagination
+from modules.health.health_water.schema import HealthWaterRead
 
 _SERVICE = "modules.health.health_water.router.health_water_service"
 _HEADERS = {"Authorization": "Bearer x"}
@@ -12,7 +13,6 @@ _HEADERS = {"Authorization": "Bearer x"}
 
 def _build_app(mock_db):
     import core.database as core_db
-    import core.dependencies as core_deps
     import modules.auth.dependencies as auth_deps
     import modules.health.health_water.router as router
 
@@ -28,7 +28,6 @@ def _build_app(mock_db):
 
     app.dependency_overrides[auth_deps.check_scopes] = _mock
     app.dependency_overrides[auth_deps.get_sub_from_access_token] = _uid
-    app.dependency_overrides[core_deps.validate_pagination_values_on_query] = _mock
     app.dependency_overrides[core_db.get_db] = lambda: mock_db
     return app
 
@@ -36,7 +35,9 @@ def _build_app(mock_db):
 class TestReadHealthWaterAllPagination:
     @patch(f"{_SERVICE}.list_health_water")
     def test_list_success(self, mock_list, mock_db):
-        mock_list.return_value = HealthWaterListResponse(total=1, records=[HealthWaterRead(id=1, user_id=1)])
+        mock_list.return_value = core_pagination.Page(
+            items=[HealthWaterRead(id=1, user_id=1)], total=1, page=1, num_records=25
+        )
 
         response = TestClient(_build_app(mock_db)).get("/health_water", headers=_HEADERS)
 
@@ -45,25 +46,25 @@ class TestReadHealthWaterAllPagination:
 
     @patch(f"{_SERVICE}.list_health_water")
     def test_list_empty(self, mock_list, mock_db):
-        mock_list.return_value = HealthWaterListResponse(total=0, records=[])
+        mock_list.return_value = core_pagination.Page(items=[], total=0, page=1, num_records=25)
 
         response = TestClient(_build_app(mock_db)).get("/health_water", headers=_HEADERS)
 
         assert response.status_code == 200
-        assert response.json()["records"] == []
+        assert response.json()["items"] == []
 
     @patch(f"{_SERVICE}.list_health_water")
     def test_passes_pagination_and_interval_through(self, mock_list, mock_db):
-        mock_list.return_value = HealthWaterListResponse(total=0, records=[])
+        mock_list.return_value = core_pagination.Page(items=[], total=0, page=1, num_records=25)
 
         TestClient(_build_app(mock_db)).get(
             "/health_water?page_number=2&num_records=10&interval=last_30_days", headers=_HEADERS
         )
 
-        args = mock_list.call_args.args
-        assert args[0] == 1
-        assert args[2:4] == (2, 10)
-        assert args[4].value == "last_30_days"
+        args = mock_list.call_args
+        assert args.args[0] == 1
+        assert (args.kwargs["page_number"], args.kwargs["num_records"]) == (2, 10)
+        assert args.kwargs["interval"].value == "last_30_days"
 
 
 class TestCreateHealthWater:

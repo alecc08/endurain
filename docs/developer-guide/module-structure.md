@@ -765,10 +765,8 @@ limitations rather than half-done:
   separate composition surfaces on purpose: they have different consumers
   (the HTTP app and Alembic), and the legacy model scan keeps the model seam
   distinct until the unconverted modules are gone.
-- **Namespace-level code in `health`.** `health` publishes `constants.py` (the shared `Interval`),
-  `computation.py` (pure date and SQL helpers) and `schema.py` (the shared `HealthListResponse` base),
-  and nothing else. `schema.py` stays because replacing it with `core.pagination.Page` would change
-  the list response every client reads. `health_fasting.crud` and `health_poop.crud` import
+- **Namespace-level code in `health`.** `health` publishes `constants.py` (the shared `Interval`) and
+  `computation.py` (pure date and SQL helpers), and nothing else. `health_fasting.crud` and `health_poop.crud` import
   `computation.local_date_expression` through `_LAYER_EXCEPTIONS`, because day bucketing must be
   written once.
 - **`users` ⇄ `health`.** `health` services read the user's height, timezone and "today" through

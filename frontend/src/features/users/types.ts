@@ -7,7 +7,7 @@ export type UserDto = Schemas['UsersRead']
 export type PublicUserDto = Schemas['UserPublicRead']
 
 /** Raw paginated users list payload. */
-export type UsersListResponseDto = Schemas['UsersListResponse']
+export type UsersListResponseDto = Schemas['Page_UsersRead_']
 
 /** User access tier, mirrored from the backend enum (`regular` | `admin`). */
 export type UserAccessType = Schemas['UserAccessType']

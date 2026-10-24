@@ -14,8 +14,6 @@ from pydantic import (
     model_validator,
 )
 
-import modules.health.schema as health_schema
-
 
 class Source(Enum):
     """Enum representing the source of sleep health data.
@@ -267,18 +265,3 @@ class HealthSleepUpdate(HealthSleepRead):
     Used in PUT/PATCH requests to modify sleep tracking information such as
     sleep duration, quality, and related health metrics.
     """
-
-
-class HealthSleepListResponse(health_schema.HealthListResponse):
-    """Response model for listing health sleep records.
-
-    Extends the base HealthListResponse to provide a typed response containing
-    a list of sleep records. This model is used when returning multiple sleep
-    entries from API endpoints.
-
-    Attributes:
-        records: A list of HealthSleepRead objects representing individual
-            sleep records.
-    """
-
-    records: list[HealthSleepRead] = Field(..., description="List of health sleep records")

@@ -11,6 +11,7 @@ import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 
+import garminconnect
 import jasil.providers as platform_providers
 from sqlalchemy.orm import Session
 
@@ -73,8 +74,9 @@ def _validate_range(start_date: date, end_date: date, max_days: int | None = Non
 def run_sync(payload: garmin_events.SyncRequestedPayload, states: garmin_sync_state_store.GarminSyncStateStore) -> None:
     """Run one queued sync and record its outcome. Blocking; call it from a worker, never a request.
 
-    A sync that could not run because the account is not linked or Garmin Connect rejected its
-    token is recorded as failed and not raised: a retry would meet the same answer.
+    A sync that could not run because the account is not linked, Garmin Connect rejected its
+    token or Garmin Connect is rate limiting the account is recorded as failed and not raised: a
+    retry would meet the same answer.
 
     A sync that raised is retried by a durable worker, so it stays ``QUEUED`` with its claim held:
     releasing the claim would let a second sync start beside the retry, and the claim runs out on
@@ -95,6 +97,13 @@ def run_sync(payload: garmin_events.SyncRequestedPayload, states: garmin_sync_st
             synced = garmin_gear_service.get_user_gear(payload.user_id)
         elif payload.start_date is not None and payload.end_date is not None:
             synced = garmin_health_service.sync_health_for_dates(payload.start_date, payload.end_date, payload.user_id)
+    except garminconnect.GarminConnectTooManyRequestsError:
+        logger.warning(
+            "Garmin Connect refused the sync: too many requests",
+            extra=core_logger.context(user_id=payload.user_id, kind=payload.kind),
+        )
+        states.set_status(payload.user_id, payload.kind, garmin_constants.SyncStatus.FAILED)
+        return
     except Exception:
         retried = core_config.settings.JOBS_ENABLED
         states.set_status(
@@ -110,6 +119,8 @@ def run_sync(payload: garmin_events.SyncRequestedPayload, states: garmin_sync_st
 def _finish_local(future: Future) -> None:
     """Give a local pool slot back and log an exception raised by a sync on the pool."""
     _local_slots.release()
+    if future.cancelled():
+        return
     exc = future.exception()
     if exc is not None:
         logger.error("Garmin Connect sync failed", exc_info=exc)

@@ -2,14 +2,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { PublicUserDto } from '@/features/users/types'
 
-import { apiFetch } from '@/services/http'
+import { apiFetch, HttpError } from '@/services/http'
 import {
   fetchPublicUser,
   mapPublicUser,
   searchPublicUsers,
 } from '@/features/users/services/publicUsers'
 
-vi.mock('@/services/http', () => ({ apiFetch: vi.fn<typeof apiFetch>() }))
+vi.mock('@/services/http', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/http')>()),
+  apiFetch: vi.fn<typeof apiFetch>(),
+}))
 
 const userDto: PublicUserDto = {
   id: 7,
@@ -54,7 +57,7 @@ describe('fetchPublicUser', () => {
   })
 
   it('returns null when the user is not found', async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce(null)
+    vi.mocked(apiFetch).mockRejectedValueOnce(new HttpError(404, 'Not Found'))
     expect(await fetchPublicUser(7)).toBeNull()
   })
 })

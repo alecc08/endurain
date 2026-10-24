@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from jasil.backends.state_memory import MemoryState
 
 import modules.websocket.router as websocket_router
+from core.attempt_state import StateUnavailableError
 from modules.websocket.ticket_store import WsTicketStore
 
 
@@ -76,6 +77,15 @@ class TestWebSocketEndpoint:
         with pytest.raises(WebSocketException) as exc_info:
             await websocket_router.websocket_endpoint(mock_websocket, "bad-ticket", store, mock_manager)
         assert exc_info.value.code == 1008
+        mock_manager.connect.assert_not_awaited()
+
+    async def test_a_state_outage_closes_with_try_again_later(self, mock_websocket, mock_manager):
+        """websocket_endpoint raises WS_1013 when the ticket store cannot be reached."""
+        store = MagicMock()
+        store.consume_ticket.side_effect = StateUnavailableError("down")
+        with pytest.raises(WebSocketException) as exc_info:
+            await websocket_router.websocket_endpoint(mock_websocket, "ticket", store, mock_manager)
+        assert exc_info.value.code == 1013
         mock_manager.connect.assert_not_awaited()
 
     @patch("modules.websocket.service.logger")

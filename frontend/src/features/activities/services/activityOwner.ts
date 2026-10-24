@@ -1,5 +1,5 @@
 import { resolveAvatarUrl } from '@/features/auth/services/mappers'
-import { apiFetch } from '@/services/http'
+import { apiFetch, HttpError } from '@/services/http'
 
 import type { ActivityOwner } from '../types'
 import type { Schemas } from '@/types'
@@ -40,6 +40,13 @@ export async function fetchActivityOwner(
   signal?: AbortSignal,
 ): Promise<ActivityOwner | null> {
   const path = authenticated ? `/users/id/${userId}` : `/public/users/id/${userId}`
-  const dto = await apiFetch<ActivityOwnerDto | null>(path, { auth: authenticated, signal })
-  return dto ? mapActivityOwner(dto) : null
+  try {
+    const dto = await apiFetch<ActivityOwnerDto>(path, { auth: authenticated, signal })
+    return mapActivityOwner(dto)
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 404) {
+      return null
+    }
+    throw error
+  }
 }

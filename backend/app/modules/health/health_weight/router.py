@@ -1,11 +1,11 @@
 """FastAPI router for health weight endpoints."""
 
-from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Security, status
 
 import core.dependencies as core_dependencies
+import core.pagination as core_pagination
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
 import modules.health.constants as health_constants
@@ -18,58 +18,36 @@ router = APIRouter()
 
 @router.get(
     "",
-    response_model=health_weight_schema.HealthWeightListResponse,
+    response_model=core_pagination.Page[health_weight_schema.HealthWeightRead],
     status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:read"])],
 )
 def read_health_weight_all_pagination(
-    _validate_pagination_values_on_query: Annotated[
-        Callable, Depends(core_dependencies.validate_pagination_values_on_query)
-    ],
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    page_number: Annotated[
-        int | None,
-        Query(description="Pagination page number"),
-    ] = None,
-    num_records: Annotated[
-        int | None,
-        Query(description="Number of records per page"),
-    ] = None,
+    page: Annotated[core_pagination.PageParams, Depends(core_pagination.list_page_params)],
     interval: Annotated[
         health_constants.Interval | None,
         Query(description="Filter by goal interval"),
     ] = None,
-) -> health_weight_schema.HealthWeightListResponse:
+) -> core_pagination.Page[health_weight_schema.HealthWeightRead]:
     """Retrieve paginated health weight records for the authenticated user.
 
-    This endpoint fetches health weight data with optional pagination and
-    filtering. Access is restricted to users with the 'health:read' scope.
+    One page of records, newest first, optionally limited to an interval. Access is
+    restricted to users with the 'health:read' scope.
 
     Args:
-        _validate_pagination_values_on_query: Dependency that validates
-            pagination parameters.
-        token_user_id: The ID of the authenticated user extracted from the
-            access token.
+        token_user_id: The ID of the authenticated user extracted from the access token.
         db: Database session for executing queries.
-        page_number: Optional pagination page number to retrieve specific page
-            of results.
-        num_records: Optional number of records per page for pagination.
-        interval: Optional filter to retrieve records within a specific goal
-            interval.
+        page: The requested page and page size.
+        interval: Optional filter to retrieve records within a specific goal interval.
 
     Returns:
-        HealthWeightListResponse: A response object containing:
-            - total: Total count of records matching the filter criteria
-            - num_records: Number of records returned per page
-            - page_number: Current page number
-            - records: List of paginated HealthWeightRead objects
-
-    Raises:
-        HTTPException: If the user lacks required 'health:read' scope or if
-            pagination values are invalid.
+        The page of records with the total matching the interval.
     """
-    return health_weight_service.list_health_weight(token_user_id, db, page_number, num_records, interval)
+    return health_weight_service.list_health_weight(
+        token_user_id, db, page_number=page.page_number, num_records=page.num_records, interval=interval
+    )
 
 
 @router.post(

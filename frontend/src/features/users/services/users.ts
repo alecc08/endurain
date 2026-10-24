@@ -118,7 +118,7 @@ export async function fetchUsers(
   }
   const response = await apiFetch<UsersListResponseDto>(`/users?${params.toString()}`, { signal })
   return {
-    records: (response.records ?? []).map(mapManagedUser),
+    records: response.items.map(mapManagedUser),
     total: response.total,
   }
 }

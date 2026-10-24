@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Request, Security, status
 
 import core.dependencies as core_dependencies
 import core.rate_limit as core_rate_limit
@@ -22,6 +22,7 @@ router = APIRouter()
     "/link",
     status_code=202,
     response_model=garmin_schema.GarminLinkStatus,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def garminconnect_link(
@@ -43,6 +44,7 @@ def garminconnect_link(
 @router.get(
     "/link/status",
     response_model=garmin_schema.GarminLinkStatus,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
 def garminconnect_link_status(
     token_user_id: auth_dependencies.CurrentUserId,
@@ -52,7 +54,11 @@ def garminconnect_link_status(
     return garmin_link_service.get_link_status(token_user_id, link_states)
 
 
-@router.post("/mfa", response_model=garmin_schema.GarminDetail)
+@router.post(
+    "/mfa",
+    response_model=garmin_schema.GarminDetail,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
+)
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def garminconnect_mfa_code(
     request: Request,
@@ -69,6 +75,7 @@ def garminconnect_mfa_code(
     "/activities",
     status_code=202,
     response_model=activity_ingestion_schema.ActivityIngestionJobRead,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["activities:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.PROVIDER_SYNC)
 def garminconnect_retrieve_activities_days(
@@ -88,7 +95,12 @@ def garminconnect_retrieve_activities_days(
     return garmin_sync_service.request_activities_sync(token_user_id, start_date, end_date, storage, db)
 
 
-@router.post("/gear", status_code=202, response_model=garmin_schema.GarminSyncStatus)
+@router.post(
+    "/gear",
+    status_code=202,
+    response_model=garmin_schema.GarminSyncStatus,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["gears:write"])],
+)
 @core_rate_limit.limiter.limit(core_rate_limit.PROVIDER_SYNC)
 def garminconnect_retrieve_gear(
     request: Request,
@@ -104,7 +116,12 @@ def garminconnect_retrieve_gear(
     return garmin_sync_service.request_gear_sync(token_user_id, sync_states, db)
 
 
-@router.post("/health", status_code=202, response_model=garmin_schema.GarminSyncStatus)
+@router.post(
+    "/health",
+    status_code=202,
+    response_model=garmin_schema.GarminSyncStatus,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:write"])],
+)
 @core_rate_limit.limiter.limit(core_rate_limit.PROVIDER_SYNC)
 def garminconnect_retrieve_health_days(
     request: Request,
@@ -123,7 +140,11 @@ def garminconnect_retrieve_health_days(
     return garmin_sync_service.request_health_sync(token_user_id, start_date, end_date, sync_states, db)
 
 
-@router.get("/sync/{kind}", response_model=garmin_schema.GarminSyncStatus)
+@router.get(
+    "/sync/{kind}",
+    response_model=garmin_schema.GarminSyncStatus,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
+)
 def garminconnect_sync_status(
     kind: garmin_constants.SyncKind,
     token_user_id: auth_dependencies.CurrentUserId,
@@ -133,7 +154,12 @@ def garminconnect_sync_status(
     return garmin_sync_service.get_sync_status(token_user_id, kind, sync_states)
 
 
-@router.delete("/link", response_model=None, status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/link",
+    response_model=None,
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
+)
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def garminconnect_unlink(
     request: Request,

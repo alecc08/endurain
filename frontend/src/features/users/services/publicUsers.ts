@@ -1,7 +1,7 @@
 import type { PublicUser, PublicUserDto } from '@/features/users/types'
 
 import { resolveAvatarUrl } from '@/features/auth/services/mappers'
-import { apiFetch } from '@/services/http'
+import { apiFetch, HttpError } from '@/services/http'
 
 /**
  * Maps a raw `UserPublicRead` payload to the {@link PublicUser} model shown on
@@ -30,14 +30,21 @@ export function mapPublicUser(dto: PublicUserDto): PublicUser {
  * @param userId - The profile owner's id.
  * @param signal - Optional abort signal (e.g. TanStack Query cancellation).
  * @returns The public user, or `null` when not found.
- * @throws {HttpError} When the request fails.
+ * @throws {HttpError} When the request fails for a reason other than `404`.
  */
 export async function fetchPublicUser(
   userId: number,
   signal?: AbortSignal,
 ): Promise<PublicUser | null> {
-  const dto = await apiFetch<PublicUserDto | null>(`/users/id/${userId}`, { signal })
-  return dto ? mapPublicUser(dto) : null
+  try {
+    const dto = await apiFetch<PublicUserDto>(`/users/id/${userId}`, { signal })
+    return mapPublicUser(dto)
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 404) {
+      return null
+    }
+    throw error
+  }
 }
 
 /**

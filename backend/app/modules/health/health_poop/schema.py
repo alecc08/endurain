@@ -17,8 +17,6 @@ from pydantic import (
     model_validator,
 )
 
-import modules.health.schema as health_schema
-
 
 class Source(Enum):
     """Enumeration of data sources for poop records.
@@ -166,17 +164,3 @@ class HealthPoopUpdate(HealthPoopRead):
     Inherits from HealthPoopRead for consistency with read
     operations while allowing modifications to poop data.
     """
-
-
-class HealthPoopListResponse(health_schema.HealthListResponse):
-    """Response model for listing health poop records.
-
-    Attributes:
-        records: A list of HealthPoopRead objects representing
-            individual bowel movement records.
-    """
-
-    records: list[HealthPoopRead] = Field(
-        ...,
-        description="List of health poop records",
-    )

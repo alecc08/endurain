@@ -75,7 +75,8 @@ class TestPublicUser:
             public_shareable_links=False, public_shareable_links_user_info=True
         )
 
-        assert users_service.get_public_user(1, mock_db) is None
+        with pytest.raises(core_exceptions.NotFoundError):
+            users_service.get_public_user(1, mock_db)
         mock_crud.get_user_by_id.assert_not_called()
 
     @patch(_CRUD)
@@ -85,7 +86,8 @@ class TestPublicUser:
             public_shareable_links=True, public_shareable_links_user_info=False
         )
 
-        assert users_service.get_public_user(1, mock_db) is None
+        with pytest.raises(core_exceptions.NotFoundError):
+            users_service.get_public_user(1, mock_db)
 
     @patch(_CRUD)
     @patch(_SETTINGS)
@@ -118,10 +120,11 @@ class TestPublicProjection:
         assert users_service.get_public_profile(3, mock_db).id == 3
 
     @patch(_CRUD)
-    def test_missing_user_is_none(self, mock_crud, mock_db):
+    def test_missing_user_is_not_found(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = None
 
-        assert users_service.get_public_profile(3, mock_db) is None
+        with pytest.raises(core_exceptions.NotFoundError):
+            users_service.get_public_profile(3, mock_db)
 
     @patch(_CRUD)
     def test_search_is_bounded_and_projected(self, mock_crud, mock_db):
@@ -145,8 +148,8 @@ class TestListUsers:
         result = users_service.list_users(identity, mock_db, page_number=1, num_records=10, show_external_auth=False)
 
         assert result.total == 2
-        assert [u.name for u in result.records] == ["Bob"]
-        assert result.records[0].mfa_enabled is True
+        assert [u.name for u in result.items] == ["Bob"]
+        assert result.items[0].mfa_enabled is True
 
     @patch(_CRUD)
     def test_local_filter_drops_users_without_a_link(self, mock_crud, mock_db):
@@ -158,7 +161,7 @@ class TestListUsers:
 
         result = users_service.list_users(identity, mock_db, show_local_auth=False)
 
-        assert [u.name for u in result.records] == ["Alice"]
+        assert [u.name for u in result.items] == ["Alice"]
 
 
 class TestCreateUser:
