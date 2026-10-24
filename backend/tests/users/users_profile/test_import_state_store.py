@@ -1,6 +1,10 @@
 """Tests for users_profile.import_state_store (provider-backed)."""
 
+from unittest.mock import MagicMock
+
+import pytest
 from jasil.backends.state_memory import MemoryState
+from jasil.providers import StateBackendUnavailableError
 
 import core.attempt_state as core_attempt_state
 import modules.users.users_profile.constants as profile_constants
@@ -54,3 +58,13 @@ def test_state_lives_under_the_users_namespace():
     _store(state).begin(5)
 
     assert state.get(core_attempt_state.key("users", "profile_import:state", "5")) is not None
+
+
+def test_a_strict_status_raises_when_storage_is_down_and_a_plain_one_does_not():
+    state = MagicMock()
+    state.set.side_effect = StateBackendUnavailableError("down")
+    store = _store(state)
+
+    store.set_status(1, Status.RUNNING)
+    with pytest.raises(core_attempt_state.StateUnavailableError):
+        store.set_status(1, Status.WRITING_FILES, strict=True)

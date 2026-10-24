@@ -75,7 +75,9 @@ class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
     Attributes:
         batch_size: Number of items per batch.
         max_memory_mb: Maximum memory in megabytes.
-        max_file_size_mb: Maximum file size in megabytes.
+        max_file_size_mb: Maximum archive size in megabytes; the upload limit, so no tier raises it.
+        max_json_mb: Maximum size of one JSON data entry in megabytes; parsing it takes several
+            times that in memory.
         max_activities: Maximum number of activities.
         timeout_seconds: Operation timeout in seconds.
         chunk_size: Data chunk size in bytes.
@@ -86,7 +88,8 @@ class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
         self,
         batch_size: int = 125,
         max_memory_mb: int = 1024,
-        max_file_size_mb: int = 1000,
+        max_file_size_mb: int = 500,
+        max_json_mb: int = 128,
         max_activities: int = 10000,
         timeout_seconds: int = 3600,
         chunk_size: int = 8192,
@@ -101,6 +104,7 @@ class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
             enable_memory_monitoring=enable_memory_monitoring,
         )
         self.max_file_size_mb = max_file_size_mb
+        self.max_json_mb = max_json_mb
         self.max_activities = max_activities
 
     @classmethod
@@ -114,7 +118,7 @@ class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
             "high": {
                 "batch_size": 250,
                 "max_memory_mb": 2048,
-                "max_file_size_mb": 2000,
+                "max_json_mb": 256,
                 "max_activities": 20000,
                 "timeout_seconds": 7200,
                 "chunk_size": 8192,
@@ -123,7 +127,7 @@ class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
             "medium": {
                 "batch_size": 125,
                 "max_memory_mb": 1024,
-                "max_file_size_mb": 1000,
+                "max_json_mb": 128,
                 "max_activities": 10000,
                 "timeout_seconds": 3600,
                 "chunk_size": 8192,
@@ -132,7 +136,7 @@ class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
             "low": {
                 "batch_size": 50,
                 "max_memory_mb": 512,
-                "max_file_size_mb": 500,
+                "max_json_mb": 64,
                 "max_activities": 5000,
                 "timeout_seconds": 1800,
                 "chunk_size": 8192,
@@ -369,9 +373,7 @@ class ImportService:
 
             return data
         except json.JSONDecodeError as err:
-            error_msg = f"Failed to parse JSON from {filename}: {err}"
-            logger.error(error_msg)
-            raise JSONParseError(error_msg) from err
+            raise JSONParseError(f"Failed to parse JSON from {filename}: {err}") from err
 
     def _restore_global_activity_components(self, zipf: zipfile.ZipFile) -> None:
         """Load and restore every global activity contribution once."""
@@ -394,7 +396,7 @@ class ImportService:
             zipf: ZipFile instance to read from.
             filename: Name of the entry to read.
             max_bytes: Optional byte cap for this entry. Defaults
-                to the import performance file-size cap.
+                to the import performance JSON cap.
 
         Returns:
             Entry bytes.
@@ -402,7 +404,7 @@ class ImportService:
         Raises:
             FileSizeError: If the entry exceeds the allowed size.
         """
-        limit = max_bytes if max_bytes is not None else self.performance_config.max_file_size_mb * 1024 * 1024
+        limit = max_bytes if max_bytes is not None else self.performance_config.max_json_mb * 1024 * 1024
         info = zipf.getinfo(filename)
         # ``info.file_size`` comes from the central directory and a
         # malicious archive can lie. The declared-size check below
@@ -621,7 +623,11 @@ class ImportService:
             old_gear_id = gear_data.get(field)
             gear_data[field] = gears_id_mapping.get(old_gear_id)
 
-        user_default_gear = user_default_gear_schema.UsersDefaultGearUpdate(**gear_data)
+        try:
+            user_default_gear = user_default_gear_schema.UsersDefaultGearUpdate(**gear_data)
+        except ValidationError:
+            logger.warning("Skipped invalid user default gear")
+            return
         users_default_gear_integration.edit_default_gear(user_default_gear, self.user_id, self.db)
         logger.info("Imported user default gear")
         self.counts["user_default_gear"] += 1
@@ -648,7 +654,11 @@ class ImportService:
             logger.info("No importable user integrations data")
             return
 
-        user_integrations = users_integrations_schema.UsersIntegrationsUpdate(**integrations_data)
+        try:
+            user_integrations = users_integrations_schema.UsersIntegrationsUpdate(**integrations_data)
+        except ValidationError:
+            logger.warning("Skipped invalid user integrations")
+            return
         user_integrations_integration.edit_integrations(user_integrations, self.user_id, self.db)
         logger.info("Imported user integrations")
         self.counts["user_integrations"] += 1
@@ -667,8 +677,17 @@ class ImportService:
             goal_data.pop("id", None)
             goal_data.pop("user_id", None)
 
-            goal = user_goals_schema.UsersGoalCreate(**goal_data)
-            users_goals_integration.create_goal(self.user_id, goal, self.db)
+            try:
+                goal = user_goals_schema.UsersGoalCreate(**goal_data)
+            except ValidationError:
+                logger.warning("Skipped an invalid user goal")
+                continue
+            try:
+                with self.db.begin_nested():
+                    users_goals_integration.create_goal(self.user_id, goal, self.db)
+            except core_exceptions.ConflictError:
+                logger.info("Skipped a user goal the user already has")
+                continue
             self.counts["user_goals"] += 1
 
         logger.info("Imported user goals", extra=core_logger.context(count=self.counts["user_goals"]))
@@ -687,7 +706,11 @@ class ImportService:
         privacy_data.pop("id", None)
         privacy_data.pop("user_id", None)
 
-        user_privacy_settings = users_privacy_settings_schema.UsersPrivacySettingsUpdate(**privacy_data)
+        try:
+            user_privacy_settings = users_privacy_settings_schema.UsersPrivacySettingsUpdate(**privacy_data)
+        except ValidationError:
+            logger.warning("Skipped invalid user privacy settings")
+            return
         users_privacy_settings_integration.edit_privacy_settings(self.user_id, user_privacy_settings, self.db)
         logger.info("Imported user privacy settings")
         self.counts["user_privacy_settings"] += 1
@@ -981,7 +1004,11 @@ class ImportService:
                         except (ValueError, TypeError):
                             health_weight[field] = None
 
-                data = health_weight_schema.HealthWeightCreate(**health_weight)
+                try:
+                    data = health_weight_schema.HealthWeightCreate(**health_weight)
+                except ValidationError:
+                    logger.warning("Skipped an invalid health weight record")
+                    continue
                 health_weight_integration.upsert_health_weight(self.user_id, data, self.db)
                 self.counts["health_weight"] += 1
             logger.info("Imported health weight records", extra=core_logger.context(count=self.counts["health_weight"]))
@@ -1014,7 +1041,11 @@ class ImportService:
                 else:
                     target_data.pop("id", None)
 
-                target = health_targets_schema.HealthTargetsUpdate(**target_data)
+                try:
+                    target = health_targets_schema.HealthTargetsUpdate(**target_data)
+                except ValidationError:
+                    logger.warning("Skipped invalid health targets")
+                    continue
                 health_targets_integration.edit_health_targets(target, self.user_id, self.db)
                 self.counts["health_targets"] += 1
             logger.info("Imported health targets", extra=core_logger.context(count=self.counts["health_targets"]))
@@ -1143,7 +1174,8 @@ class ImportService:
                                 extra=core_logger.context(file_name=new_file_name, detail=err.detail),
                             )
                             continue
-                        activity_media_integration.store_media_blob(
+                        await asyncio.to_thread(
+                            activity_media_integration.store_media_blob,
                             new_id,
                             suffix,
                             ext,
@@ -1200,5 +1232,7 @@ class ImportService:
                         extra=core_logger.context(file_name=new_file_name, detail=err.detail),
                     )
                     continue
-                users_integration.store_user_photo(self.user_id, ext, file_bytes, self.storage, self.db)
+                await asyncio.to_thread(
+                    users_integration.store_user_photo, self.user_id, ext, file_bytes, self.storage, self.db
+                )
                 self.counts["user_images"] += 1

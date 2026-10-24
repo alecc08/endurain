@@ -5,8 +5,6 @@ runs the profile export and import. Authentication concerns (sessions, MFA, iden
 links) stay behind the auth boundary and are called straight from the router.
 """
 
-import os
-from collections.abc import Generator
 from typing import TYPE_CHECKING
 
 import jasil.providers as platform_providers
@@ -19,6 +17,7 @@ import modules.users.users.schema as users_schema
 import modules.users.users_integrations.integration_service as user_integrations_integration
 import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
+import modules.users.users_profile.constants as profile_constants
 import modules.users.users_profile.exceptions as profile_exceptions
 import modules.users.users_profile.export_service as profile_export_service
 import modules.users.users_profile.utils as profile_utils
@@ -206,21 +205,19 @@ def delete_account(
     logger.info("Account deleted by its owner", extra=core_logger.context(user_id=user_id))
 
 
-def export_profile(
-    user_id: int, storage: platform_providers.StorageProvider, db: Session
-) -> tuple[Generator[bytes], int]:
-    """Build the export of the user's profile data as a ZIP archive and prepare it for streaming.
+def stage_export(user_id: int, storage: platform_providers.StorageProvider, db: Session) -> int:
+    """Build the export of the user's profile data as a ZIP archive and stage it for download.
 
-    The archive is complete before this returns, so every failure surfaces as an error response
-    rather than as a download that stops half way.
+    The archive is complete before it is staged, so a failure never leaves a download that stops
+    half way. It is built in a temporary file and streamed into storage, so it is never held in memory.
 
     Args:
-        user_id: The authenticated user.
+        user_id: The exporting user.
         storage: The platform storage provider.
         db: Database session.
 
     Returns:
-        The archive, produced chunk by chunk, and its size in bytes.
+        The staged archive's size in bytes.
 
     Raises:
         NotFoundError: If the user does not exist.
@@ -236,10 +233,14 @@ def export_profile(
     try:
         archive = exporter.build_export_archive(user_dict)
     except profile_exceptions.ProfileOperationError as err:
-        logger.error("Profile export failed", exc_info=err, extra=core_logger.context(user_id=user_id))
         raise profile_exceptions.to_domain_error(err, "profile data export") from err
 
-    size = archive.seek(0, os.SEEK_END)
-    archive.seek(0)
+    with archive:
+        size = storage.save_stream(
+            profile_constants.EXPORT_STAGING_AREA,
+            profile_constants.export_staged_key(user_id),
+            archive,
+            content_type="application/zip",
+        )
     logger.info("Profile data exported", extra=core_logger.context(user_id=user_id, size_bytes=size))
-    return profile_export_service.stream_archive(archive), size
+    return size

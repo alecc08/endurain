@@ -29,6 +29,7 @@ import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
 import modules.users.users_profile.dependencies as profile_dependencies
+import modules.users.users_profile.export_job_service as profile_export_job_service
 import modules.users.users_profile.import_job_service as profile_import_job_service
 import modules.users.users_profile.schema as profile_schema
 import modules.users.users_profile.service as profile_service
@@ -463,26 +464,70 @@ def delete_my_account(
     identity_service.clear_session_cookies(response)
 
 
-@router.get("/export", status_code=status.HTTP_200_OK, response_class=StreamingResponse)
+@router.post("/export", status_code=status.HTTP_202_ACCEPTED, response_model=profile_schema.ProfileExportStatus)
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def export_profile_data(
     request: Request,
     token_user_id: auth_dependencies.CurrentUserId,
-    storage: core_dependencies.Storage,
+    export_states: profile_dependencies.ProfileExportStateStoreDep,
     db: core_dependencies.DbSession,
-) -> StreamingResponse:
-    """Export all profile data as ZIP archive.
+) -> profile_schema.ProfileExportStatus:
+    """Queue an export of all profile data as a ZIP archive.
+
+    A worker builds the archive; poll ``GET /profile/export`` for the outcome and fetch it from
+    ``GET /profile/export/download``.
 
     Args:
         request: The incoming request, read by the rate limiter.
         token_user_id: User ID from access token.
-        storage: The platform storage provider.
+        export_states: Shared store of the export's state.
         db: Database session.
 
     Returns:
-        Streaming response with ZIP archive.
+        The queued export's state.
     """
-    chunks, size = profile_service.export_profile(token_user_id, storage, db)
+    state = profile_export_job_service.request_export(token_user_id, export_states, db)
+    return profile_schema.ProfileExportStatus.model_validate(state)
+
+
+@router.get("/export", status_code=status.HTTP_200_OK, response_model=profile_schema.ProfileExportStatus)
+def read_profile_export_status(
+    token_user_id: auth_dependencies.CurrentUserId,
+    export_states: profile_dependencies.ProfileExportStateStoreDep,
+) -> profile_schema.ProfileExportStatus:
+    """Report where the authenticated user's profile export is.
+
+    Args:
+        token_user_id: User ID from access token.
+        export_states: Shared store of the export's state.
+
+    Returns:
+        The export's state.
+    """
+    state = profile_export_job_service.get_export_status(token_user_id, export_states)
+    return profile_schema.ProfileExportStatus.model_validate(state)
+
+
+@router.get("/export/download", status_code=status.HTTP_200_OK, response_class=StreamingResponse)
+@core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
+def download_profile_export(
+    request: Request,
+    token_user_id: auth_dependencies.CurrentUserId,
+    export_states: profile_dependencies.ProfileExportStateStoreDep,
+    storage: core_dependencies.Storage,
+) -> StreamingResponse:
+    """Download the authenticated user's finished profile export.
+
+    Args:
+        request: The incoming request, read by the rate limiter.
+        token_user_id: User ID from access token.
+        export_states: Shared store of the export's state.
+        storage: The platform storage provider.
+
+    Returns:
+        Streaming response with the ZIP archive.
+    """
+    chunks, size = profile_export_job_service.open_export(token_user_id, export_states, storage)
     return StreamingResponse(
         chunks,
         media_type="application/zip",

@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiFetch } from '@/services/http'
 import { HttpError } from '@/services/http'
 import {
-  exportProfileData,
+  downloadProfileExport,
+  fetchProfileExport,
   fetchProfileImport,
   importProfileData,
+  requestProfileExport,
 } from '@/features/profile/services/dataTransfer'
 
 vi.mock('@/services/http', async (importOriginal) => ({
@@ -18,13 +20,21 @@ describe('data transfer service requests', () => {
     vi.clearAllMocks()
   })
 
-  it('exportProfileData requests the export as a blob with no timeout', async () => {
+  it('requestProfileExport queues the export with a POST', async () => {
+    const status = { status: 'queued', failure: null, size_bytes: null } as const
+    vi.mocked(apiFetch).mockResolvedValue(status)
+
+    expect(await requestProfileExport()).toEqual(status)
+    expect(apiFetch).toHaveBeenCalledWith('/profile/export', { method: 'POST' })
+  })
+
+  it('downloadProfileExport requests the archive as a blob with no timeout', async () => {
     const blob = new Blob(['archive'])
     vi.mocked(apiFetch).mockResolvedValue(blob)
 
-    const result = await exportProfileData()
+    const result = await downloadProfileExport()
 
-    expect(apiFetch).toHaveBeenCalledWith('/profile/export', {
+    expect(apiFetch).toHaveBeenCalledWith('/profile/export/download', {
       responseType: 'blob',
       timeoutMs: 0,
       signal: undefined,
@@ -76,5 +86,31 @@ describe('fetchProfileImport', () => {
     vi.mocked(apiFetch).mockRejectedValue(new HttpError(500, 'Server Error'))
 
     await expect(fetchProfileImport()).rejects.toBeInstanceOf(HttpError)
+  })
+})
+
+describe('fetchProfileExport', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('reads the export state', async () => {
+    const status = { status: 'completed', failure: null, size_bytes: 9 } as const
+    vi.mocked(apiFetch).mockResolvedValue(status)
+
+    expect(await fetchProfileExport()).toEqual(status)
+    expect(apiFetch).toHaveBeenCalledWith('/profile/export', { signal: undefined })
+  })
+
+  it('treats a 404 as no export recorded', async () => {
+    vi.mocked(apiFetch).mockRejectedValue(new HttpError(404, 'Not Found'))
+
+    expect(await fetchProfileExport()).toBeNull()
+  })
+
+  it('rethrows any other failure', async () => {
+    vi.mocked(apiFetch).mockRejectedValue(new HttpError(500, 'Server Error'))
+
+    await expect(fetchProfileExport()).rejects.toBeInstanceOf(HttpError)
   })
 })

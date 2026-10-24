@@ -215,7 +215,6 @@ def check_memory_usage(
             f"Memory usage ({current_memory:.1f}MB) critically exceeded limit "
             f"({max_memory_mb}MB, effective: {effective_limit:.1f}MB) during {operation}"
         )
-        logger.error(error_msg)
         raise MemoryAllocationError(error_msg)
 
     # Warn at 90%

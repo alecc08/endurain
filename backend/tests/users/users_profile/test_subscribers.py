@@ -63,8 +63,44 @@ def test_both_paths_are_registered_for_the_event():
     profile_subscribers.register_bus_subscribers(events)
     profile_subscribers.register_durable_handlers(registry)
 
-    assert events.subscribe.call_args.args[0] == profile_events.USERS_PROFILE_IMPORT_REQUESTED
-    assert registry.register.call_args.args[:2] == (
+    assert events.subscribe.call_args_list[0].args[0] == profile_events.USERS_PROFILE_IMPORT_REQUESTED
+    assert registry.register.call_args_list[0].args[:2] == (
         profile_events.USERS_PROFILE_IMPORT_REQUESTED,
         profile_subscribers.IMPORT_REQUESTED_SUBSCRIBER_ID,
     )
+
+
+def _export_event(retry_count: int = 0) -> Event:
+    return new_event(
+        profile_events.USERS_PROFILE_EXPORT_REQUESTED, {"user_id": 4}, source="test", retry_count=retry_count
+    )
+
+
+def test_the_export_handlers_run_the_export_the_event_names():
+    platform = MagicMock()
+    with (
+        patch(f"{_MODULE}.profile_export_job_service.run_export") as run,
+        patch(f"{_MODULE}.platform_runtime.get_active_platform", return_value=platform),
+        patch(f"{_MODULE}.core_config.settings", MagicMock(JOBS_MAX_ATTEMPTS=3)),
+    ):
+        profile_subscribers.process_export_requested_for_event(_export_event(retry_count=1))
+        durable = run.call_args
+        profile_subscribers.run_export_requested_on_bus(_export_event())
+        bus = run.call_args
+
+    assert durable.args[0].user_id == 4
+    assert durable.kwargs["will_retry"] is True
+    assert bus.kwargs["will_retry"] is False
+
+
+def test_the_export_is_registered_on_both_paths():
+    events, registry = MagicMock(), MagicMock()
+
+    profile_subscribers.register_bus_subscribers(events)
+    profile_subscribers.register_durable_handlers(registry)
+
+    assert profile_events.USERS_PROFILE_EXPORT_REQUESTED in [call.args[0] for call in events.subscribe.call_args_list]
+    assert (
+        profile_events.USERS_PROFILE_EXPORT_REQUESTED,
+        profile_subscribers.EXPORT_REQUESTED_SUBSCRIBER_ID,
+    ) in [call.args[:2] for call in registry.register.call_args_list]

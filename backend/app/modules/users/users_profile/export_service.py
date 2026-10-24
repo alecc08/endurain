@@ -16,7 +16,6 @@ import os
 import tempfile
 import time
 import zipfile
-from collections.abc import Generator
 from typing import IO, Any
 
 import jasil.providers as platform_providers
@@ -931,20 +930,3 @@ class ExportService:
         except MemoryError as err:
             logger.error("Memory allocation error during export", exc_info=err)
             raise MemoryAllocationError(f"Insufficient memory for export: {err}") from err
-
-
-def stream_archive(archive: IO[bytes], chunk_size: int = 64 * 1024) -> Generator[bytes]:
-    """Stream a finished archive in chunks, closing (and so deleting) it when done or abandoned.
-
-    Args:
-        archive: The archive from :meth:`ExportService.build_export_archive`.
-        chunk_size: Bytes per chunk.
-
-    Yields:
-        Chunks of the ZIP archive.
-    """
-    try:
-        while chunk := archive.read(chunk_size):
-            yield chunk
-    finally:
-        archive.close()

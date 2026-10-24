@@ -17,6 +17,7 @@ import modules.auth.identity_service as auth_identity_service
 import modules.auth.mfa.setup_store as auth_mfa_setup_store
 import modules.users.users_profile.browser_redirect_router as profile_browser_redirect_router
 import modules.users.users_profile.dependencies as profile_dependencies
+import modules.users.users_profile.export_state_store as profile_export_state_store
 import modules.users.users_profile.import_state_store as profile_import_state_store
 import modules.users.users_profile.router as profile_router
 
@@ -53,6 +54,11 @@ def import_states() -> profile_import_state_store.ProfileImportStateStore:
 
 
 @pytest.fixture
+def export_states() -> profile_export_state_store.ProfileExportStateStore:
+    return profile_export_state_store.ProfileExportStateStore(MemoryState())
+
+
+@pytest.fixture
 def mock_identity_service() -> MagicMock:
     return MagicMock()
 
@@ -82,6 +88,7 @@ def profile_app(
     fake_mfa_secret_store,
     mock_identity_service,
     import_states,
+    export_states,
 ) -> FastAPI:
     app = FastAPI()
 
@@ -99,6 +106,7 @@ def profile_app(
     app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: mock_identity_service
     app.dependency_overrides[auth_mfa_setup_store.get_mfa_secret_store] = lambda: fake_mfa_secret_store
     app.dependency_overrides[profile_dependencies.get_profile_import_state_store] = lambda: import_states
+    app.dependency_overrides[profile_dependencies.get_profile_export_state_store] = lambda: export_states
 
     return app
 

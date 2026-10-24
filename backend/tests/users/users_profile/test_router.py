@@ -8,6 +8,7 @@ import pytest
 from fastapi import HTTPException
 
 import core.config as core_config
+import core.dependencies as core_dependencies
 import core.exceptions as core_exceptions
 import modules.auth.mfa.schema as mfa_schema
 
@@ -535,87 +536,74 @@ class TestDeleteProfileOtherSessions:
 
 
 # ===================================================================
-# GET /profile/export
+# POST /profile/export, GET /profile/export, GET /profile/export/download
 # ===================================================================
 
 
-def _archive(data: bytes):
-    return io.BytesIO(data)
-
-
 class TestExportProfileData:
-    """Tests for GET /profile/export — export_profile_data."""
+    """Tests for POST /profile/export — export_profile_data."""
 
-    @patch("modules.users.users_profile.service.profile_export_service.ExportService")
-    @patch("modules.users.users_profile.service.profile_utils.sqlalchemy_obj_to_dict")
-    @patch("modules.users.users_profile.service.users_integration.require_user")
-    def test_success(
-        self,
-        mock_get_user,
-        mock_to_dict,
-        mock_export_service,
-        profile_client,
-    ):
-        """Happy path: returns streaming ZIP."""
-        mock_get_user.return_value = _make_user_mock()
-        mock_to_dict.return_value = {"name": "Test", "password": "secret"}
-        mock_instance = mock_export_service.return_value
-        mock_instance.build_export_archive.return_value = _archive(b"zip-data")
+    _PUBLISH = "modules.users.users_profile.export_job_service.profile_event_publishers.publish_export_requested"
+
+    def test_queues_the_export_and_answers_at_once(self, profile_client, export_states):
+        with patch(self._PUBLISH) as publish:
+            response = profile_client.post(PREFIX + "/export")
+
+        assert response.status_code == 202
+        assert response.json() == {"status": "queued", "failure": None, "size_bytes": None}
+        assert publish.call_args.args[0] == 1
+        assert export_states.get(1).status == "queued"
+
+    def test_a_second_export_while_one_is_pending_is_a_conflict(self, profile_client):
+        with patch(self._PUBLISH):
+            first = profile_client.post(PREFIX + "/export")
+            second = profile_client.post(PREFIX + "/export")
+
+        assert (first.status_code, second.status_code) == (202, 409)
+
+
+class TestReadProfileExportStatus:
+    """Tests for GET /profile/export — read_profile_export_status."""
+
+    def test_reports_the_recorded_state(self, profile_client, export_states):
+        export_states.begin(1)
+        export_states.set_status(1, "completed", size_bytes=9)
 
         response = profile_client.get(PREFIX + "/export")
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "completed", "failure": None, "size_bytes": 9}
+
+    def test_is_not_found_when_nothing_was_exported(self, profile_client):
+        assert profile_client.get(PREFIX + "/export").status_code == 404
+
+    def test_one_user_cannot_read_another_users_export(self, profile_client, export_states):
+        export_states.begin(2)
+
+        assert profile_client.get(PREFIX + "/export").status_code == 404
+
+
+class TestDownloadProfileExport:
+    """Tests for GET /profile/export/download — download_profile_export."""
+
+    def test_streams_the_finished_archive(self, profile_app, profile_client, export_states):
+        export_states.begin(1)
+        export_states.set_status(1, "completed", size_bytes=8)
+        storage = MagicMock()
+        storage.open_stream.return_value = io.BytesIO(b"zip-data")
+        profile_app.dependency_overrides[core_dependencies.get_storage] = lambda: storage
+
+        response = profile_client.get(PREFIX + "/export/download")
 
         assert response.status_code == 200
         assert response.content == b"zip-data"
-        assert response.headers["content-length"] == str(len(b"zip-data"))
+        assert response.headers["content-length"] == "8"
+        storage.open_stream.assert_called_once_with("profile_export_staging", "1.zip")
 
-    @patch("modules.users.users_profile.service.profile_export_service.ExportService")
-    @patch("modules.users.users_profile.service.profile_utils.sqlalchemy_obj_to_dict")
-    @patch("modules.users.users_profile.service.users_integration.require_user")
-    def test_user_not_found(
-        self,
-        mock_get_user,
-        mock_to_dict,
-        mock_export_service,
-        profile_client,
-    ):
-        """Error: user not found → 404."""
-        mock_get_user.side_effect = core_exceptions.NotFoundError("User not found")
+    def test_is_not_found_before_the_export_has_finished(self, profile_client, export_states):
+        export_states.begin(1)
 
-        response = profile_client.get(PREFIX + "/export")
-
-        assert response.status_code == 404
-        assert response.json()["detail"] == "User not found"
-
-    @patch("modules.users.users_profile.service.profile_export_service.ExportService")
-    @patch("modules.users.users_profile.service.profile_utils.sqlalchemy_obj_to_dict")
-    @patch("modules.users.users_profile.service.users_integration.require_user")
-    def test_sensitive_fields_stripped(
-        self,
-        mock_get_user,
-        mock_to_dict,
-        mock_export_service,
-        profile_client,
-    ):
-        """Verify sensitive fields are stripped from export dict."""
-        mock_get_user.return_value = _make_user_mock()
-        mock_to_dict.return_value = {
-            "name": "Test",
-            "password": "secret",
-            "mfa_secret": "sec",
-            "access_type": "admin",
-        }
-        mock_instance = mock_export_service.return_value
-        mock_instance.build_export_archive.return_value = _archive(b"data")
-
-        response = profile_client.get(PREFIX + "/export")
-
-        assert response.status_code == 200
-        # Verify sensitive fields were popped before passing to service
-        passed_dict = mock_instance.build_export_archive.call_args[0][0]
-        assert "password" not in passed_dict
-        assert "mfa_secret" not in passed_dict
-        assert "access_type" not in passed_dict
-        assert passed_dict["name"] == "Test"
+        assert profile_client.get(PREFIX + "/export/download").status_code == 404
 
 
 # ===================================================================

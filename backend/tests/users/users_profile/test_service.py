@@ -101,7 +101,7 @@ class TestChangeEmail:
         mock_db.commit.assert_called_once()
 
 
-class TestExportProfile:
+class TestStageExport:
     @patch(f"{_MODULE}.profile_export_service")
     @patch(f"{_MODULE}.profile_utils")
     @patch(f"{_MODULE}.users_integration")
@@ -118,35 +118,39 @@ class TestExportProfile:
         }
         storage = MagicMock()
         mock_export.ExportService.return_value.build_export_archive.return_value = io.BytesIO(b"12345")
+        storage.save_stream.return_value = 5
 
-        chunks, size = profile_service.export_profile(1, storage, mock_db)
+        size = profile_service.stage_export(1, storage, mock_db)
 
         mock_export.ExportService.assert_called_once_with(1, storage, mock_db)
         exported = mock_export.ExportService.return_value.build_export_archive.call_args.args[0]
         assert exported == {"name": "Test"}
         assert size == 5
-        assert chunks == mock_export.stream_archive.return_value
+        area, key, archive = storage.save_stream.call_args.args
+        assert (area, key) == ("profile_export_staging", "1.zip")
+        assert archive.closed
 
     @patch(f"{_MODULE}.profile_export_service")
     @patch(f"{_MODULE}.profile_utils")
     @patch(f"{_MODULE}.users_integration")
-    def test_a_failed_build_is_an_error_response_not_a_broken_stream(
-        self, mock_users, mock_utils, mock_export, mock_db
-    ):
+    def test_a_failed_build_stages_nothing_and_is_a_domain_error(self, mock_users, mock_utils, mock_export, mock_db):
         mock_utils.sqlalchemy_obj_to_dict.return_value = {}
         mock_export.ExportService.return_value.build_export_archive.side_effect = (
             profile_exceptions.DataCollectionError("boom")
         )
 
+        storage = MagicMock()
         with pytest.raises(core_exceptions.DomainError):
-            profile_service.export_profile(1, MagicMock(), mock_db)
+            profile_service.stage_export(1, storage, mock_db)
+
+        storage.save_stream.assert_not_called()
 
     @patch(f"{_MODULE}.users_integration")
     def test_unknown_user_is_not_found(self, mock_users, mock_db):
         mock_users.require_user.side_effect = core_exceptions.NotFoundError("User not found")
 
         with pytest.raises(core_exceptions.NotFoundError):
-            profile_service.export_profile(1, MagicMock(), mock_db)
+            profile_service.stage_export(1, MagicMock(), mock_db)
 
 
 class TestDeleteAccount:

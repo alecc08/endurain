@@ -29,18 +29,50 @@ PHOTO_CONTENT_TYPES = {
 
 
 def delete_photo_files(user_id: int, storage: platform_providers.StorageProvider) -> None:
-    """Delete a user's stored photo blobs.
+    """Delete every stored photo blob of a user, as housekeeping.
+
+    Used once the row no longer names a photo. Failing to remove a blob only wastes space, so the
+    failure is logged and not raised: the caller's change is already committed.
 
     Args:
         user_id: ID of the user whose photo files to delete.
         storage: The platform storage provider.
     """
-    for key in storage.list_keys(users_constants.USER_IMAGE_STORAGE_AREA, f"{user_id}."):
-        storage.delete(users_constants.USER_IMAGE_STORAGE_AREA, key)
+    try:
+        for key in storage.list_keys(users_constants.USER_IMAGE_STORAGE_AREA, f"{user_id}."):
+            storage.delete(users_constants.USER_IMAGE_STORAGE_AREA, key)
+    except Exception as err:
+        logger.warning("Could not delete user photo files", exc_info=err, extra=core_logger.context(user_id=user_id))
+
+
+def _delete_replaced_blob(
+    user_id: int, replaced: str | None, keep: str | None, storage: platform_providers.StorageProvider
+) -> None:
+    """Delete the blob a committed change replaced, as housekeeping.
+
+    Only the key the row held is removed, never a listing of the user's blobs: a listing could
+    include the blob of a concurrent upload that has not committed yet. Failing to remove it only
+    wastes space, and account deletion removes every blob under the user's prefix, so the failure
+    is logged and not raised.
+
+    Args:
+        user_id: The user whose old blob to remove.
+        replaced: The key the row held before the change.
+        keep: The key the row holds now, which must stay.
+        storage: The platform storage provider.
+    """
+    if replaced is None or replaced == keep:
+        return
+    try:
+        storage.delete(users_constants.USER_IMAGE_STORAGE_AREA, replaced)
+    except Exception as err:
+        logger.warning(
+            "Could not remove a replaced user photo", exc_info=err, extra=core_logger.context(user_id=user_id)
+        )
 
 
 def delete_photo(user_id: int, storage: platform_providers.StorageProvider, db: Session) -> None:
-    """Clear a user's photo reference, commit, then delete the stored blobs.
+    """Clear a user's photo reference, commit, then delete the stored blob.
 
     The reference is committed first, so a failure never leaves a row pointing at a blob that
     is already gone.
@@ -53,33 +85,11 @@ def delete_photo(user_id: int, storage: platform_providers.StorageProvider, db: 
     Raises:
         NotFoundError: If the user does not exist.
     """
-    users_crud.update_user(user_id, {"photo_path": None}, db)
+    replaced = users_crud.replace_photo_key(user_id, None, db)
     db.commit()
     logger.info("User photo removed", extra=core_logger.context(user_id=user_id))
 
-    delete_photo_files(user_id, storage)
-
-
-def _delete_replaced_blobs(user_id: int, keep: str, storage: platform_providers.StorageProvider) -> None:
-    """Delete the user's stored photo blobs other than ``keep``, as housekeeping.
-
-    A photo with another extension is no longer referenced by the row once the new key is
-    committed. Failing to remove it only wastes space, and account deletion removes every blob
-    under the user's prefix, so the failure is logged and not raised.
-
-    Args:
-        user_id: The user whose old blobs to remove.
-        keep: The key that must stay.
-        storage: The platform storage provider.
-    """
-    try:
-        for key in storage.list_keys(users_constants.USER_IMAGE_STORAGE_AREA, f"{user_id}."):
-            if key != keep:
-                storage.delete(users_constants.USER_IMAGE_STORAGE_AREA, key)
-    except Exception as err:
-        logger.warning(
-            "Could not remove a replaced user photo", exc_info=err, extra=core_logger.context(user_id=user_id)
-        )
+    _delete_replaced_blob(user_id, replaced, None, storage)
 
 
 def store_photo(
@@ -92,7 +102,7 @@ def store_photo(
     """Store a user's already validated photo, record its key and commit.
 
     The read that checks the user ends before the blob is written, so no transaction stays open
-    across the storage call. Blobs under another extension are removed after the commit.
+    across the storage call. The blob the row named before is removed after the commit.
 
     Args:
         user_id: ID of the user whose photo is being saved.
@@ -119,11 +129,11 @@ def store_photo(
     key = f"{user_id}{extension}"
     storage.save(users_constants.USER_IMAGE_STORAGE_AREA, key, data, PHOTO_CONTENT_TYPES[extension])
 
-    users_crud.update_user(user_id, {"photo_path": key}, db)
+    replaced = users_crud.replace_photo_key(user_id, key, db)
     db.commit()
     logger.info("User photo saved", extra=core_logger.context(user_id=user_id))
 
-    _delete_replaced_blobs(user_id, key, storage)
+    _delete_replaced_blob(user_id, replaced, key, storage)
     return key
 
 

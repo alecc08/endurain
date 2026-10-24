@@ -12,9 +12,11 @@ from then on is final.
 
 import asyncio
 import time
+from collections.abc import Callable
 from uuid import uuid4
 
 import jasil.providers as platform_providers
+from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -44,7 +46,7 @@ _REJECTION_CODES: tuple[tuple[type[Exception], profile_constants.ImportFailure],
     (profile_exceptions.JSONParseError, _Failure.INVALID_FILE),
     (profile_exceptions.SchemaValidationError, _Failure.INVALID_FILE),
     (core_exceptions.InvalidInputError, _Failure.INVALID_FILE),
-    (ValueError, _Failure.INVALID_FILE),
+    (ValidationError, _Failure.INVALID_FILE),
 )
 
 
@@ -155,16 +157,16 @@ def _is_transient(err: Exception) -> bool:
 def _run_importer(
     user_id: int,
     zip_data: bytes,
-    states: profile_import_state_store.ProfileImportStateStore,
     storage: platform_providers.StorageProvider,
+    on_committed: Callable[[], None],
 ) -> dict[str, int]:
     """Import an archive on a session of its own.
 
     Args:
         user_id: The importing user.
         zip_data: The archive.
-        states: Shared store of the import's state.
         storage: The platform storage provider.
+        on_committed: Called once the database rows are committed, before the files are written.
 
     Returns:
         How many items of each kind were imported.
@@ -174,7 +176,7 @@ def _run_importer(
             user_id,
             storage,
             db,
-            on_database_committed=lambda: states.set_status(user_id, _Status.WRITING_FILES),
+            on_database_committed=on_committed,
         )
         # The importer awaits file validation, so it needs a loop; this runs on a worker thread
         # with none, and the importer shares no loop-bound resources.
@@ -229,10 +231,18 @@ def run_import(
         return
 
     states.set_status(user_id, _Status.RUNNING)
+    committed = False
+
+    def mark_committed() -> None:
+        # The marker is what stops a redelivery importing the rows twice, so losing it fails the
+        # import (files incomplete) instead of leaving a state that looks safe to run again.
+        nonlocal committed
+        committed = True
+        states.set_status(user_id, _Status.WRITING_FILES, strict=True)
+
     try:
-        imported = _run_importer(user_id, zip_data, states, storage)
+        imported = _run_importer(user_id, zip_data, storage, mark_committed)
     except Exception as err:
-        committed = (states.get(user_id) or state).status == _Status.WRITING_FILES
         code = _rejection_code(err)
         if code is None and not committed and will_retry and _is_transient(err):
             logger.warning(

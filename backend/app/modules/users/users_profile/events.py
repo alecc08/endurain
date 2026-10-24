@@ -9,6 +9,9 @@ from pydantic import ConfigDict
 # durable jobs are enabled; otherwise a bus subscriber runs it on the in-process pool.
 USERS_PROFILE_IMPORT_REQUESTED = "users.profile_import_requested"
 
+# Published once per accepted profile export; consumed like the import above.
+USERS_PROFILE_EXPORT_REQUESTED = "users.profile_export_requested"
+
 
 class ProfileImportRequestedPayload(VersionedPayload):
     """Validated payload for the ``users.profile_import_requested`` event.
@@ -24,3 +27,17 @@ class ProfileImportRequestedPayload(VersionedPayload):
 
     user_id: int
     staged_key: str
+
+
+class ProfileExportRequestedPayload(VersionedPayload):
+    """Validated payload for the ``users.profile_export_requested`` event.
+
+    Attributes:
+        user_id: The user whose profile is exported.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    SCHEMA_VERSION: ClassVar[int] = 1
+
+    user_id: int

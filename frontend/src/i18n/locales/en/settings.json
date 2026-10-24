@@ -1053,8 +1053,22 @@
       "export": "Export data",
       "import": "Import data",
       "invalidType": "Please choose a .zip archive.",
-      "exportSuccess": "Export ready. Your download should begin shortly",
-      "exportError": "Couldn't export your data. Please try again.",
+      "download": "Download export",
+      "downloadSuccess": "Your download should begin shortly",
+      "downloadError": "Couldn't download the export. Please try again.",
+      "exportQueued": "Export started. You can leave this page.",
+      "exportError": "Couldn't start the export. Please try again.",
+      "exportInProgress": "An export is already in progress.",
+      "exportStatus": {
+        "queued": "Waiting for the export to start…",
+        "running": "Preparing your export…",
+        "completed": "Your export is ready to download. It stays available for two hours.",
+        "failed": "The export didn't complete: {reason}"
+      },
+      "exportFailure": {
+        "timed_out": "it took too long. You can try again.",
+        "processing_failed": "something went wrong. You can try again."
+      },
       "importQueued": "Import started. You can leave this page.",
       "importError": "Couldn't start the import. Please check the file and try again.",
       "importInProgress": "An import is already in progress.",

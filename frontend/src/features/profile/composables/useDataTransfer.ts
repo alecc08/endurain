@@ -2,31 +2,69 @@ import { watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 
-import type { ProfileImportStatus } from '@/features/profile/types'
+import type { ProfileExportStatus, ProfileImportStatus } from '@/features/profile/types'
 
 import { queryKeys } from '@/services/queryKeys'
 import { useAuthStore } from '@/features/auth/stores/auth'
-import { isTerminalProfileImport } from '@/features/profile/types'
+import { isTerminalProfileExport, isTerminalProfileImport } from '@/features/profile/types'
 import {
-  exportProfileData,
+  downloadProfileExport,
+  fetchProfileExport,
   fetchProfileImport,
   importProfileData,
+  requestProfileExport,
 } from '@/features/profile/services/dataTransfer'
 
+const POLL_MS = 3000
+
 /**
- * Export mutation. Resolves with the export archive; the caller is responsible
- * for saving it (e.g. via `downloadBlob`). Modelled as a mutation purely for
- * the in-flight / error state — it changes no server state.
+ * Export mutation. It only queues the export; the outcome comes from
+ * {@link useProfileExportQuery}, which this seeds with the queued state so
+ * polling starts straight away.
  *
- * @returns The TanStack Query mutation that produces the export blob.
+ * @returns The TanStack Query mutation for requesting a profile export.
  */
 export function useExportProfileMutation() {
-  return useMutation<Blob, Error, void>({
-    mutationFn: () => exportProfileData(),
+  const client = useQueryClient()
+
+  return useMutation<ProfileExportStatus, Error, void>({
+    mutationFn: () => requestProfileExport(),
+    onSuccess: (status) => client.setQueryData(queryKeys.profile.export(), status),
   })
 }
 
-const IMPORT_POLL_MS = 3000
+/**
+ * Follows the user's profile export until it reaches a terminal state. It also
+ * picks up an export that was started earlier (another tab, a page reload).
+ *
+ * @returns The query; `data` is the export's current state, or `null` when none is recorded.
+ */
+export function useProfileExportQuery() {
+  const { isAuthenticated } = storeToRefs(useAuthStore())
+
+  return useQuery<ProfileExportStatus | null, Error>({
+    queryKey: queryKeys.profile.export(),
+    queryFn: ({ signal }) => fetchProfileExport(signal),
+    enabled: isAuthenticated,
+    refetchInterval: (state) => {
+      const status = state.state.data
+      return status && !isTerminalProfileExport(status) ? POLL_MS : false
+    },
+  })
+}
+
+/**
+ * Download mutation. Resolves with the finished export archive; the caller is
+ * responsible for saving it (e.g. via `downloadBlob`). Modelled as a mutation
+ * purely for the in-flight / error state — it changes no server state.
+ *
+ * @returns The TanStack Query mutation that produces the export blob.
+ */
+export function useDownloadProfileExportMutation() {
+  return useMutation<Blob, Error, void>({
+    mutationFn: () => downloadProfileExport(),
+  })
+}
 
 /**
  * Refreshes every domain an import can change: profile, activities, gear,
@@ -77,7 +115,7 @@ export function useProfileImportQuery() {
     enabled: isAuthenticated,
     refetchInterval: (state) => {
       const status = state.state.data
-      return status && !isTerminalProfileImport(status) ? IMPORT_POLL_MS : false
+      return status && !isTerminalProfileImport(status) ? POLL_MS : false
     },
   })
 

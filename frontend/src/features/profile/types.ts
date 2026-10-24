@@ -28,6 +28,19 @@ export function isTerminalProfileImport(status: ProfileImportStatus): boolean {
   return (TERMINAL_IMPORT_STATUSES as readonly string[]).includes(status.status)
 }
 
+/** Where the user's profile export is, as the backend reports it. */
+export type ProfileExportStatus = Schemas['ProfileExportStatus']
+
+/**
+ * Whether a profile export has reached a state it will not leave.
+ *
+ * @param status - The export to inspect.
+ * @returns `true` when the export is finished, successfully or not.
+ */
+export function isTerminalProfileExport(status: ProfileExportStatus): boolean {
+  return (TERMINAL_IMPORT_STATUSES as readonly string[]).includes(status.status)
+}
+
 /** Activity visibility level, mirrored from the backend enum. */
 export type ActivityVisibility = Schemas['ActivityVisibility']
 

@@ -1,0 +1,167 @@
+"""Tests for users_profile.export_job_service: accepting, running, serving and sweeping profile exports."""
+
+import io
+import time
+from unittest.mock import MagicMock, patch
+
+import pytest
+from jasil.backends.state_memory import MemoryState
+from sqlalchemy.exc import OperationalError
+
+import core.exceptions as core_exceptions
+import modules.users.users_profile.constants as profile_constants
+import modules.users.users_profile.events as profile_events
+import modules.users.users_profile.exceptions as profile_exceptions
+import modules.users.users_profile.export_job_service as job_service
+import modules.users.users_profile.export_state_store as export_state_store
+
+_MODULE = "modules.users.users_profile.export_job_service"
+_Status = profile_constants.ExportStatus
+_Failure = profile_constants.ExportFailure
+_AREA = profile_constants.EXPORT_STAGING_AREA
+
+
+@pytest.fixture
+def states():
+    return export_state_store.ProfileExportStateStore(MemoryState())
+
+
+def _payload(user_id: int = 1) -> profile_events.ProfileExportRequestedPayload:
+    return profile_events.ProfileExportRequestedPayload(user_id=user_id)
+
+
+def _run(states, outcome, *, will_retry=False):
+    stage = {"side_effect": outcome} if isinstance(outcome, Exception) else {"return_value": outcome}
+    with (
+        patch(f"{_MODULE}.core_database.SessionLocal"),
+        patch(f"{_MODULE}.profile_service.stage_export", **stage) as stage_export,
+    ):
+        job_service.run_export(_payload(), states, MagicMock(), will_retry=will_retry)
+    return stage_export
+
+
+class TestRequestExport:
+    def test_queues_the_export(self, states, mock_db):
+        with patch(f"{_MODULE}.profile_event_publishers.publish_export_requested") as publish:
+            state = job_service.request_export(7, states, mock_db)
+
+        assert state.status == _Status.QUEUED
+        publish.assert_called_once_with(7, mock_db, commit=mock_db.commit)
+
+    def test_a_pending_export_refuses_a_second(self, states, mock_db):
+        states.begin(7)
+
+        with pytest.raises(core_exceptions.ConflictError):
+            job_service.request_export(7, states, mock_db)
+
+    def test_a_failure_to_queue_closes_the_state_and_frees_the_claim(self, states, mock_db):
+        with (
+            patch(f"{_MODULE}.profile_event_publishers.publish_export_requested", side_effect=RuntimeError("down")),
+            pytest.raises(RuntimeError),
+        ):
+            job_service.request_export(7, states, mock_db)
+
+        assert states.get(7).status == _Status.FAILED
+        assert states.begin(7) is True
+
+
+class TestRunExport:
+    def test_a_finished_export_records_its_size(self, states):
+        states.begin(1)
+
+        _run(states, 42)
+
+        state = states.get(1)
+        assert (state.status, state.size_bytes) == (_Status.COMPLETED, 42)
+        assert states.begin(1) is True
+
+    @pytest.mark.parametrize("finished", [_Status.COMPLETED, _Status.FAILED])
+    def test_a_redelivery_of_a_finished_export_does_nothing(self, states, finished):
+        states.begin(1)
+        states.set_status(1, finished)
+
+        stage = _run(states, 1)
+
+        stage.assert_not_called()
+
+    def test_a_redelivery_after_a_worker_died_builds_again(self, states):
+        states.begin(1)
+        states.set_status(1, _Status.RUNNING)
+
+        stage = _run(states, 5)
+
+        stage.assert_called_once()
+        assert states.get(1).status == _Status.COMPLETED
+
+    def test_a_transient_failure_is_retried(self, states):
+        states.begin(1)
+
+        with pytest.raises(OperationalError):
+            _run(states, OperationalError("s", {}, Exception("db down")), will_retry=True)
+
+        assert states.get(1).status == _Status.QUEUED
+
+    def test_a_transient_failure_on_the_last_attempt_is_final(self, states):
+        states.begin(1)
+
+        _run(states, OperationalError("s", {}, Exception("db down")), will_retry=False)
+
+        assert (states.get(1).status, states.get(1).failure) == (_Status.FAILED, _Failure.PROCESSING_FAILED)
+
+    def test_a_timeout_is_reported_as_one_and_never_retried(self, states):
+        states.begin(1)
+
+        _run(states, profile_exceptions.TransferTimeoutError("slow"), will_retry=True)
+
+        assert (states.get(1).status, states.get(1).failure) == (_Status.FAILED, _Failure.TIMED_OUT)
+
+    def test_any_other_failure_is_final_with_a_sanitized_code(self, states):
+        states.begin(1)
+
+        _run(states, RuntimeError("secret detail"), will_retry=True)
+
+        state = states.get(1)
+        assert (state.status, state.failure) == (_Status.FAILED, _Failure.PROCESSING_FAILED)
+        assert "secret" not in state.model_dump_json()
+
+
+class TestOpenExport:
+    def test_streams_the_staged_archive(self, states):
+        states.begin(1)
+        states.set_status(1, _Status.COMPLETED, size_bytes=8)
+        storage = MagicMock()
+        storage.open_stream.return_value = io.BytesIO(b"zip-data")
+
+        chunks, size = job_service.open_export(1, states, storage)
+
+        assert (b"".join(chunks), size) == (b"zip-data", 8)
+        storage.open_stream.assert_called_once_with(_AREA, "1.zip")
+
+    @pytest.mark.parametrize("status", [_Status.QUEUED, _Status.RUNNING, _Status.FAILED])
+    def test_an_export_that_is_not_finished_has_no_download(self, states, status):
+        states.begin(1)
+        states.set_status(1, status)
+
+        with pytest.raises(core_exceptions.NotFoundError):
+            job_service.open_export(1, states, MagicMock())
+
+    def test_a_missing_archive_is_not_found(self, states):
+        states.begin(1)
+        states.set_status(1, _Status.COMPLETED, size_bytes=8)
+        storage = MagicMock()
+        storage.open_stream.side_effect = FileNotFoundError
+
+        with pytest.raises(core_exceptions.NotFoundError):
+            job_service.open_export(1, states, storage)
+
+
+class TestSweepStagedExports:
+    def test_removes_only_archives_past_the_age(self):
+        storage = MagicMock()
+        now = time.time()
+        storage.iter_objects.return_value = iter([("1.zip", now - 7200), ("2.zip", now)])
+
+        removed = job_service.sweep_staged_exports(storage, 3600)
+
+        assert removed == 1
+        storage.delete.assert_called_once_with(_AREA, "1.zip")

@@ -41,7 +41,8 @@ class TestImportPerformanceConfig:
         config = profile_import_service.ImportPerformanceConfig()
         assert config.batch_size == 125
         assert config.max_memory_mb == 1024
-        assert config.max_file_size_mb == 1000
+        assert config.max_file_size_mb == 500
+        assert config.max_json_mb == 128
 
     def test_get_auto_config(self, monkeypatch) -> None:
         monkeypatch.setattr(
@@ -399,6 +400,48 @@ class TestImportServiceUserData:
         )
         await service.collect_and_import_user_integrations([])
         assert service.counts.get("user_integrations", 0) == 0
+
+    async def test_goals_the_user_already_has_or_that_are_invalid_are_skipped(self) -> None:
+        service = profile_import_service.ImportService(user_id=1, storage=MagicMock(), db=MagicMock(spec=Session))
+        goals = [
+            {"id": 1, "interval": "weekly", "activity_type": "run", "goal_type": "distance", "goal_distance": 5000},
+            {"id": 2, "interval": "nonsense"},
+            {"id": 3, "interval": "daily", "activity_type": "run", "goal_type": "distance", "goal_distance": 100},
+        ]
+        with patch(
+            "modules.users.users_profile.import_service.users_goals_integration.create_goal",
+            side_effect=[None, core_exceptions.ConflictError("exists")],
+        ) as create:
+            await service.collect_and_import_user_goals(goals)
+
+        assert create.call_count == 2
+        assert service.counts["user_goals"] == 1
+
+    async def test_invalid_singleton_settings_are_skipped_not_fatal(self) -> None:
+        service = profile_import_service.ImportService(user_id=1, storage=MagicMock(), db=MagicMock(spec=Session))
+        base = "modules.users.users_profile.import_service"
+        with (
+            patch(f"{base}.users_privacy_settings_integration.edit_privacy_settings") as privacy,
+            patch(f"{base}.user_integrations_integration.edit_integrations") as integrations,
+            patch(f"{base}.users_default_gear_integration.get_default_gear"),
+            patch(f"{base}.users_default_gear_integration.edit_default_gear") as default_gear,
+        ):
+            await service.collect_and_import_user_privacy_settings([{"default_activity_visibility": "bogus"}])
+            await service.collect_and_import_user_integrations([{"strava_sync_gear": "not-a-bool"}])
+            await service.collect_and_import_user_default_gear([{"run_gear_id": "x"}], {})
+
+        privacy.assert_not_called()
+        integrations.assert_not_called()
+        default_gear.assert_not_called()
+        assert service.counts["user_privacy_settings"] == 0
+
+    async def test_an_oversized_json_entry_is_refused_before_it_is_parsed(self) -> None:
+        service = profile_import_service.ImportService(user_id=1, storage=MagicMock(), db=MagicMock(spec=Session))
+        service.performance_config.max_json_mb = 0.0001
+        zip_data = _make_zip_with_json({"data/gears.json": [{"id": i, "nickname": "x" * 50} for i in range(50)]})
+
+        with zipfile.ZipFile(BytesIO(zip_data)) as z, pytest.raises(FileSizeError):
+            service._load_single_json(z, "data/gears.json")
 
     async def test_collect_and_import_user_goals_empty(self) -> None:
         mock_db = MagicMock(spec=Session)

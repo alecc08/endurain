@@ -5,8 +5,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from jasil.backends.state_memory import MemoryState
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.exc import OperationalError
 
+import core.attempt_state as core_attempt_state
 import core.exceptions as core_exceptions
 import modules.users.users_profile.constants as profile_constants
 import modules.users.users_profile.events as profile_events
@@ -30,6 +32,14 @@ def storage():
     store = MagicMock()
     store.get.return_value = b"zip"
     return store
+
+
+def _validation_error() -> ValidationError:
+    try:
+        TypeAdapter(int).validate_python("x")
+    except ValidationError as err:
+        return err
+    raise AssertionError
 
 
 def _payload(user_id: int = 1, key: str | None = None) -> profile_events.ProfileImportRequestedPayload:
@@ -124,7 +134,8 @@ class TestRunImport:
         [
             (profile_exceptions.FileFormatError("x"), _Failure.INVALID_FILE),
             (profile_exceptions.SchemaValidationError("x"), _Failure.INVALID_FILE),
-            (ValueError("x"), _Failure.INVALID_FILE),
+            (_validation_error(), _Failure.INVALID_FILE),
+            (ValueError("x"), _Failure.PROCESSING_FAILED),
             (core_exceptions.InvalidInputError("x"), _Failure.INVALID_FILE),
             (profile_exceptions.FileSizeError("x"), _Failure.TOO_LARGE),
             (profile_exceptions.ActivityLimitError("x"), _Failure.TOO_MANY_ACTIVITIES),
@@ -170,11 +181,23 @@ class TestRunImport:
     def test_a_failure_after_the_commit_is_final_and_says_files_are_incomplete(self, states, storage):
         _queued(states)
 
-        def commit_then_fail(*_args):
-            states.set_status(1, _Status.WRITING_FILES)
+        def commit_then_fail(_user_id, _zip, _storage, on_committed):
+            on_committed()
             raise OperationalError("s", {}, Exception("storage down"))
 
         with patch(f"{_MODULE}._run_importer", side_effect=commit_then_fail):
+            job_service.run_import(_payload(), states, storage, will_retry=True)
+
+        assert (states.get(1).status, states.get(1).failure) == (_Status.FAILED, _Failure.FILES_INCOMPLETE)
+
+    def test_losing_the_committed_marker_fails_the_import_instead_of_retrying_it(self, states, storage):
+        _queued(states)
+
+        def commit_with_state_down(_user_id, _zip, _storage, on_committed):
+            with patch.object(states, "set_status", side_effect=core_attempt_state.StateUnavailableError("down")):
+                on_committed()
+
+        with patch(f"{_MODULE}._run_importer", side_effect=commit_with_state_down):
             job_service.run_import(_payload(), states, storage, will_retry=True)
 
         assert (states.get(1).status, states.get(1).failure) == (_Status.FAILED, _Failure.FILES_INCOMPLETE)
@@ -236,7 +259,7 @@ class TestRunImporter:
             patch(f"{_MODULE}.core_database.SessionLocal"),
             patch(f"{_MODULE}.profile_import_service.ImportService", FakeImporter),
         ):
-            result = job_service._run_importer(1, b"zip", states, storage)
+            result = job_service._run_importer(1, b"zip", storage, lambda: states.set_status(1, _Status.WRITING_FILES))
 
         assert result == {"gears": 2}
         assert seen == [_Status.WRITING_FILES]

@@ -6,7 +6,7 @@ Open **Settings → My profile** and find the **Your data** card. It has an **Ex
 
 ## Export
 
-Export builds a ZIP archive named `user_<your id>_export.zip` and streams it to your browser. The archive contains:
+Export builds a ZIP archive named `user_<your id>_export.zip` in the background, so you can leave the page while it runs. When it is ready a **Download export** button appears, and the archive stays available for two hours. The archive contains:
 
 - your profile, privacy settings, goals, default gear and integration settings
 - gear and gear components

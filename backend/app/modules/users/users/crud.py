@@ -242,6 +242,34 @@ def get_photo_key(user_id: int, db: Session) -> str | None:
     return db.execute(stmt).scalar_one_or_none()
 
 
+def replace_photo_key(user_id: int, photo_key: str | None, db: Session) -> str | None:
+    """Row-lock a user, set their stored photo key, and return the key it replaced (flushed, not committed).
+
+    Concurrent photo changes for one user queue on the lock, so each sees exactly the key it
+    replaced and no change can mistake another's new key for a leftover.
+
+    Args:
+        user_id: The user to update.
+        photo_key: The new ``StorageProvider`` key, or None to clear the photo.
+        db: Database session.
+
+    Returns:
+        The key the row held before, or None if there was none.
+
+    Raises:
+        NotFoundError: If the user does not exist.
+    """
+    stmt = select(users_models.Users).where(users_models.Users.id == user_id).with_for_update()
+    db_user = db.execute(stmt).scalar_one_or_none()
+    if db_user is None:
+        raise core_exceptions.NotFoundError("User not found")
+
+    previous = db_user.photo_path
+    db_user.photo_path = photo_key
+    db.flush()
+    return previous
+
+
 def lock_active_admin_ids(db: Session) -> list[int]:
     """Row-lock the active administrators, in id order, and return their ids.
 

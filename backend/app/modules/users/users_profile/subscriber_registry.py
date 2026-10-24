@@ -34,4 +34,12 @@ DURABLE_SUBSCRIBER_NETS: tuple[DurableSubscriberNet, ...] = (
             "state, which the client polls, and a failed import is re-run by the user."
         ),
     ),
+    DurableSubscriberNet(
+        profile_subscribers.EXPORT_REQUESTED_SUBSCRIBER_ID,
+        None,
+        exempt_reason=(
+            "An export is a command, not derived state. Its outcome is recorded in the shared export "
+            "state, which the client polls, and a failed export is re-requested by the user."
+        ),
+    ),
 )

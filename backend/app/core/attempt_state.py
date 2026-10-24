@@ -127,17 +127,22 @@ class AttemptStateStore:
                 extra=core_logger.context(namespace=self._namespace, name=self._name),
             )
 
-    def record(self, subject: str, state: BaseModel, *, finished: bool) -> None:
+    def record(self, subject: str, state: BaseModel, *, finished: bool, strict: bool = False) -> None:
         """Record an attempt's progress or outcome.
 
         A finished attempt releases its claim; any other progress renews it. A failure to
         record is logged, not raised: the attempt itself must still finish, and the entries
-        expire on their own.
+        expire on their own. A state that a later decision depends on is recorded ``strict``,
+        so losing it raises instead.
 
         Args:
             subject: What the attempt is for.
             state: The new state.
             finished: Whether the attempt is over.
+            strict: Raise when the state cannot be recorded.
+
+        Raises:
+            StateUnavailableError: When ``strict`` and storage is unavailable.
         """
         try:
             self._write(subject, state)
@@ -146,6 +151,8 @@ class AttemptStateStore:
             else:
                 self._state.set(self._claim_key(subject), b"1", ttl_seconds=self._ttl_seconds)
         except StateBackendUnavailableError as err:
+            if strict:
+                raise_unavailable(f"record {self._namespace}:{self._name}", err)
             logger.warning(
                 "Failed to record an attempt state",
                 exc_info=err,

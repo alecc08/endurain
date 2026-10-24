@@ -731,11 +731,9 @@ class TestExportServiceGenerateExportArchive:
             patch.object(service, "add_user_images_to_zip"),
         ):
             archive = service.build_export_archive(user_dict, timeout_seconds=60)
-            chunks = list(profile_export_service.stream_archive(archive))
 
-        assert len(chunks) > 0
-        assert all(isinstance(c, bytes) for c in chunks)
-        assert archive.closed
+        assert archive.read(4) == b"PK\x03\x04"
+        archive.close()
 
     def test_generate_archive_memory_error_raised(self) -> None:
         mock_db = MagicMock(spec=Session)
@@ -1474,13 +1472,3 @@ def test_a_failed_build_leaves_no_archive_open() -> None:
         service.build_export_archive({"id": 1})
 
     assert opened and all(handle.closed for handle in opened)
-
-
-def test_abandoning_the_stream_closes_the_archive() -> None:
-    archive = io.BytesIO(b"x" * 10)
-
-    stream = profile_export_service.stream_archive(archive, chunk_size=4)
-    assert next(stream) == b"xxxx"
-    stream.close()
-
-    assert archive.closed

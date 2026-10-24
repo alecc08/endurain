@@ -1,4 +1,4 @@
-"""Subscribers that run a queued profile import.
+"""Subscribers that run a queued profile import or export.
 
 The import route answers 202 and publishes ``users.profile_import_requested``. With durable jobs a
 worker runs the durable handler and retries a transient failure; without them the bus subscriber
@@ -15,12 +15,15 @@ from jasil.subscribers import best_effort
 import core.config as core_config
 import core.logger as core_logger
 import modules.users.users_profile.events as profile_events
+import modules.users.users_profile.export_job_service as profile_export_job_service
+import modules.users.users_profile.export_state_store as profile_export_state_store
 import modules.users.users_profile.import_job_service as profile_import_job_service
 import modules.users.users_profile.import_state_store as profile_import_state_store
 
 logger = core_logger.get_logger(__name__)
 
 IMPORT_REQUESTED_SUBSCRIBER_ID = "users.profile_import_requested"
+EXPORT_REQUESTED_SUBSCRIBER_ID = "users.profile_export_requested"
 
 
 def _import(event: Event, *, will_retry: bool) -> int:
@@ -67,17 +70,62 @@ def run_import_requested_on_bus(event: Event) -> None:
 on_import_requested = best_effort(run_import_requested_on_bus)
 
 
+def _export(event: Event, *, will_retry: bool) -> int:
+    """Run the export the event names.
+
+    Args:
+        event: The ``users.profile_export_requested`` event.
+        will_retry: Whether a worker runs this again if it raises.
+
+    Returns:
+        The exporting user's ID.
+    """
+    payload = platform_event_versioning.parse_payload(profile_events.ProfileExportRequestedPayload, event)
+    platform = platform_runtime.get_active_platform()
+    profile_export_job_service.run_export(
+        payload,
+        profile_export_state_store.ProfileExportStateStore(platform.state),
+        platform.storage,
+        will_retry=will_retry,
+    )
+    return payload.user_id
+
+
+def process_export_requested_for_event(event: Event) -> None:
+    """Durable handler: build one export; raises on a transient failure so the worker retries.
+
+    Args:
+        event: The ``users.profile_export_requested`` event.
+    """
+    user_id = _export(event, will_retry=event.retry_count < core_config.settings.JOBS_MAX_ATTEMPTS)
+    logger.debug("Profile export job finished", extra=core_logger.context(user_id=user_id))
+
+
+def run_export_requested_on_bus(event: Event) -> None:
+    """Bus subscriber: build one export; nothing retries it.
+
+    Args:
+        event: The ``users.profile_export_requested`` event.
+    """
+    user_id = _export(event, will_retry=False)
+    logger.debug("Profile export task finished", extra=core_logger.context(user_id=user_id))
+
+
+on_export_requested = best_effort(run_export_requested_on_bus)
+
+
 def register_bus_subscribers(events: EventBusProvider) -> None:
-    """Register the import consumer on the running bus.
+    """Register the import and export consumers on the running bus.
 
     Args:
         events: The event bus.
     """
     events.subscribe(profile_events.USERS_PROFILE_IMPORT_REQUESTED, on_import_requested)
+    events.subscribe(profile_events.USERS_PROFILE_EXPORT_REQUESTED, on_export_requested)
 
 
 def register_durable_handlers(registry: JobHandlerRegistry) -> None:
-    """Register the import handler as a durable job subscriber.
+    """Register the import and export handlers as durable job subscribers.
 
     Args:
         registry: The durable-subscriber registry to register on.
@@ -86,4 +134,9 @@ def register_durable_handlers(registry: JobHandlerRegistry) -> None:
         profile_events.USERS_PROFILE_IMPORT_REQUESTED,
         IMPORT_REQUESTED_SUBSCRIBER_ID,
         process_import_requested_for_event,
+    )
+    registry.register(
+        profile_events.USERS_PROFILE_EXPORT_REQUESTED,
+        EXPORT_REQUESTED_SUBSCRIBER_ID,
+        process_export_requested_for_event,
     )

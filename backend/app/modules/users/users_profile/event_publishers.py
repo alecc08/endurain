@@ -31,3 +31,25 @@ def publish_import_requested(user_id: int, staged_key: str, db: Session, *, comm
         metadata={core_event_metadata.META_USER_ID: user_id},
         schema_version=payload.SCHEMA_VERSION,
     )
+
+
+def publish_export_requested(user_id: int, db: Session, *, commit: Callable[[], None]) -> None:
+    """Publish ``users.profile_export_requested`` so a worker builds the export.
+
+    The event is the work, so a staging failure propagates.
+
+    Args:
+        user_id: The exporting user.
+        db: The session to stage the event on.
+        commit: Zero-arg commit callable that ends the caller's transaction.
+    """
+    payload = profile_events.ProfileExportRequestedPayload(user_id=user_id)
+    platform_publisher.publish_committing(
+        profile_events.USERS_PROFILE_EXPORT_REQUESTED,
+        payload.model_dump(),
+        source=profile_constants.EXPORT_SOURCE_API,
+        db=db,
+        commit=commit,
+        metadata={core_event_metadata.META_USER_ID: user_id},
+        schema_version=payload.SCHEMA_VERSION,
+    )

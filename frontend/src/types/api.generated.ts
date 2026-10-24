@@ -2789,19 +2789,62 @@ export interface paths {
             cookie?: never;
         };
         /**
+         * Read Profile Export Status
+         * @description Report where the authenticated user's profile export is.
+         *
+         *     Args:
+         *         token_user_id: User ID from access token.
+         *         export_states: Shared store of the export's state.
+         *
+         *     Returns:
+         *         The export's state.
+         */
+        get: operations["read_profile_export_status_api_v1_profile_export_get"];
+        put?: never;
+        /**
          * Export Profile Data
-         * @description Export all profile data as ZIP archive.
+         * @description Queue an export of all profile data as a ZIP archive.
+         *
+         *     A worker builds the archive; poll ``GET /profile/export`` for the outcome and fetch it from
+         *     ``GET /profile/export/download``.
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         token_user_id: User ID from access token.
-         *         storage: The platform storage provider.
+         *         export_states: Shared store of the export's state.
          *         db: Database session.
          *
          *     Returns:
-         *         Streaming response with ZIP archive.
+         *         The queued export's state.
          */
-        get: operations["export_profile_data_api_v1_profile_export_get"];
+        post: operations["export_profile_data_api_v1_profile_export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/profile/export/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Profile Export
+         * @description Download the authenticated user's finished profile export.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         token_user_id: User ID from access token.
+         *         export_states: Shared store of the export's state.
+         *         storage: The platform storage provider.
+         *
+         *     Returns:
+         *         Streaming response with the ZIP archive.
+         */
+        get: operations["download_profile_export_api_v1_profile_export_download_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5947,6 +5990,21 @@ export interface components {
             /** Problems */
             problems: string[];
         };
+        /**
+         * ExportFailure
+         * @description Stable, sanitized reasons an export can fail.
+         *
+         *     A closed set: the underlying exception text can carry internals, so the client gets a code it
+         *     can translate.
+         * @enum {string}
+         */
+        ExportFailure: "timed_out" | "processing_failed";
+        /**
+         * ExportStatus
+         * @description Where a profile export is.
+         * @enum {string}
+         */
+        ExportStatus: "queued" | "running" | "completed" | "failed";
         /**
          * FastingStatus
          * @description Enumeration of fasting session statuses.
@@ -9704,6 +9762,26 @@ export interface components {
             type: string;
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * ProfileExportStatus
+         * @description Where the authenticated user's profile export is.
+         *
+         *     Attributes:
+         *         status: Lifecycle state of the export.
+         *         failure: Why the export failed; set only when it failed.
+         *         size_bytes: Size of the archive; set only when it completed and can be downloaded.
+         */
+        ProfileExportStatus: {
+            /** @description Reason the export failed */
+            failure?: components["schemas"]["ExportFailure"] | null;
+            /**
+             * Size Bytes
+             * @description Archive size in bytes, once completed
+             */
+            size_bytes?: number | null;
+            /** @description Lifecycle state of the export */
+            status: components["schemas"]["ExportStatus"];
         };
         /**
          * ProfileImportStatus
@@ -16928,7 +17006,65 @@ export interface operations {
             };
         };
     };
-    export_profile_data_api_v1_profile_export_get: {
+    read_profile_export_status_api_v1_profile_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileExportStatus"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    export_profile_data_api_v1_profile_export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileExportStatus"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    download_profile_export_api_v1_profile_export_download_get: {
         parameters: {
             query?: never;
             header?: never;

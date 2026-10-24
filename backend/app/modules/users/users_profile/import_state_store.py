@@ -72,6 +72,7 @@ class ProfileImportStateStore:
         *,
         failure: profile_constants.ImportFailure | None = None,
         imported: dict[str, int] | None = None,
+        strict: bool = False,
     ) -> None:
         """Record an import's progress or outcome.
 
@@ -80,11 +81,16 @@ class ProfileImportStateStore:
             status: The new status.
             failure: Why the import failed, when ``status`` is ``FAILED``.
             imported: The counts of what was imported, when ``status`` is ``COMPLETED``.
+            strict: Raise when the state cannot be recorded, instead of logging it.
+
+        Raises:
+            StateUnavailableError: When ``strict`` and storage is unavailable.
         """
         self._attempts.record(
             str(user_id),
             ProfileImportState(status=status, failure=failure, imported=imported),
             finished=status in _FINISHED,
+            strict=strict,
         )
 
     def get(self, user_id: int) -> ProfileImportState | None:

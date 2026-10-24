@@ -1,6 +1,6 @@
 """User default gear database models."""
 
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
@@ -35,6 +35,7 @@ class UsersDefaultGear(Base):
     """
 
     __tablename__ = "users_default_gear"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_users_default_gear_user_id"),)
 
     id: Mapped[int] = mapped_column(
         primary_key=True,
