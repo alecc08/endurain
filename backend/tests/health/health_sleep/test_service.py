@@ -1,9 +1,6 @@
 from datetime import date as datetime_date
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-import core.exceptions as core_exceptions
 import modules.health.constants as health_constants
 import modules.health.health_sleep.schema as health_sleep_schema
 import modules.health.health_sleep.service as health_sleep_service
@@ -12,25 +9,19 @@ _PREFIX = "modules.health.health_sleep.service"
 _SCORING = f"{_PREFIX}.health_sleep_sleep_scoring.calculate_and_set_sleep_scores"
 
 
-def _update(user_id: int = 1) -> health_sleep_schema.HealthSleepUpdate:
-    return health_sleep_schema.HealthSleepUpdate(
-        id=1, user_id=user_id, date=datetime_date(2024, 1, 15), total_sleep_seconds=28800
-    )
+def _update() -> health_sleep_schema.HealthSleepUpdate:
+    return health_sleep_schema.HealthSleepUpdate(date=datetime_date(2024, 1, 15), total_sleep_seconds=28800)
 
 
 class TestStageEdit:
-    def test_rejects_a_record_of_another_user(self, mock_db):
-        with pytest.raises(core_exceptions.PermissionDeniedError):
-            health_sleep_service.stage_edit_health_sleep(1, _update(user_id=2), mock_db)
-
     @patch(_SCORING)
     @patch(f"{_PREFIX}.health_sleep_crud.edit_health_sleep")
     def test_stages_without_scoring_or_committing(self, mock_edit, mock_scoring, mock_db):
         record = _update()
 
-        health_sleep_service.stage_edit_health_sleep(1, record, mock_db)
+        health_sleep_service.stage_edit_health_sleep(1, 7, record, mock_db)
 
-        mock_edit.assert_called_once_with(1, record, mock_db)
+        mock_edit.assert_called_once_with(1, 7, record, mock_db)
         mock_scoring.assert_not_called()
         mock_db.commit.assert_not_called()
 
@@ -57,8 +48,8 @@ class TestCreateHealthSleep:
 
         health_sleep_service.create_health_sleep(1, record, mock_db)
 
-        edited = mock_edit.call_args.args[1]
-        assert (edited.id, edited.user_id) == (7, 1)
+        assert mock_edit.call_args.args[:2] == (1, 7)
+        assert mock_edit.call_args.args[2].date == datetime_date(2024, 1, 15)
         mock_db.commit.assert_called_once()
 
 
@@ -68,7 +59,7 @@ class TestEditAndDelete:
     def test_edit_rescores_and_commits(self, mock_edit, mock_scoring, mock_db):
         record = _update()
 
-        health_sleep_service.edit_health_sleep(1, record, mock_db)
+        health_sleep_service.edit_health_sleep(1, 7, record, mock_db)
 
         mock_scoring.assert_called_once_with(record)
         mock_db.commit.assert_called_once()

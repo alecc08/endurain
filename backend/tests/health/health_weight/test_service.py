@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import core.exceptions as core_exceptions
 import modules.health.constants as health_constants
 import modules.health.health_weight.schema as health_weight_schema
 import modules.health.health_weight.service as health_weight_service
@@ -48,20 +47,14 @@ class TestStageCreate:
 
 
 class TestStageEdit:
-    def test_rejects_a_record_of_another_user(self, mock_db):
-        record = health_weight_schema.HealthWeightUpdate(id=1, user_id=2, date=datetime_date(2024, 1, 15), weight=75.0)
-
-        with pytest.raises(core_exceptions.PermissionDeniedError):
-            health_weight_service.stage_edit_health_weight(1, record, mock_db)
-
     @patch(f"{_PREFIX}.health_weight_crud.edit_health_weight")
     @patch(f"{_PREFIX}.users_integration.get_user", return_value=_user(180))
     def test_derives_bmi_when_weight_changes(self, _get_user, mock_edit, mock_db):
-        record = health_weight_schema.HealthWeightUpdate(id=1, user_id=1, date=datetime_date(2024, 1, 15), weight=81.0)
+        record = health_weight_schema.HealthWeightUpdate(date=datetime_date(2024, 1, 15), weight=81.0)
 
-        health_weight_service.stage_edit_health_weight(1, record, mock_db)
+        health_weight_service.stage_edit_health_weight(1, 7, record, mock_db)
 
-        assert mock_edit.call_args.args[1].bmi == pytest.approx(81.0 / 1.8**2)
+        assert mock_edit.call_args.args[2].bmi == pytest.approx(81.0 / 1.8**2)
 
 
 class TestCreateHealthWeight:
@@ -83,19 +76,17 @@ class TestCreateHealthWeight:
 
         health_weight_service.create_health_weight(1, record, mock_db)
 
-        edited = mock_edit.call_args.args[1]
-        assert (edited.id, edited.user_id) == (7, 1)
+        assert mock_edit.call_args.args[:2] == (1, 7)
+        assert mock_edit.call_args.args[2].date == datetime_date(2024, 1, 15)
         mock_db.commit.assert_called_once()
 
 
 class TestEditAndDelete:
     @patch(f"{_PREFIX}.health_weight_crud.edit_health_weight")
     def test_edit_commits(self, mock_edit, mock_db):
-        record = health_weight_schema.HealthWeightUpdate(
-            id=1, user_id=1, date=datetime_date(2024, 1, 15), weight=75.0, bmi=22.0
-        )
+        record = health_weight_schema.HealthWeightUpdate(date=datetime_date(2024, 1, 15), weight=75.0, bmi=22.0)
 
-        health_weight_service.edit_health_weight(1, record, mock_db)
+        health_weight_service.edit_health_weight(1, 7, record, mock_db)
 
         mock_db.commit.assert_called_once()
 

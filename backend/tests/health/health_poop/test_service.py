@@ -41,14 +41,9 @@ class TestWrites:
         assert health_poop_service.create_health_poop(1, record, mock_db) is mock_create.return_value
         mock_db.commit.assert_called_once()
 
-    def test_edit_rejects_a_record_of_another_user(self, mock_db):
-        with pytest.raises(core_exceptions.PermissionDeniedError):
-            health_poop_service.edit_health_poop(1, health_poop_schema.HealthPoopUpdate(id=1, user_id=2), mock_db)
-        mock_db.commit.assert_not_called()
-
     @patch(f"{_PREFIX}.health_poop_crud.edit_health_poop")
     def test_edit_commits(self, mock_edit, mock_db):
-        health_poop_service.edit_health_poop(1, health_poop_schema.HealthPoopUpdate(id=1, user_id=1), mock_db)
+        health_poop_service.edit_health_poop(1, 7, health_poop_schema.HealthPoopUpdate(), mock_db)
 
         mock_db.commit.assert_called_once()
 

@@ -201,6 +201,7 @@ def create_health_weight(
 
 def edit_health_weight(
     user_id: int,
+    health_weight_id: int,
     health_weight: health_weight_schema.HealthWeightUpdate,
     db: Session,
 ) -> health_weight_schema.HealthWeightRead:
@@ -208,7 +209,8 @@ def edit_health_weight(
 
     Args:
         user_id: The record's owner.
-        health_weight: The record with its changes.
+        health_weight_id: The record to change.
+        health_weight: The fields to change.
         db: Database session.
 
     Returns:
@@ -217,7 +219,7 @@ def edit_health_weight(
     Raises:
         NotFoundError: If the user has no such record.
     """
-    db_health_weight = _get_model_by_id_and_user_id(health_weight.id, user_id, db)
+    db_health_weight = _get_model_by_id_and_user_id(health_weight_id, user_id, db)
 
     for key, value in health_weight.model_dump(exclude_unset=True).items():
         setattr(db_health_weight, key, value)

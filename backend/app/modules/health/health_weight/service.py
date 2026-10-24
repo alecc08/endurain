@@ -115,29 +115,25 @@ def stage_create_health_weight(
 
 
 def stage_edit_health_weight(
-    user_id: int, health_weight: health_weight_schema.HealthWeightUpdate, db: Session
+    user_id: int, health_weight_id: int, health_weight: health_weight_schema.HealthWeightUpdate, db: Session
 ) -> health_weight_schema.HealthWeightRead:
     """Stage an update to a weight record, deriving the BMI when it is not given.
 
     Args:
         user_id: The record's owner.
-        health_weight: The record with its changes.
+        health_weight_id: The record to change.
+        health_weight: The fields to change.
         db: Database session.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
     """
-    if health_weight.user_id != user_id:
-        logger.warning("Refused to edit a weight record of another user", extra=core_logger.context(user_id=user_id))
-        raise core_exceptions.PermissionDeniedError("Cannot edit health weight for another user.")
-
     if health_weight.bmi is None and health_weight.weight is not None:
         health_weight = _with_bmi(health_weight, user_id, db)
-    return health_weight_crud.edit_health_weight(user_id, health_weight, db)
+    return health_weight_crud.edit_health_weight(user_id, health_weight_id, health_weight, db)
 
 
 def stage_upsert_health_weight(
@@ -175,9 +171,7 @@ def stage_upsert_health_weight(
             if existing is None:
                 raise
     return stage_edit_health_weight(
-        user_id,
-        health_weight_schema.HealthWeightUpdate(id=existing.id, user_id=user_id, **health_weight.model_dump()),
-        db,
+        user_id, existing.id, health_weight_schema.HealthWeightUpdate(**health_weight.model_dump()), db
     )
 
 
@@ -204,23 +198,23 @@ def create_health_weight(
 
 
 def edit_health_weight(
-    user_id: int, health_weight: health_weight_schema.HealthWeightUpdate, db: Session
+    user_id: int, health_weight_id: int, health_weight: health_weight_schema.HealthWeightUpdate, db: Session
 ) -> health_weight_schema.HealthWeightRead:
     """Update a weight record and commit.
 
     Args:
         user_id: The record's owner.
-        health_weight: The record with its changes.
+        health_weight_id: The record to change.
+        health_weight: The fields to change.
         db: Database session.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
     """
-    updated = stage_edit_health_weight(user_id, health_weight, db)
+    updated = stage_edit_health_weight(user_id, health_weight_id, health_weight, db)
     db.commit()
     logger.debug("Edited a weight record", extra=core_logger.context(user_id=user_id))
     return updated

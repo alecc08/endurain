@@ -115,8 +115,6 @@ interface HealthEntriesParams<Interval extends string> {
 interface UpdateEntryVariables<Input> {
   /** Record id to update. */
   id: number
-  /** Owning user id echoed back to the backend. */
-  userId: number
   /** Clean metric input. */
   input: Input
 }
@@ -168,11 +166,11 @@ function useCreateHealthEntryMutation<Entry, Input>(
 /** Standard update-entry mutation wrapper for health CRUD zones. */
 function useUpdateHealthEntryMutation<Entry, Input>(
   mutationKey: readonly unknown[],
-  updateEntry: (id: number, userId: number, input: Input) => Promise<Entry>,
+  updateEntry: (id: number, input: Input) => Promise<Entry>,
 ) {
   return useInvalidatingMutation<Entry, UpdateEntryVariables<Input>>({
     mutationKey,
-    mutationFn: ({ id, userId, input }) => updateEntry(id, userId, input),
+    mutationFn: ({ id, input }) => updateEntry(id, input),
     invalidateKey: queryKeys.health.all(),
   })
 }

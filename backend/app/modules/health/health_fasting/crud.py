@@ -267,13 +267,14 @@ def create_health_fasting(
 
 
 def edit_health_fasting(
-    user_id: int, health_fasting: health_fasting_schema.HealthFastingUpdate, db: Session
+    user_id: int, health_fasting_id: int, health_fasting: health_fasting_schema.HealthFastingUpdate, db: Session
 ) -> health_fasting_schema.HealthFastingRead:
     """Stage an update to a user's fasting record.
 
     Args:
         user_id: The record's owner.
-        health_fasting: The record with its changes.
+        health_fasting_id: The record to change.
+        health_fasting: The fields to change.
         db: Database session.
 
     Returns:
@@ -283,7 +284,7 @@ def edit_health_fasting(
         NotFoundError: If the user has no such record.
         ConflictError: If the change would leave the user with two running fasts.
     """
-    db_health_fasting = _get_model_by_id_and_user_id(health_fasting.id, user_id, db)
+    db_health_fasting = _get_model_by_id_and_user_id(health_fasting_id, user_id, db)
 
     for key, value in health_fasting.model_dump(exclude_unset=True).items():
         setattr(db_health_fasting, key, value)

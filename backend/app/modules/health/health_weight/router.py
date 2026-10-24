@@ -82,8 +82,8 @@ def create_health_weight(
     return health_weight_service.create_health_weight(token_user_id, health_weight, db)
 
 
-@router.put(
-    "",
+@router.patch(
+    "/{health_weight_id}",
     response_model=health_weight_schema.HealthWeightRead,
     status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:write"])],
@@ -91,6 +91,7 @@ def create_health_weight(
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_health_weight(
     request: Request,
+    health_weight_id: core_dependencies.PositiveId,
     health_weight: health_weight_schema.HealthWeightUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
@@ -102,6 +103,7 @@ def edit_health_weight(
 
     Args:
         request: The incoming request, read by the rate limiter.
+        health_weight_id: ID of the record to change.
         health_weight (health_weight_schema.HealthWeight): The health weight data
             to be updated, containing the weight information and associated metadata.
         token_user_id (int): The ID of the authenticated user extracted from the
@@ -115,7 +117,7 @@ def edit_health_weight(
         PermissionDeniedError: If the record names another user.
         NotFoundError: If the entry doesn't exist.
     """
-    return health_weight_service.edit_health_weight(token_user_id, health_weight, db)
+    return health_weight_service.edit_health_weight(token_user_id, health_weight_id, health_weight, db)
 
 
 @router.delete(

@@ -155,8 +155,8 @@ def create_health_fasting(
     return health_fasting_service.create_health_fasting(token_user_id, health_fasting, db)
 
 
-@router.put(
-    "",
+@router.patch(
+    "/{health_fasting_id}",
     response_model=health_fasting_schema.HealthFastingRead,
     status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:write"])],
@@ -164,6 +164,7 @@ def create_health_fasting(
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_health_fasting(
     request: Request,
+    health_fasting_id: core_dependencies.PositiveId,
     health_fasting: health_fasting_schema.HealthFastingUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
@@ -172,6 +173,7 @@ def edit_health_fasting(
 
     Args:
         request: The incoming request, read by the rate limiter.
+        health_fasting_id: ID of the record to change.
         health_fasting: Fasting data to update.
         token_user_id: User ID from the access token.
         db: Database session dependency.
@@ -179,7 +181,7 @@ def edit_health_fasting(
     Returns:
         Updated HealthFastingRead record.
     """
-    return health_fasting_service.edit_health_fasting(token_user_id, health_fasting, db)
+    return health_fasting_service.edit_health_fasting(token_user_id, health_fasting_id, health_fasting, db)
 
 
 @router.post(

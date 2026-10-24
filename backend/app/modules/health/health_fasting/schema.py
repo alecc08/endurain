@@ -173,10 +173,11 @@ class HealthFastingRead(HealthFastingBase):
     )
 
 
-class HealthFastingUpdate(HealthFastingRead):
-    """Schema for updating a fasting record.
+class HealthFastingUpdate(HealthFastingBase):
+    """Schema for the fields a PATCH changes on a fasting record.
 
-    Inherits from HealthFastingRead for consistency with read operations.
+    The record is named by the path, so the body carries neither an id nor an owner; only the
+    fields present are changed.
     """
 
 

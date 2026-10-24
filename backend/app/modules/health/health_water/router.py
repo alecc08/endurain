@@ -102,8 +102,8 @@ def create_health_water(
     return health_water_service.create_health_water(token_user_id, health_water, db)
 
 
-@router.put(
-    "",
+@router.patch(
+    "/{health_water_id}",
     response_model=health_water_schema.HealthWaterRead,
     status_code=status.HTTP_200_OK,
     dependencies=[
@@ -116,6 +116,7 @@ def create_health_water(
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_health_water(
     request: Request,
+    health_water_id: core_dependencies.PositiveId,
     health_water: health_water_schema.HealthWaterUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
@@ -124,6 +125,7 @@ def edit_health_water(
 
     Args:
         request: The incoming request, read by the rate limiter.
+        health_water_id: ID of the record to change.
         health_water: Water intake data to update.
         token_user_id: User ID from the access token.
         db: Database session dependency.
@@ -134,7 +136,7 @@ def edit_health_water(
     Raises:
         HTTPException: If record not found or unauthorized.
     """
-    return health_water_service.edit_health_water(token_user_id, health_water, db)
+    return health_water_service.edit_health_water(token_user_id, health_water_id, health_water, db)
 
 
 @router.delete(

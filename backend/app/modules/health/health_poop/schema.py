@@ -158,9 +158,9 @@ class HealthPoopRead(HealthPoopBase):
     )
 
 
-class HealthPoopUpdate(HealthPoopRead):
-    """Schema for updating a poop record.
+class HealthPoopUpdate(HealthPoopBase):
+    """Schema for the fields a PATCH changes on a poop record.
 
-    Inherits from HealthPoopRead for consistency with read
-    operations while allowing modifications to poop data.
+    The record is named by the path, so the body carries neither an id nor an owner; only the
+    fields present are changed.
     """

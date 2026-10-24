@@ -123,7 +123,7 @@ def process_migration_2(db: Session) -> None:
 
                 # Update the weight in the database
                 data_to_update = health_weight_schema.HealthWeightUpdate.model_validate(data)
-                health_weight_migration.edit_health_weight(data.user_id, data_to_update, db)
+                health_weight_migration.edit_health_weight(data.user_id, data.id, data_to_update, db)
 
                 logger.info(f"Migration 2 - Processed BMI: {data.id}", extra=core_logger.context(console=True))
 

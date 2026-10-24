@@ -85,9 +85,9 @@ class HealthWaterRead(HealthWaterBase):
     )
 
 
-class HealthWaterUpdate(HealthWaterRead):
-    """Schema for updating a water intake record.
+class HealthWaterUpdate(HealthWaterBase):
+    """Schema for the fields a PATCH changes on a water record.
 
-    Inherits from HealthWaterRead for consistency with read
-    operations while allowing modifications to water intake data.
+    The record is named by the path, so the body carries neither an id nor an owner; only the
+    fields present are changed.
     """

@@ -68,10 +68,9 @@ class HealthStepsRead(HealthStepsBase):
     user_id: StrictInt = Field(..., description="Foreign key reference to the user")
 
 
-class HealthStepsUpdate(HealthStepsRead):
-    """Schema for updating health steps records.
+class HealthStepsUpdate(HealthStepsBase):
+    """Schema for the fields a PATCH changes on a steps record.
 
-    Inherits from HealthStepsRead to maintain consistency with read operations
-    while allowing modifications to health steps data. This schema is used for
-    PUT/PATCH requests to update existing health steps entries.
+    The record is named by the path, so the body carries neither an id nor an owner; only the
+    fields present are changed.
     """

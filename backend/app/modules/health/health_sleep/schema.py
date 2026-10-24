@@ -256,12 +256,9 @@ class HealthSleepRead(HealthSleepBase):
     user_id: StrictInt = Field(..., description="Foreign key reference to the user")
 
 
-class HealthSleepUpdate(HealthSleepRead):
-    """Schema for updating health sleep records.
+class HealthSleepUpdate(HealthSleepBase):
+    """Schema for the fields a PATCH changes on a sleep record.
 
-    Inherits all fields from HealthSleepRead, allowing clients to update
-    existing sleep data while maintaining consistency with the read schema.
-
-    Used in PUT/PATCH requests to modify sleep tracking information such as
-    sleep duration, quality, and related health metrics.
+    The record is named by the path, so the body carries neither an id nor an owner; only the
+    fields present are changed.
     """

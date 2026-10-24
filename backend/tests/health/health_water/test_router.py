@@ -95,9 +95,7 @@ class TestEditHealthWater:
     def test_edit(self, mock_edit, mock_db):
         mock_edit.return_value = HealthWaterRead(id=1, user_id=1, amount_ml=900.0)
 
-        response = TestClient(_build_app(mock_db)).put(
-            "/health_water", json={"id": 1, "user_id": 1, "amount_ml": 900}, headers=_HEADERS
-        )
+        response = TestClient(_build_app(mock_db)).patch("/health_water/1", json={"amount_ml": 900}, headers=_HEADERS)
 
         assert response.status_code == 200
         assert response.json()["amount_ml"] == 900.0
@@ -106,23 +104,9 @@ class TestEditHealthWater:
     def test_not_found_is_404(self, mock_edit, mock_db):
         mock_edit.side_effect = core_exceptions.NotFoundError("Health water not found")
 
-        response = TestClient(_build_app(mock_db)).put(
-            "/health_water", json={"id": 9, "user_id": 1, "amount_ml": 900}, headers=_HEADERS
-        )
+        response = TestClient(_build_app(mock_db)).patch("/health_water/9", json={"amount_ml": 900}, headers=_HEADERS)
 
         assert response.status_code == 404
-
-    @patch(f"{_SERVICE}.edit_health_water")
-    def test_another_users_record_is_403(self, mock_edit, mock_db):
-        mock_edit.side_effect = core_exceptions.PermissionDeniedError(
-            "Cannot edit health water intake for another user."
-        )
-
-        response = TestClient(_build_app(mock_db)).put(
-            "/health_water", json={"id": 1, "user_id": 2, "amount_ml": 900}, headers=_HEADERS
-        )
-
-        assert response.status_code == 403
 
 
 class TestDeleteHealthWater:

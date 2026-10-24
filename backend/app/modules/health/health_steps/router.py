@@ -84,8 +84,8 @@ def create_health_steps(
     return health_steps_service.create_health_steps(token_user_id, health_steps, db)
 
 
-@router.put(
-    "",
+@router.patch(
+    "/{health_steps_id}",
     response_model=health_steps_schema.HealthStepsRead,
     status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:write"])],
@@ -93,6 +93,7 @@ def create_health_steps(
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_health_steps(
     request: Request,
+    health_steps_id: core_dependencies.PositiveId,
     health_steps: health_steps_schema.HealthStepsUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
@@ -104,6 +105,7 @@ def edit_health_steps(
 
     Args:
         request: The incoming request, read by the rate limiter.
+        health_steps_id: ID of the record to change.
         health_steps (health_steps_schema.HealthSteps): The health steps data to be updated,
             containing the new values for the health steps record.
         token_user_id (int): The user ID extracted from the JWT access token, used to identify
@@ -119,7 +121,7 @@ def edit_health_steps(
             found, or database operations fail.
     """
     # Updates the health_steps in the database and returns it
-    return health_steps_service.edit_health_steps(token_user_id, health_steps, db)
+    return health_steps_service.edit_health_steps(token_user_id, health_steps_id, health_steps, db)
 
 
 @router.delete(

@@ -184,14 +184,15 @@ async function createHealthResource<Dto, Entry, Payload extends object>(
   return mapEntry(dto)
 }
 
-/** Updates a health resource and maps the returned record. */
+/** Changes the given fields of a health resource record and maps the returned record. */
 async function updateHealthResource<Dto, Entry, Payload extends object>(
   resource: string,
+  id: number,
   payload: Payload,
   mapEntry: (dto: Dto) => Entry,
 ): Promise<Entry> {
-  const dto = await apiFetch<Dto>(`/health/${resource}`, {
-    method: 'PUT',
+  const dto = await apiFetch<Dto>(`/health/${resource}/${id}`, {
+    method: 'PATCH',
     body: JSON.stringify(payload),
   })
   return mapEntry(dto)
@@ -220,7 +221,7 @@ interface HealthCrudService<Entry, Input> {
   /** Creates (or upserts the existing same-date) record and maps the response. */
   create: (input: Input) => Promise<Entry>
   /** Updates an existing record (echoing id + user_id) and maps the response. */
-  update: (id: number, userId: number, input: Input) => Promise<Entry>
+  update: (id: number, input: Input) => Promise<Entry>
   /** Deletes a record by id. */
   remove: (id: number) => Promise<void>
 }
@@ -244,8 +245,7 @@ function createHealthCrudService<Dto, Entry, Wire extends object, Input>(
   return {
     fetch: (params, signal) => fetchHealthHistoryPage(resource, params, mapEntry, signal),
     create: (input) => createHealthResource(resource, toWireFields(input), mapEntry),
-    update: (id, userId, input) =>
-      updateHealthResource(resource, { id, user_id: userId, ...toWireFields(input) }, mapEntry),
+    update: (id, input) => updateHealthResource(resource, id, toWireFields(input), mapEntry),
     remove: (id) => deleteHealthResource(resource, id),
   }
 }
@@ -577,12 +577,9 @@ export async function createFastingEntry(input: FastingEntryInput): Promise<Fast
  */
 export async function updateFastingEntry(
   id: number,
-  userId: number,
   input: FastingEntryInput,
 ): Promise<FastingEntry> {
   const payload: Schemas['HealthFastingUpdate'] = {
-    id,
-    user_id: userId,
     fast_start_time: input.fastStartTime,
     fast_end_time: input.fastEndTime,
     fasting_type: input.fastingType,
@@ -591,7 +588,7 @@ export async function updateFastingEntry(
     status: input.status,
     notes: input.notes,
   }
-  return updateHealthResource('fasting', payload, mapFastingEntry)
+  return updateHealthResource('fasting', id, payload, mapFastingEntry)
 }
 
 /**

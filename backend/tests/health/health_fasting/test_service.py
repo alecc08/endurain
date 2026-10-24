@@ -52,18 +52,9 @@ class TestCreateHealthFasting:
 
 
 class TestEditAndDelete:
-    def test_edit_rejects_a_record_of_another_user(self, mock_db):
-        update = health_fasting_schema.HealthFastingUpdate(id=1, user_id=2)
-
-        with pytest.raises(core_exceptions.PermissionDeniedError):
-            health_fasting_service.edit_health_fasting(1, update, mock_db)
-        mock_db.commit.assert_not_called()
-
     @patch(f"{_CRUD}.edit_health_fasting")
     def test_edit_commits(self, _edit, mock_db):
-        health_fasting_service.edit_health_fasting(
-            1, health_fasting_schema.HealthFastingUpdate(id=1, user_id=1), mock_db
-        )
+        health_fasting_service.edit_health_fasting(1, 7, health_fasting_schema.HealthFastingUpdate(), mock_db)
 
         mock_db.commit.assert_called_once()
 

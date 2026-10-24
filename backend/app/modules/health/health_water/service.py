@@ -65,28 +65,23 @@ def list_health_water(
 
 
 def stage_edit_health_water(
-    user_id: int, health_water: health_water_schema.HealthWaterUpdate, db: Session
+    user_id: int, health_water_id: int, health_water: health_water_schema.HealthWaterUpdate, db: Session
 ) -> health_water_schema.HealthWaterRead:
-    """Stage an update to a water intake record after checking it names the caller.
+    """Stage an update to a water intake record.
 
     Args:
         user_id: The record's owner.
-        health_water: The record with its changes.
+        health_water_id: The record to change.
+        health_water: The fields to change.
         db: Database session.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
     """
-    if health_water.user_id != user_id:
-        logger.warning(
-            "Refused to edit a water intake record of another user", extra=core_logger.context(user_id=user_id)
-        )
-        raise core_exceptions.PermissionDeniedError("Cannot edit health water intake for another user.")
-    return health_water_crud.edit_health_water(user_id, health_water, db)
+    return health_water_crud.edit_health_water(user_id, health_water_id, health_water, db)
 
 
 def stage_add_health_water(
@@ -151,23 +146,23 @@ def create_health_water(
 
 
 def edit_health_water(
-    user_id: int, health_water: health_water_schema.HealthWaterUpdate, db: Session
+    user_id: int, health_water_id: int, health_water: health_water_schema.HealthWaterUpdate, db: Session
 ) -> health_water_schema.HealthWaterRead:
     """Update a water intake record and commit.
 
     Args:
         user_id: The record's owner.
-        health_water: The record with its changes.
+        health_water_id: The record to change.
+        health_water: The fields to change.
         db: Database session.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
     """
-    updated = stage_edit_health_water(user_id, health_water, db)
+    updated = stage_edit_health_water(user_id, health_water_id, health_water, db)
     db.commit()
     logger.debug("Edited a water intake record", extra=core_logger.context(user_id=user_id))
     return updated

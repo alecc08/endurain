@@ -157,27 +157,23 @@ def create_health_fasting(
 
 
 def edit_health_fasting(
-    user_id: int, health_fasting: health_fasting_schema.HealthFastingUpdate, db: Session
+    user_id: int, health_fasting_id: int, health_fasting: health_fasting_schema.HealthFastingUpdate, db: Session
 ) -> health_fasting_schema.HealthFastingRead:
-    """Update a fasting record after checking it names the caller, and commit.
+    """Update a fasting record, and commit.
 
     Args:
         user_id: The record's owner.
-        health_fasting: The record with its changes.
+        health_fasting_id: The record to change.
+        health_fasting: The fields to change.
         db: Database session.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
     """
-    if health_fasting.user_id != user_id:
-        logger.warning("Refused to edit a fasting session of another user", extra=core_logger.context(user_id=user_id))
-        raise core_exceptions.PermissionDeniedError("Cannot edit fasting record for another user.")
-
-    updated = health_fasting_crud.edit_health_fasting(user_id, health_fasting, db)
+    updated = health_fasting_crud.edit_health_fasting(user_id, health_fasting_id, health_fasting, db)
     db.commit()
     logger.debug("Edited a fasting session", extra=core_logger.context(user_id=user_id))
     return updated

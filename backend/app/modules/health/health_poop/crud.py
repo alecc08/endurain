@@ -176,13 +176,14 @@ def create_health_poop(
 
 
 def edit_health_poop(
-    user_id: int, health_poop: health_poop_schema.HealthPoopUpdate, db: Session
+    user_id: int, health_poop_id: int, health_poop: health_poop_schema.HealthPoopUpdate, db: Session
 ) -> health_poop_schema.HealthPoopRead:
     """Stage an update to a user's poop record.
 
     Args:
         user_id: The record's owner.
-        health_poop: The record with its changes.
+        health_poop_id: The record to change.
+        health_poop: The fields to change.
         db: Database session.
 
     Returns:
@@ -191,7 +192,7 @@ def edit_health_poop(
     Raises:
         NotFoundError: If the user has no such record.
     """
-    db_health_poop = _get_model_by_id_and_user_id(health_poop.id, user_id, db)
+    db_health_poop = _get_model_by_id_and_user_id(health_poop_id, user_id, db)
 
     for key, value in health_poop.model_dump(exclude_unset=True).items():
         setattr(db_health_poop, key, value)

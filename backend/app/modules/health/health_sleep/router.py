@@ -84,8 +84,8 @@ def create_health_sleep(
     return health_sleep_service.create_health_sleep(token_user_id, health_sleep, db)
 
 
-@router.put(
-    "",
+@router.patch(
+    "/{health_sleep_id}",
     response_model=health_sleep_schema.HealthSleepRead,
     status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:write"])],
@@ -93,6 +93,7 @@ def create_health_sleep(
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_health_sleep(
     request: Request,
+    health_sleep_id: core_dependencies.PositiveId,
     health_sleep: health_sleep_schema.HealthSleepUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
@@ -104,6 +105,7 @@ def edit_health_sleep(
 
     Args:
         request: The incoming request, read by the rate limiter.
+        health_sleep_id: ID of the record to change.
         health_sleep (health_sleep_schema.HealthSleepUpdate): The health sleep data to be updated,
             containing the new values for the health sleep record.
         token_user_id (int): The user ID extracted from the JWT access token, used to identify
@@ -118,7 +120,7 @@ def edit_health_sleep(
         HTTPException: May raise various HTTP exceptions if authorization fails, user is not
             found, or database operations fail.
     """
-    return health_sleep_service.edit_health_sleep(token_user_id, health_sleep, db)
+    return health_sleep_service.edit_health_sleep(token_user_id, health_sleep_id, health_sleep, db)
 
 
 @router.delete(

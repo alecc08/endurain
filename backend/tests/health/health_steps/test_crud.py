@@ -94,9 +94,9 @@ class TestEditHealthSteps:
     def test_updates_the_given_fields_and_stages(self, mock_db):
         row = _row()
         _returns_one(mock_db, row)
-        update = health_steps_schema.HealthStepsUpdate(id=1, user_id=1, date=datetime_date(2024, 1, 15), steps=12000)
+        update = health_steps_schema.HealthStepsUpdate(date=datetime_date(2024, 1, 15), steps=12000)
 
-        health_steps_crud.edit_health_steps(1, update, mock_db)
+        health_steps_crud.edit_health_steps(1, 1, update, mock_db)
 
         assert row.steps == 12000
         mock_db.flush.assert_called_once()
@@ -104,10 +104,10 @@ class TestEditHealthSteps:
 
     def test_unknown_record_is_not_found(self, mock_db):
         _returns_one(mock_db, None)
-        update = health_steps_schema.HealthStepsUpdate(id=9, user_id=1, date=datetime_date(2024, 1, 15), steps=12000)
+        update = health_steps_schema.HealthStepsUpdate(date=datetime_date(2024, 1, 15), steps=12000)
 
         with pytest.raises(core_exceptions.NotFoundError, match="Health steps not found"):
-            health_steps_crud.edit_health_steps(1, update, mock_db)
+            health_steps_crud.edit_health_steps(1, 9, update, mock_db)
 
 
 class TestDeleteHealthSteps:

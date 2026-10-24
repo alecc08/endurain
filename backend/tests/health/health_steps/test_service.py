@@ -12,19 +12,13 @@ _PREFIX = "modules.health.health_steps.service"
 
 
 class TestStageEdit:
-    def test_rejects_a_record_of_another_user(self, mock_db):
-        record = health_steps_schema.HealthStepsUpdate(id=1, user_id=2, date=datetime_date(2024, 1, 15), steps=1)
-
-        with pytest.raises(core_exceptions.PermissionDeniedError):
-            health_steps_service.stage_edit_health_steps(1, record, mock_db)
-
     @patch(f"{_PREFIX}.health_steps_crud.edit_health_steps")
     def test_stages_without_committing(self, mock_edit, mock_db):
-        record = health_steps_schema.HealthStepsUpdate(id=1, user_id=1, date=datetime_date(2024, 1, 15), steps=1)
+        record = health_steps_schema.HealthStepsUpdate(date=datetime_date(2024, 1, 15), steps=1)
 
-        health_steps_service.stage_edit_health_steps(1, record, mock_db)
+        health_steps_service.stage_edit_health_steps(1, 7, record, mock_db)
 
-        mock_edit.assert_called_once_with(1, record, mock_db)
+        mock_edit.assert_called_once_with(1, 7, record, mock_db)
         mock_db.commit.assert_not_called()
 
 
@@ -47,8 +41,8 @@ class TestCreateHealthSteps:
 
         health_steps_service.create_health_steps(1, record, mock_db)
 
-        edited = mock_edit.call_args.args[1]
-        assert (edited.id, edited.user_id) == (7, 1)
+        assert mock_edit.call_args.args[:2] == (1, 7)
+        assert mock_edit.call_args.args[2].date == datetime_date(2024, 1, 15)
         mock_db.commit.assert_called_once()
 
 
@@ -62,7 +56,7 @@ class TestRaceForTheDate:
 
         health_steps_service.create_health_steps(1, record, mock_db)
 
-        assert mock_edit.call_args.args[1].id == 7
+        assert mock_edit.call_args.args[1] == 7
         mock_db.begin_nested.assert_called_once()
 
     @patch(f"{_PREFIX}.health_steps_crud.create_health_steps", side_effect=core_exceptions.ConflictError("duplicate"))
@@ -77,9 +71,9 @@ class TestRaceForTheDate:
 class TestEditAndDelete:
     @patch(f"{_PREFIX}.health_steps_crud.edit_health_steps")
     def test_edit_commits(self, mock_edit, mock_db):
-        record = health_steps_schema.HealthStepsUpdate(id=1, user_id=1, date=datetime_date(2024, 1, 15), steps=1)
+        record = health_steps_schema.HealthStepsUpdate(date=datetime_date(2024, 1, 15), steps=1)
 
-        health_steps_service.edit_health_steps(1, record, mock_db)
+        health_steps_service.edit_health_steps(1, 7, record, mock_db)
 
         mock_db.commit.assert_called_once()
 

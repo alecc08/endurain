@@ -138,9 +138,9 @@ class TestEditHealthFasting:
     def test_updates_the_given_fields_and_stages(self, mock_db):
         row = _row()
         _returns_one(mock_db, row)
-        update = health_fasting_schema.HealthFastingUpdate(id=1, user_id=1, notes="felt good")
+        update = health_fasting_schema.HealthFastingUpdate(notes="felt good")
 
-        health_fasting_crud.edit_health_fasting(1, update, mock_db)
+        health_fasting_crud.edit_health_fasting(1, 1, update, mock_db)
 
         assert row.notes == "felt good"
         mock_db.flush.assert_called_once()
@@ -149,17 +149,17 @@ class TestEditHealthFasting:
     def test_a_second_active_fast_is_a_conflict(self, mock_db):
         _returns_one(mock_db, _row())
         mock_db.flush.side_effect = IntegrityError("constraint", None, None)
-        update = health_fasting_schema.HealthFastingUpdate(id=1, user_id=1, status="in_progress")
+        update = health_fasting_schema.HealthFastingUpdate(status="in_progress")
 
         with pytest.raises(core_exceptions.ConflictError):
-            health_fasting_crud.edit_health_fasting(1, update, mock_db)
+            health_fasting_crud.edit_health_fasting(1, 1, update, mock_db)
 
     def test_unknown_record_is_not_found(self, mock_db):
         _returns_one(mock_db, None)
-        update = health_fasting_schema.HealthFastingUpdate(id=9, user_id=1, notes="x")
+        update = health_fasting_schema.HealthFastingUpdate(notes="x")
 
         with pytest.raises(core_exceptions.NotFoundError, match="Health fasting not found"):
-            health_fasting_crud.edit_health_fasting(1, update, mock_db)
+            health_fasting_crud.edit_health_fasting(1, 9, update, mock_db)
 
 
 class TestEndHealthFasting:

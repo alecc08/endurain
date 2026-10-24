@@ -115,11 +115,9 @@ class TestEditHealthWeight:
         mock_edit.return_value = updated_weight
 
         # Act
-        response = fast_api_client.put(
-            "/health_weight",
+        response = fast_api_client.patch(
+            "/health_weight/1",
             json={
-                "id": 1,
-                "user_id": 1,
                 "date": "2024-01-15",
                 "weight": 76.0,
             },
@@ -140,11 +138,9 @@ class TestEditHealthWeight:
         mock_edit.side_effect = core_exceptions.NotFoundError("Health weight not found")
 
         # Act
-        response = fast_api_client.put(
-            "/health_weight",
+        response = fast_api_client.patch(
+            "/health_weight/999",
             json={
-                "id": 999,
-                "user_id": 1,
                 "date": "2024-01-15",
                 "weight": 76.0,
             },

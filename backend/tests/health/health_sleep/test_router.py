@@ -90,9 +90,9 @@ class TestEditHealthSleep:
     def test_edits(self, mock_edit, fast_api_client, fast_api_app):
         mock_edit.return_value = _record(seconds=32400)
 
-        response = fast_api_client.put(
-            "/health_sleep",
-            json={"id": 1, "user_id": 1, "date": "2024-01-15", "total_sleep_seconds": 32400},
+        response = fast_api_client.patch(
+            "/health_sleep/1",
+            json={"date": "2024-01-15", "total_sleep_seconds": 32400},
             headers=_HEADERS,
         )
 
@@ -103,25 +103,13 @@ class TestEditHealthSleep:
     def test_not_found_is_404(self, mock_edit, fast_api_client, fast_api_app):
         mock_edit.side_effect = core_exceptions.NotFoundError("Health sleep not found")
 
-        response = fast_api_client.put(
-            "/health_sleep",
-            json={"id": 999, "user_id": 1, "date": "2024-01-15", "total_sleep_seconds": 32400},
+        response = fast_api_client.patch(
+            "/health_sleep/999",
+            json={"date": "2024-01-15", "total_sleep_seconds": 32400},
             headers=_HEADERS,
         )
 
         assert response.status_code == 404
-
-    @patch(f"{_SERVICE}.edit_health_sleep")
-    def test_another_users_record_is_403(self, mock_edit, fast_api_client, fast_api_app):
-        mock_edit.side_effect = core_exceptions.PermissionDeniedError("Cannot edit health sleep for another user.")
-
-        response = fast_api_client.put(
-            "/health_sleep",
-            json={"id": 1, "user_id": 2, "date": "2024-01-15", "total_sleep_seconds": 32400},
-            headers=_HEADERS,
-        )
-
-        assert response.status_code == 403
 
 
 class TestDeleteHealthSleep:

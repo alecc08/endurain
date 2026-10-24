@@ -11,24 +11,18 @@ import modules.health.health_water.service as health_water_service
 _PREFIX = "modules.health.health_water.service"
 
 
-def _update(user_id: int = 1) -> health_water_schema.HealthWaterUpdate:
-    return health_water_schema.HealthWaterUpdate(
-        id=1, user_id=user_id, date=datetime_date(2024, 1, 15), amount_ml=900.0
-    )
+def _update() -> health_water_schema.HealthWaterUpdate:
+    return health_water_schema.HealthWaterUpdate(date=datetime_date(2024, 1, 15), amount_ml=900.0)
 
 
 class TestStageEdit:
-    def test_rejects_a_record_of_another_user(self, mock_db):
-        with pytest.raises(core_exceptions.PermissionDeniedError):
-            health_water_service.stage_edit_health_water(1, _update(user_id=2), mock_db)
-
     @patch(f"{_PREFIX}.health_water_crud.edit_health_water")
     def test_stages_without_committing(self, mock_edit, mock_db):
         record = _update()
 
-        health_water_service.stage_edit_health_water(1, record, mock_db)
+        health_water_service.stage_edit_health_water(1, 7, record, mock_db)
 
-        mock_edit.assert_called_once_with(1, record, mock_db)
+        mock_edit.assert_called_once_with(1, 7, record, mock_db)
         mock_db.commit.assert_not_called()
 
 
@@ -79,7 +73,7 @@ class TestCreateHealthWater:
 class TestEditAndDelete:
     @patch(f"{_PREFIX}.health_water_crud.edit_health_water")
     def test_edit_commits(self, mock_edit, mock_db):
-        health_water_service.edit_health_water(1, _update(), mock_db)
+        health_water_service.edit_health_water(1, 7, _update(), mock_db)
 
         mock_db.commit.assert_called_once()
 

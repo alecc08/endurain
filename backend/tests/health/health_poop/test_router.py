@@ -103,19 +103,9 @@ class TestEditHealthPoop:
     def test_edit_success(self, mock_edit, mock_db):
         mock_edit.return_value = HealthPoopRead(id=1, user_id=1)
 
-        response = TestClient(_build_app(mock_db)).put("/health_poop", json={"id": 1, "user_id": 1}, headers=_HEADERS)
+        response = TestClient(_build_app(mock_db)).patch("/health_poop/1", json={}, headers=_HEADERS)
 
         assert response.status_code == 200
-
-    @patch(f"{_SERVICE}.edit_health_poop")
-    def test_another_users_record_is_403(self, mock_edit, mock_db):
-        mock_edit.side_effect = core_exceptions.PermissionDeniedError(
-            "Cannot edit health poop record for another user."
-        )
-
-        response = TestClient(_build_app(mock_db)).put("/health_poop", json={"id": 1, "user_id": 2}, headers=_HEADERS)
-
-        assert response.status_code == 403
 
 
 class TestDeleteHealthPoop:

@@ -148,13 +148,14 @@ def create_health_steps(
 
 
 def edit_health_steps(
-    user_id: int, health_steps: health_steps_schema.HealthStepsUpdate, db: Session
+    user_id: int, health_steps_id: int, health_steps: health_steps_schema.HealthStepsUpdate, db: Session
 ) -> health_steps_schema.HealthStepsRead:
     """Stage an update to a user's steps record.
 
     Args:
         user_id: The record's owner.
-        health_steps: The record with its changes.
+        health_steps_id: The record to change.
+        health_steps: The fields to change.
         db: Database session.
 
     Returns:
@@ -163,7 +164,7 @@ def edit_health_steps(
     Raises:
         NotFoundError: If the user has no such record.
     """
-    db_health_steps = _get_model_by_id_and_user_id(health_steps.id, user_id, db)
+    db_health_steps = _get_model_by_id_and_user_id(health_steps_id, user_id, db)
 
     for key, value in health_steps.model_dump(exclude_unset=True).items():
         setattr(db_health_steps, key, value)

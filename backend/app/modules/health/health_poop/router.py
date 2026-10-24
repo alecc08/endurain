@@ -133,8 +133,8 @@ def create_health_poop(
     return health_poop_service.create_health_poop(token_user_id, health_poop, db)
 
 
-@router.put(
-    "",
+@router.patch(
+    "/{health_poop_id}",
     response_model=health_poop_schema.HealthPoopRead,
     status_code=status.HTTP_200_OK,
     dependencies=[
@@ -147,6 +147,7 @@ def create_health_poop(
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_health_poop(
     request: Request,
+    health_poop_id: core_dependencies.PositiveId,
     health_poop: health_poop_schema.HealthPoopUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
@@ -155,6 +156,7 @@ def edit_health_poop(
 
     Args:
         request: The incoming request, read by the rate limiter.
+        health_poop_id: ID of the record to change.
         health_poop: Poop data to update.
         token_user_id: User ID from the access token.
         db: Database session dependency.
@@ -165,7 +167,7 @@ def edit_health_poop(
     Raises:
         HTTPException: If record not found or unauthorized.
     """
-    return health_poop_service.edit_health_poop(token_user_id, health_poop, db)
+    return health_poop_service.edit_health_poop(token_user_id, health_poop_id, health_poop, db)
 
 
 @router.delete(

@@ -122,29 +122,23 @@ def create_health_poop(
 
 
 def edit_health_poop(
-    user_id: int, health_poop: health_poop_schema.HealthPoopUpdate, db: Session
+    user_id: int, health_poop_id: int, health_poop: health_poop_schema.HealthPoopUpdate, db: Session
 ) -> health_poop_schema.HealthPoopRead:
-    """Update a poop record after checking it names the caller, and commit.
+    """Update a poop record, and commit.
 
     Args:
         user_id: The record's owner.
-        health_poop: The record with its changes.
+        health_poop_id: The record to change.
+        health_poop: The fields to change.
         db: Database session.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
     """
-    if health_poop.user_id != user_id:
-        logger.warning(
-            "Refused to edit a bowel movement record of another user", extra=core_logger.context(user_id=user_id)
-        )
-        raise core_exceptions.PermissionDeniedError("Cannot edit health poop record for another user.")
-
-    updated = health_poop_crud.edit_health_poop(user_id, health_poop, db)
+    updated = health_poop_crud.edit_health_poop(user_id, health_poop_id, health_poop, db)
     db.commit()
     logger.debug("Edited a bowel movement record", extra=core_logger.context(user_id=user_id))
     return updated

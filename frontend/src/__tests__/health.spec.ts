@@ -177,16 +177,14 @@ describe('weight service requests', () => {
     })
   })
 
-  it('updateWeightEntry PUTs with id and user_id echoed back', async () => {
+  it('updateWeightEntry PATCHes the record path with only the changed fields', async () => {
     vi.mocked(apiFetch).mockResolvedValue(makeWeightDto())
 
-    await updateWeightEntry(5, 9, input)
+    await updateWeightEntry(5, input)
 
-    expect(apiFetch).toHaveBeenCalledWith('/health/weight', {
-      method: 'PUT',
+    expect(apiFetch).toHaveBeenCalledWith('/health/weight/5', {
+      method: 'PATCH',
       body: JSON.stringify({
-        id: 5,
-        user_id: 9,
         date: '2026-06-25',
         weight: 72.5,
         bmi: 22.1,
@@ -300,14 +298,14 @@ describe('steps service requests', () => {
     })
   })
 
-  it('updateStepsEntry PUTs with id and user_id echoed back', async () => {
+  it('updateStepsEntry PATCHes the record path with only the changed fields', async () => {
     vi.mocked(apiFetch).mockResolvedValue(makeStepsDto())
 
-    await updateStepsEntry(5, 9, stepsInput)
+    await updateStepsEntry(5, stepsInput)
 
-    expect(apiFetch).toHaveBeenCalledWith('/health/steps', {
-      method: 'PUT',
-      body: JSON.stringify({ id: 5, user_id: 9, date: '2026-06-25', steps: 8500 }),
+    expect(apiFetch).toHaveBeenCalledWith('/health/steps/5', {
+      method: 'PATCH',
+      body: JSON.stringify({ date: '2026-06-25', steps: 8500 }),
     })
   })
 
@@ -413,14 +411,14 @@ describe('water service requests', () => {
     })
   })
 
-  it('updateWaterEntry PUTs with id and user_id echoed back', async () => {
+  it('updateWaterEntry PATCHes the record path with only the changed fields', async () => {
     vi.mocked(apiFetch).mockResolvedValue(makeWaterDto())
 
-    await updateWaterEntry(5, 9, waterInput)
+    await updateWaterEntry(5, waterInput)
 
-    expect(apiFetch).toHaveBeenCalledWith('/health/water', {
-      method: 'PUT',
-      body: JSON.stringify({ id: 5, user_id: 9, date: '2026-06-25', amount_ml: 1500 }),
+    expect(apiFetch).toHaveBeenCalledWith('/health/water/5', {
+      method: 'PATCH',
+      body: JSON.stringify({ date: '2026-06-25', amount_ml: 1500 }),
     })
   })
 
@@ -536,16 +534,14 @@ describe('poop service requests', () => {
     })
   })
 
-  it('updatePoopEntry PUTs with id and user_id echoed back', async () => {
+  it('updatePoopEntry PATCHes the record path with only the changed fields', async () => {
     vi.mocked(apiFetch).mockResolvedValue(makePoopDto())
 
-    await updatePoopEntry(5, 9, poopInput)
+    await updatePoopEntry(5, poopInput)
 
-    expect(apiFetch).toHaveBeenCalledWith('/health/poop', {
-      method: 'PUT',
+    expect(apiFetch).toHaveBeenCalledWith('/health/poop/5', {
+      method: 'PATCH',
       body: JSON.stringify({
-        id: 5,
-        user_id: 9,
         date_time: '2026-06-25T08:30:00',
         bristol_type: 4,
         color: 'brown',
@@ -790,16 +786,14 @@ describe('fasting service requests', () => {
     })
   })
 
-  it('updateFastingEntry PUTs with id and user_id echoed back and no source', async () => {
+  it('updateFastingEntry PATCHes the record path with only the changed fields and no source', async () => {
     vi.mocked(apiFetch).mockResolvedValue(makeFastingDto())
 
-    await updateFastingEntry(5, 9, fastingInput)
+    await updateFastingEntry(5, fastingInput)
 
-    expect(apiFetch).toHaveBeenCalledWith('/health/fasting', {
-      method: 'PUT',
+    expect(apiFetch).toHaveBeenCalledWith('/health/fasting/5', {
+      method: 'PATCH',
       body: JSON.stringify({
-        id: 5,
-        user_id: 9,
         fast_start_time: '2026-06-25T08:00:00.000Z',
         fast_end_time: '2026-06-25T22:00:00.000Z',
         fasting_type: '16:8',
@@ -1059,16 +1053,14 @@ describe('sleep service requests', () => {
     })
   })
 
-  it('updateSleepEntry PUTs with id and user_id echoed back', async () => {
+  it('updateSleepEntry PATCHes the record path with only the changed fields', async () => {
     vi.mocked(apiFetch).mockResolvedValue(makeFullSleepDto())
 
-    await updateSleepEntry(5, 9, sleepInput)
+    await updateSleepEntry(5, sleepInput)
 
-    expect(apiFetch).toHaveBeenCalledWith('/health/sleep', {
-      method: 'PUT',
+    expect(apiFetch).toHaveBeenCalledWith('/health/sleep/5', {
+      method: 'PATCH',
       body: JSON.stringify({
-        id: 5,
-        user_id: 9,
         date: '2026-06-25',
         sleep_start_time_local: '2026-06-24T23:00',
         sleep_end_time_local: '2026-06-25T07:00',

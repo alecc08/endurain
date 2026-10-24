@@ -136,17 +136,9 @@ class TestEditHealthFasting:
     def test_edit_success(self, mock_edit, mock_db):
         mock_edit.return_value = HealthFastingRead(id=1, user_id=1)
 
-        response = _client(mock_db).put("/health_fasting", json={"id": 1, "user_id": 1}, headers=_HEADERS)
+        response = _client(mock_db).patch("/health_fasting/1", json={}, headers=_HEADERS)
 
         assert response.status_code == 200
-
-    @patch(f"{_SERVICE}.edit_health_fasting")
-    def test_another_users_record_is_403(self, mock_edit, mock_db):
-        mock_edit.side_effect = core_exceptions.PermissionDeniedError("Cannot edit fasting record for another user.")
-
-        response = _client(mock_db).put("/health_fasting", json={"id": 1, "user_id": 2}, headers=_HEADERS)
-
-        assert response.status_code == 403
 
 
 class TestCompleteHealthFasting:

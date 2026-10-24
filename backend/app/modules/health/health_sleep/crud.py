@@ -148,13 +148,14 @@ def create_health_sleep(
 
 
 def edit_health_sleep(
-    user_id: int, health_sleep: health_sleep_schema.HealthSleepUpdate, db: Session
+    user_id: int, health_sleep_id: int, health_sleep: health_sleep_schema.HealthSleepUpdate, db: Session
 ) -> health_sleep_schema.HealthSleepRead:
     """Stage an update to a user's sleep record.
 
     Args:
         user_id: The record's owner.
-        health_sleep: The record with its changes.
+        health_sleep_id: The record to change.
+        health_sleep: The fields to change.
         db: Database session.
 
     Returns:
@@ -163,7 +164,7 @@ def edit_health_sleep(
     Raises:
         NotFoundError: If the user has no such record.
     """
-    db_health_sleep = _get_model_by_id_and_user_id(health_sleep.id, user_id, db)
+    db_health_sleep = _get_model_by_id_and_user_id(health_sleep_id, user_id, db)
 
     for key, value in health_sleep.model_dump(exclude_unset=True, mode="json").items():
         setattr(db_health_sleep, key, value)

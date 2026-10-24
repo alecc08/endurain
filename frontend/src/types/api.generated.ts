@@ -1325,20 +1325,7 @@ export interface paths {
          *         The page of records with the total matching the interval.
          */
         get: operations["read_health_fasting_all_pagination_api_v1_health_fasting_get"];
-        /**
-         * Edit Health Fasting
-         * @description Edit an existing fasting record.
-         *
-         *     Args:
-         *         request: The incoming request, read by the rate limiter.
-         *         health_fasting: Fasting data to update.
-         *         token_user_id: User ID from the access token.
-         *         db: Database session dependency.
-         *
-         *     Returns:
-         *         Updated HealthFastingRead record.
-         */
-        put: operations["edit_health_fasting_api_v1_health_fasting_put"];
+        put?: never;
         /**
          * Create Health Fasting
          * @description Create a new fasting session.
@@ -1454,7 +1441,21 @@ export interface paths {
         delete: operations["delete_health_fasting_api_v1_health_fasting__health_fasting_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit Health Fasting
+         * @description Edit an existing fasting record.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         health_fasting_id: ID of the record to change.
+         *         health_fasting: Fasting data to update.
+         *         token_user_id: User ID from the access token.
+         *         db: Database session dependency.
+         *
+         *     Returns:
+         *         Updated HealthFastingRead record.
+         */
+        patch: operations["edit_health_fasting_api_v1_health_fasting__health_fasting_id__patch"];
         trace?: never;
     };
     "/api/v1/health/fasting/{health_fasting_id}/complete": {
@@ -1511,23 +1512,7 @@ export interface paths {
          *         The page of records with the total matching the interval.
          */
         get: operations["read_health_poop_all_pagination_api_v1_health_poop_get"];
-        /**
-         * Edit Health Poop
-         * @description Edit an existing poop record.
-         *
-         *     Args:
-         *         request: The incoming request, read by the rate limiter.
-         *         health_poop: Poop data to update.
-         *         token_user_id: User ID from the access token.
-         *         db: Database session dependency.
-         *
-         *     Returns:
-         *         Updated HealthPoopRead record.
-         *
-         *     Raises:
-         *         HTTPException: If record not found or unauthorized.
-         */
-        put: operations["edit_health_poop_api_v1_health_poop_put"];
+        put?: never;
         /**
          * Create Health Poop
          * @description Create a new poop record for the user.
@@ -1592,7 +1577,24 @@ export interface paths {
         delete: operations["delete_health_poop_api_v1_health_poop__health_poop_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit Health Poop
+         * @description Edit an existing poop record.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         health_poop_id: ID of the record to change.
+         *         health_poop: Poop data to update.
+         *         token_user_id: User ID from the access token.
+         *         db: Database session dependency.
+         *
+         *     Returns:
+         *         Updated HealthPoopRead record.
+         *
+         *     Raises:
+         *         HTTPException: If record not found or unauthorized.
+         */
+        patch: operations["edit_health_poop_api_v1_health_poop__health_poop_id__patch"];
         trace?: never;
     };
     "/api/v1/health/sleep": {
@@ -1619,30 +1621,7 @@ export interface paths {
          *         The page of records with the total matching the interval.
          */
         get: operations["read_health_sleep_all_pagination_api_v1_health_sleep_get"];
-        /**
-         * Edit Health Sleep
-         * @description Edit health sleep data for a user.
-         *
-         *     This endpoint updates existing health sleep records in the database for the authenticated user.
-         *     Requires 'health:write' scope for authorization.
-         *
-         *     Args:
-         *         request: The incoming request, read by the rate limiter.
-         *         health_sleep (health_sleep_schema.HealthSleepUpdate): The health sleep data to be updated,
-         *             containing the new values for the health sleep record.
-         *         token_user_id (int): The user ID extracted from the JWT access token, used to identify
-         *             the user making the request.
-         *         db (Session): Database session dependency for performing database operations.
-         *
-         *     Returns:
-         *         health_sleep_schema.HealthSleepRead: The updated health sleep record with the new values
-         *             as stored in the database.
-         *
-         *     Raises:
-         *         HTTPException: May raise various HTTP exceptions if authorization fails, user is not
-         *             found, or database operations fail.
-         */
-        put: operations["edit_health_sleep_api_v1_health_sleep_put"];
+        put?: never;
         /**
          * Create Health Sleep
          * @description Create or update health sleep data for a user.
@@ -1704,7 +1683,31 @@ export interface paths {
         delete: operations["delete_health_sleep_api_v1_health_sleep__health_sleep_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit Health Sleep
+         * @description Edit health sleep data for a user.
+         *
+         *     This endpoint updates existing health sleep records in the database for the authenticated user.
+         *     Requires 'health:write' scope for authorization.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         health_sleep_id: ID of the record to change.
+         *         health_sleep (health_sleep_schema.HealthSleepUpdate): The health sleep data to be updated,
+         *             containing the new values for the health sleep record.
+         *         token_user_id (int): The user ID extracted from the JWT access token, used to identify
+         *             the user making the request.
+         *         db (Session): Database session dependency for performing database operations.
+         *
+         *     Returns:
+         *         health_sleep_schema.HealthSleepRead: The updated health sleep record with the new values
+         *             as stored in the database.
+         *
+         *     Raises:
+         *         HTTPException: May raise various HTTP exceptions if authorization fails, user is not
+         *             found, or database operations fail.
+         */
+        patch: operations["edit_health_sleep_api_v1_health_sleep__health_sleep_id__patch"];
         trace?: never;
     };
     "/api/v1/health/stats/daily": {
@@ -1768,30 +1771,7 @@ export interface paths {
          *         The page of records with the total matching the interval.
          */
         get: operations["read_health_steps_all_pagination_api_v1_health_steps_get"];
-        /**
-         * Edit Health Steps
-         * @description Edit health steps data for a user.
-         *
-         *     This endpoint updates existing health steps records in the database for the authenticated user.
-         *     Requires 'health:write' scope for authorization.
-         *
-         *     Args:
-         *         request: The incoming request, read by the rate limiter.
-         *         health_steps (health_steps_schema.HealthSteps): The health steps data to be updated,
-         *             containing the new values for the health steps record.
-         *         token_user_id (int): The user ID extracted from the JWT access token, used to identify
-         *             the user making the request.
-         *         db (Session): Database session dependency for performing database operations.
-         *
-         *     Returns:
-         *         health_steps_schema.HealthSteps: The updated health steps record with the new values
-         *             as stored in the database.
-         *
-         *     Raises:
-         *         HTTPException: May raise various HTTP exceptions if authorization fails, user is not
-         *             found, or database operations fail.
-         */
-        put: operations["edit_health_steps_api_v1_health_steps_put"];
+        put?: never;
         /**
          * Create Health Steps
          * @description Create or update health steps data for a user.
@@ -1853,7 +1833,31 @@ export interface paths {
         delete: operations["delete_health_steps_api_v1_health_steps__health_steps_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit Health Steps
+         * @description Edit health steps data for a user.
+         *
+         *     This endpoint updates existing health steps records in the database for the authenticated user.
+         *     Requires 'health:write' scope for authorization.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         health_steps_id: ID of the record to change.
+         *         health_steps (health_steps_schema.HealthSteps): The health steps data to be updated,
+         *             containing the new values for the health steps record.
+         *         token_user_id (int): The user ID extracted from the JWT access token, used to identify
+         *             the user making the request.
+         *         db (Session): Database session dependency for performing database operations.
+         *
+         *     Returns:
+         *         health_steps_schema.HealthSteps: The updated health steps record with the new values
+         *             as stored in the database.
+         *
+         *     Raises:
+         *         HTTPException: May raise various HTTP exceptions if authorization fails, user is not
+         *             found, or database operations fail.
+         */
+        patch: operations["edit_health_steps_api_v1_health_steps__health_steps_id__patch"];
         trace?: never;
     };
     "/api/v1/health/targets": {
@@ -1943,23 +1947,7 @@ export interface paths {
          *         The page of records with the total matching the interval.
          */
         get: operations["read_health_water_all_pagination_api_v1_health_water_get"];
-        /**
-         * Edit Health Water
-         * @description Edit an existing water intake record.
-         *
-         *     Args:
-         *         request: The incoming request, read by the rate limiter.
-         *         health_water: Water intake data to update.
-         *         token_user_id: User ID from the access token.
-         *         db: Database session dependency.
-         *
-         *     Returns:
-         *         Updated HealthWaterRead record.
-         *
-         *     Raises:
-         *         HTTPException: If record not found or unauthorized.
-         */
-        put: operations["edit_health_water_api_v1_health_water_put"];
+        put?: never;
         /**
          * Create Health Water
          * @description Create or update a water intake record for the user.
@@ -2009,7 +1997,24 @@ export interface paths {
         delete: operations["delete_health_water_api_v1_health_water__health_water_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit Health Water
+         * @description Edit an existing water intake record.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         health_water_id: ID of the record to change.
+         *         health_water: Water intake data to update.
+         *         token_user_id: User ID from the access token.
+         *         db: Database session dependency.
+         *
+         *     Returns:
+         *         Updated HealthWaterRead record.
+         *
+         *     Raises:
+         *         HTTPException: If record not found or unauthorized.
+         */
+        patch: operations["edit_health_water_api_v1_health_water__health_water_id__patch"];
         trace?: never;
     };
     "/api/v1/health/weight": {
@@ -2036,29 +2041,7 @@ export interface paths {
          *         The page of records with the total matching the interval.
          */
         get: operations["read_health_weight_all_pagination_api_v1_health_weight_get"];
-        /**
-         * Edit Health Weight
-         * @description Edit a health weight entry for the authenticated user.
-         *
-         *     This endpoint allows users with 'health:write' scope to update an existing
-         *     health weight record in the database.
-         *
-         *     Args:
-         *         request: The incoming request, read by the rate limiter.
-         *         health_weight (health_weight_schema.HealthWeight): The health weight data
-         *             to be updated, containing the weight information and associated metadata.
-         *         token_user_id (int): The ID of the authenticated user extracted from the
-         *             access token.
-         *         db (Session): Database session dependency for executing database operations.
-         *
-         *     Returns:
-         *         The updated health weight record from the database.
-         *
-         *     Raises:
-         *         PermissionDeniedError: If the record names another user.
-         *         NotFoundError: If the entry doesn't exist.
-         */
-        put: operations["edit_health_weight_api_v1_health_weight_put"];
+        put?: never;
         /**
          * Create Health Weight
          * @description Create or update a health weight record for the authenticated user.
@@ -2116,7 +2099,30 @@ export interface paths {
         delete: operations["delete_health_weight_api_v1_health_weight__health_weight_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit Health Weight
+         * @description Edit a health weight entry for the authenticated user.
+         *
+         *     This endpoint allows users with 'health:write' scope to update an existing
+         *     health weight record in the database.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         health_weight_id: ID of the record to change.
+         *         health_weight (health_weight_schema.HealthWeight): The health weight data
+         *             to be updated, containing the weight information and associated metadata.
+         *         token_user_id (int): The ID of the authenticated user extracted from the
+         *             access token.
+         *         db (Session): Database session dependency for executing database operations.
+         *
+         *     Returns:
+         *         The updated health weight record from the database.
+         *
+         *     Raises:
+         *         PermissionDeniedError: If the record names another user.
+         *         NotFoundError: If the entry doesn't exist.
+         */
+        patch: operations["edit_health_weight_api_v1_health_weight__health_weight_id__patch"];
         trace?: never;
     };
     "/api/v1/idp": {
@@ -6857,9 +6863,10 @@ export interface components {
         };
         /**
          * HealthFastingUpdate
-         * @description Schema for updating a fasting record.
+         * @description Schema for the fields a PATCH changes on a fasting record.
          *
-         *     Inherits from HealthFastingRead for consistency with read operations.
+         *     The record is named by the path, so the body carries neither an id nor an owner; only the
+         *     fields present are changed.
          */
         HealthFastingUpdate: {
             /**
@@ -6880,11 +6887,6 @@ export interface components {
             /** @description Type of fasting protocol */
             fasting_type?: components["schemas"]["FastingType"] | null;
             /**
-             * Id
-             * @description Unique identifier for the fasting record
-             */
-            id: number;
-            /**
              * Notes
              * @description Optional notes about the fasting session
              */
@@ -6898,11 +6900,6 @@ export interface components {
              * @description Target fasting duration in seconds (max 72h)
              */
             target_duration_seconds?: number | null;
-            /**
-             * User Id
-             * @description Foreign key reference to the user
-             */
-            user_id: number;
         };
         /**
          * HealthPoopCreate
@@ -6980,10 +6977,10 @@ export interface components {
         };
         /**
          * HealthPoopUpdate
-         * @description Schema for updating a poop record.
+         * @description Schema for the fields a PATCH changes on a poop record.
          *
-         *     Inherits from HealthPoopRead for consistency with read
-         *     operations while allowing modifications to poop data.
+         *     The record is named by the path, so the body carries neither an id nor an owner; only the
+         *     fields present are changed.
          */
         HealthPoopUpdate: {
             /** @description Bristol Stool Scale type (1-7) */
@@ -6996,22 +6993,12 @@ export interface components {
              */
             date_time?: string | null;
             /**
-             * Id
-             * @description Unique identifier for the poop record
-             */
-            id: number;
-            /**
              * Notes
              * @description Optional notes about the bowel movement
              */
             notes?: string | null;
             /** @description Source of the data */
             source?: components["schemas"]["modules__health__health_poop__schema__Source"] | null;
-            /**
-             * User Id
-             * @description Foreign key reference to the user
-             */
-            user_id: number;
         };
         /**
          * HealthSleepCreate
@@ -7446,13 +7433,10 @@ export interface components {
         };
         /**
          * HealthSleepUpdate
-         * @description Schema for updating health sleep records.
+         * @description Schema for the fields a PATCH changes on a sleep record.
          *
-         *     Inherits all fields from HealthSleepRead, allowing clients to update
-         *     existing sleep data while maintaining consistency with the read schema.
-         *
-         *     Used in PUT/PATCH requests to modify sleep tracking information such as
-         *     sleep duration, quality, and related health metrics.
+         *     The record is named by the path, so the body carries neither an id nor an owner; only the
+         *     fields present are changed.
          */
         HealthSleepUpdate: {
             /**
@@ -7526,11 +7510,6 @@ export interface components {
             highest_spo2?: number | null;
             /** @description Heart rate variability status */
             hrv_status?: components["schemas"]["HRVStatus"] | null;
-            /**
-             * Id
-             * @description Unique identifier for the sleep record to update
-             */
-            id: number;
             /** @description Light sleep percentage score */
             light_percentage_score?: components["schemas"]["SleepScore"] | null;
             /**
@@ -7628,11 +7607,6 @@ export interface components {
              * @description Unmeasurable sleep duration in seconds
              */
             unmeasurable_sleep_seconds?: number | null;
-            /**
-             * User Id
-             * @description Foreign key reference to the user
-             */
-            user_id: number;
         };
         /**
          * HealthStepsCreate
@@ -7705,11 +7679,10 @@ export interface components {
         };
         /**
          * HealthStepsUpdate
-         * @description Schema for updating health steps records.
+         * @description Schema for the fields a PATCH changes on a steps record.
          *
-         *     Inherits from HealthStepsRead to maintain consistency with read operations
-         *     while allowing modifications to health steps data. This schema is used for
-         *     PUT/PATCH requests to update existing health steps entries.
+         *     The record is named by the path, so the body carries neither an id nor an owner; only the
+         *     fields present are changed.
          */
         HealthStepsUpdate: {
             /**
@@ -7717,11 +7690,6 @@ export interface components {
              * @description Calendar date of the steps
              */
             date?: string | null;
-            /**
-             * Id
-             * @description Unique identifier for the steps record to update
-             */
-            id: number;
             /** @description Source of the steps data */
             source?: components["schemas"]["modules__health__health_steps__schema__Source"] | null;
             /**
@@ -7729,11 +7697,6 @@ export interface components {
              * @description Number of steps taken
              */
             steps?: number | null;
-            /**
-             * User Id
-             * @description Foreign key reference to the user
-             */
-            user_id: number;
         };
         /**
          * HealthTargetsRead
@@ -7902,10 +7865,10 @@ export interface components {
         };
         /**
          * HealthWaterUpdate
-         * @description Schema for updating a water intake record.
+         * @description Schema for the fields a PATCH changes on a water record.
          *
-         *     Inherits from HealthWaterRead for consistency with read
-         *     operations while allowing modifications to water intake data.
+         *     The record is named by the path, so the body carries neither an id nor an owner; only the
+         *     fields present are changed.
          */
         HealthWaterUpdate: {
             /**
@@ -7918,18 +7881,8 @@ export interface components {
              * @description Calendar date of the water intake
              */
             date?: string | null;
-            /**
-             * Id
-             * @description Unique identifier for the water intake record
-             */
-            id: number;
             /** @description Source of the water intake data */
             source?: components["schemas"]["modules__health__health_water__schema__Source"] | null;
-            /**
-             * User Id
-             * @description Foreign key reference to the user
-             */
-            user_id: number;
         };
         /**
          * HealthWeightCreate
@@ -8088,11 +8041,10 @@ export interface components {
         };
         /**
          * HealthWeightUpdate
-         * @description Schema for updating health weight records.
+         * @description Schema for the fields a PATCH changes on a weight record.
          *
-         *     Inherits from HealthWeightRead to maintain consistency with read operations
-         *     while allowing modifications to health weight data. This schema is used for
-         *     PUT/PATCH requests to update existing health weight entries.
+         *     The record is named by the path, so the body carries neither an id nor an owner; only the
+         *     fields present are changed.
          */
         HealthWeightUpdate: {
             /**
@@ -8121,11 +8073,6 @@ export interface components {
              */
             date?: string | null;
             /**
-             * Id
-             * @description Unique identifier for the weight record to update
-             */
-            id: number;
-            /**
              * Metabolic Age
              * @description Metabolic age
              */
@@ -8142,11 +8089,6 @@ export interface components {
             physique_rating?: number | null;
             /** @description Source of the weight data */
             source?: components["schemas"]["modules__health__health_weight__schema__Source"] | null;
-            /**
-             * User Id
-             * @description Foreign key reference to the user
-             */
-            user_id: number;
             /**
              * Visceral Fat
              * @description Visceral fat
@@ -14879,48 +14821,6 @@ export interface operations {
             };
         };
     };
-    edit_health_fasting_api_v1_health_fasting_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HealthFastingUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthFastingRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-            /** @description Unexpected error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
     create_health_fasting_api_v1_health_fasting_post: {
         parameters: {
             query?: never;
@@ -15099,6 +14999,50 @@ export interface operations {
             };
         };
     };
+    edit_health_fasting_api_v1_health_fasting__health_fasting_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                health_fasting_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthFastingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthFastingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     complete_health_fasting_api_v1_health_fasting__health_fasting_id__complete_post: {
         parameters: {
             query?: never;
@@ -15164,48 +15108,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_HealthPoopRead_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-            /** @description Unexpected error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
-    edit_health_poop_api_v1_health_poop_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HealthPoopUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthPoopRead"];
                 };
             };
             /** @description Validation Error */
@@ -15348,19 +15250,20 @@ export interface operations {
             };
         };
     };
-    read_health_sleep_all_pagination_api_v1_health_sleep_get: {
+    edit_health_poop_api_v1_health_poop__health_poop_id__patch: {
         parameters: {
-            query?: {
-                /** @description Filter by goal interval */
-                interval?: components["schemas"]["modules__health__constants__Interval"] | null;
-                page_number?: number | null;
-                num_records?: number | null;
-            };
+            query?: never;
             header?: never;
-            path?: never;
+            path: {
+                health_poop_id: number;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthPoopUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -15368,7 +15271,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Page_HealthSleepRead_"];
+                    "application/json": components["schemas"]["HealthPoopRead"];
                 };
             };
             /** @description Validation Error */
@@ -15391,18 +15294,19 @@ export interface operations {
             };
         };
     };
-    edit_health_sleep_api_v1_health_sleep_put: {
+    read_health_sleep_all_pagination_api_v1_health_sleep_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Filter by goal interval */
+                interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+                page_number?: number | null;
+                num_records?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HealthSleepUpdate"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -15410,7 +15314,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthSleepRead"];
+                    "application/json": components["schemas"]["Page_HealthSleepRead_"];
                 };
             };
             /** @description Validation Error */
@@ -15513,6 +15417,50 @@ export interface operations {
             };
         };
     };
+    edit_health_sleep_api_v1_health_sleep__health_sleep_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                health_sleep_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthSleepUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthSleepRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     read_health_daily_stats_api_v1_health_stats_daily_get: {
         parameters: {
             query?: never;
@@ -15563,48 +15511,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_HealthStepsRead_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-            /** @description Unexpected error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
-    edit_health_steps_api_v1_health_steps_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HealthStepsUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthStepsRead"];
                 };
             };
             /** @description Validation Error */
@@ -15686,6 +15592,50 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    edit_health_steps_api_v1_health_steps__health_steps_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                health_steps_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthStepsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthStepsRead"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -15821,48 +15771,6 @@ export interface operations {
             };
         };
     };
-    edit_health_water_api_v1_health_water_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HealthWaterUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthWaterRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-            /** @description Unexpected error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
     create_health_water_api_v1_health_water_post: {
         parameters: {
             query?: never;
@@ -15943,19 +15851,20 @@ export interface operations {
             };
         };
     };
-    read_health_weight_all_pagination_api_v1_health_weight_get: {
+    edit_health_water_api_v1_health_water__health_water_id__patch: {
         parameters: {
-            query?: {
-                /** @description Filter by goal interval */
-                interval?: components["schemas"]["modules__health__constants__Interval"] | null;
-                page_number?: number | null;
-                num_records?: number | null;
-            };
+            query?: never;
             header?: never;
-            path?: never;
+            path: {
+                health_water_id: number;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthWaterUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -15963,7 +15872,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Page_HealthWeightRead_"];
+                    "application/json": components["schemas"]["HealthWaterRead"];
                 };
             };
             /** @description Validation Error */
@@ -15986,18 +15895,19 @@ export interface operations {
             };
         };
     };
-    edit_health_weight_api_v1_health_weight_put: {
+    read_health_weight_all_pagination_api_v1_health_weight_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Filter by goal interval */
+                interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+                page_number?: number | null;
+                num_records?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HealthWeightUpdate"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -16005,7 +15915,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthWeightRead"];
+                    "application/json": components["schemas"]["Page_HealthWeightRead_"];
                 };
             };
             /** @description Validation Error */
@@ -16087,6 +15997,50 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    edit_health_weight_api_v1_health_weight__health_weight_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                health_weight_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthWeightUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthWeightRead"];
+                };
             };
             /** @description Validation Error */
             422: {

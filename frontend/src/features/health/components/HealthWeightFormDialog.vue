@@ -118,7 +118,6 @@ async function submitForm(values: WeightFormValues): Promise<void> {
     if (props.entry) {
       await updateMutation.mutateAsync({
         id: props.entry.id,
-        userId: props.entry.userId,
         input,
       })
       emit('success', t('health.weight.form.updateSuccess'))

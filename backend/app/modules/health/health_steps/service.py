@@ -64,26 +64,23 @@ def list_health_steps(
 
 
 def stage_edit_health_steps(
-    user_id: int, health_steps: health_steps_schema.HealthStepsUpdate, db: Session
+    user_id: int, health_steps_id: int, health_steps: health_steps_schema.HealthStepsUpdate, db: Session
 ) -> health_steps_schema.HealthStepsRead:
-    """Stage an update to a steps record after checking it names the caller.
+    """Stage an update to a steps record.
 
     Args:
         user_id: The record's owner.
-        health_steps: The record with its changes.
+        health_steps_id: The record to change.
+        health_steps: The fields to change.
         db: Database session.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
     """
-    if health_steps.user_id != user_id:
-        logger.warning("Refused to edit a steps record of another user", extra=core_logger.context(user_id=user_id))
-        raise core_exceptions.PermissionDeniedError("Cannot edit health steps for another user.")
-    return health_steps_crud.edit_health_steps(user_id, health_steps, db)
+    return health_steps_crud.edit_health_steps(user_id, health_steps_id, health_steps, db)
 
 
 def stage_upsert_health_steps(
@@ -121,9 +118,7 @@ def stage_upsert_health_steps(
             if existing is None:
                 raise
     return stage_edit_health_steps(
-        user_id,
-        health_steps_schema.HealthStepsUpdate(id=existing.id, user_id=user_id, **health_steps.model_dump()),
-        db,
+        user_id, existing.id, health_steps_schema.HealthStepsUpdate(**health_steps.model_dump()), db
     )
 
 
@@ -150,23 +145,23 @@ def create_health_steps(
 
 
 def edit_health_steps(
-    user_id: int, health_steps: health_steps_schema.HealthStepsUpdate, db: Session
+    user_id: int, health_steps_id: int, health_steps: health_steps_schema.HealthStepsUpdate, db: Session
 ) -> health_steps_schema.HealthStepsRead:
     """Update a steps record and commit.
 
     Args:
         user_id: The record's owner.
-        health_steps: The record with its changes.
+        health_steps_id: The record to change.
+        health_steps: The fields to change.
         db: Database session.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
     """
-    updated = stage_edit_health_steps(user_id, health_steps, db)
+    updated = stage_edit_health_steps(user_id, health_steps_id, health_steps, db)
     db.commit()
     logger.debug("Edited a steps record", extra=core_logger.context(user_id=user_id))
     return updated

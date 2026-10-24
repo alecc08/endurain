@@ -149,13 +149,14 @@ def create_health_water(
 
 
 def edit_health_water(
-    user_id: int, health_water: health_water_schema.HealthWaterUpdate, db: Session
+    user_id: int, health_water_id: int, health_water: health_water_schema.HealthWaterUpdate, db: Session
 ) -> health_water_schema.HealthWaterRead:
     """Stage an update to a user's water intake record.
 
     Args:
         user_id: The record's owner.
-        health_water: The record with its changes.
+        health_water_id: The record to change.
+        health_water: The fields to change.
         db: Database session.
 
     Returns:
@@ -164,7 +165,7 @@ def edit_health_water(
     Raises:
         NotFoundError: If the user has no such record.
     """
-    db_health_water = _get_model_by_id_and_user_id(health_water.id, user_id, db)
+    db_health_water = _get_model_by_id_and_user_id(health_water_id, user_id, db)
 
     for key, value in health_water.model_dump(exclude_unset=True).items():
         setattr(db_health_water, key, value)

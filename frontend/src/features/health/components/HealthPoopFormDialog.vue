@@ -102,7 +102,6 @@ async function submitForm(values: PoopFormValues): Promise<void> {
     if (props.entry) {
       await updateMutation.mutateAsync({
         id: props.entry.id,
-        userId: props.entry.userId,
         input,
       })
       emit('success', t('health.poop.form.updateSuccess'))

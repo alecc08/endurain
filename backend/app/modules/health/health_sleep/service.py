@@ -65,26 +65,23 @@ def list_health_sleep(
 
 
 def stage_edit_health_sleep(
-    user_id: int, health_sleep: health_sleep_schema.HealthSleepUpdate, db: Session
+    user_id: int, health_sleep_id: int, health_sleep: health_sleep_schema.HealthSleepUpdate, db: Session
 ) -> health_sleep_schema.HealthSleepRead:
-    """Stage an update to a sleep record after checking it names the caller.
+    """Stage an update to a sleep record.
 
     Args:
         user_id: The record's owner.
-        health_sleep: The record with its changes.
+        health_sleep_id: The record to change.
+        health_sleep: The fields to change.
         db: Database session.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
     """
-    if health_sleep.user_id != user_id:
-        logger.warning("Refused to edit a sleep record of another user", extra=core_logger.context(user_id=user_id))
-        raise core_exceptions.PermissionDeniedError("Cannot edit health sleep for another user.")
-    return health_sleep_crud.edit_health_sleep(user_id, health_sleep, db)
+    return health_sleep_crud.edit_health_sleep(user_id, health_sleep_id, health_sleep, db)
 
 
 def stage_upsert_health_sleep(
@@ -124,9 +121,7 @@ def stage_upsert_health_sleep(
             if existing is None:
                 raise
     return stage_edit_health_sleep(
-        user_id,
-        health_sleep_schema.HealthSleepUpdate(id=existing.id, user_id=user_id, **health_sleep.model_dump()),
-        db,
+        user_id, existing.id, health_sleep_schema.HealthSleepUpdate(**health_sleep.model_dump()), db
     )
 
 
@@ -154,24 +149,24 @@ def create_health_sleep(
 
 
 def edit_health_sleep(
-    user_id: int, health_sleep: health_sleep_schema.HealthSleepUpdate, db: Session
+    user_id: int, health_sleep_id: int, health_sleep: health_sleep_schema.HealthSleepUpdate, db: Session
 ) -> health_sleep_schema.HealthSleepRead:
     """Score and update a sleep record, and commit.
 
     Args:
         user_id: The record's owner.
-        health_sleep: The record with its changes.
+        health_sleep_id: The record to change.
+        health_sleep: The fields to change.
         db: Database session.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
     """
     health_sleep_sleep_scoring.calculate_and_set_sleep_scores(health_sleep)
-    updated = stage_edit_health_sleep(user_id, health_sleep, db)
+    updated = stage_edit_health_sleep(user_id, health_sleep_id, health_sleep, db)
     db.commit()
     logger.debug("Edited a sleep record", extra=core_logger.context(user_id=user_id))
     return updated

@@ -107,9 +107,9 @@ class TestEditHealthPoop:
     def test_updates_the_given_fields_and_stages(self, mock_db):
         row = _row()
         _returns_one(mock_db, row)
-        update = health_poop_schema.HealthPoopUpdate(id=1, user_id=1, notes="ok")
+        update = health_poop_schema.HealthPoopUpdate(notes="ok")
 
-        health_poop_crud.edit_health_poop(1, update, mock_db)
+        health_poop_crud.edit_health_poop(1, 1, update, mock_db)
 
         assert row.notes == "ok"
         mock_db.flush.assert_called_once()
@@ -117,10 +117,10 @@ class TestEditHealthPoop:
 
     def test_unknown_record_is_not_found(self, mock_db):
         _returns_one(mock_db, None)
-        update = health_poop_schema.HealthPoopUpdate(id=9, user_id=1, notes="ok")
+        update = health_poop_schema.HealthPoopUpdate(notes="ok")
 
         with pytest.raises(core_exceptions.NotFoundError, match="Health poop not found"):
-            health_poop_crud.edit_health_poop(1, update, mock_db)
+            health_poop_crud.edit_health_poop(1, 9, update, mock_db)
 
 
 class TestDeleteHealthPoop:

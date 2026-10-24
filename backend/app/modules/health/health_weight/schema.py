@@ -90,10 +90,9 @@ class HealthWeightRead(HealthWeightBase):
     user_id: StrictInt = Field(..., description="Foreign key reference to the user")
 
 
-class HealthWeightUpdate(HealthWeightRead):
-    """Schema for updating health weight records.
+class HealthWeightUpdate(HealthWeightBase):
+    """Schema for the fields a PATCH changes on a weight record.
 
-    Inherits from HealthWeightRead to maintain consistency with read operations
-    while allowing modifications to health weight data. This schema is used for
-    PUT/PATCH requests to update existing health weight entries.
+    The record is named by the path, so the body carries neither an id nor an owner; only the
+    fields present are changed.
     """
