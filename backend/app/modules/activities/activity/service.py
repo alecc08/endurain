@@ -633,7 +633,7 @@ def edit_activity(
     activity_attributes: activity_schema.ActivityEdit,
     db: Session,
     *,
-    if_match: str | None = None,
+    if_match: str,
 ) -> activity_schema.ActivityRead:
     """Apply partial updates to one of the user's activities.
 
@@ -647,7 +647,7 @@ def edit_activity(
         user_id: ID of the user.
         activity_attributes: The fields to change.
         db: Database session.
-        if_match: The ``If-Match`` precondition, or None.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated activity.

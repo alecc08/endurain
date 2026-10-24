@@ -335,7 +335,7 @@ class TestEdit:
             m.return_value = _valid_activity()
             resp = TestClient(_build_app(mock_db)).patch(
                 "/activities/1",
-                headers={"Authorization": "Bearer x"},
+                headers={**{"Authorization": "Bearer x"}, "If-Match": "*"},
                 json={"name": "Run", "activity_type": 1, "visibility": 2},
             )
             assert resp.status_code == 200
@@ -346,7 +346,7 @@ class TestEdit:
             m.return_value = _valid_activity()
             resp = TestClient(_build_app(mock_db)).patch(
                 "/activities/1",
-                headers={"Authorization": "Bearer x"},
+                headers={**{"Authorization": "Bearer x"}, "If-Match": "*"},
                 json={"visibility": 2},
             )
             assert resp.status_code == 200
@@ -357,7 +357,7 @@ class TestEdit:
             m.return_value = _valid_activity()
             resp = TestClient(_build_app(mock_db)).patch(
                 "/activities/7",
-                headers={"Authorization": "Bearer x"},
+                headers={**{"Authorization": "Bearer x"}, "If-Match": "*"},
                 json={"name": "Run", "visibility": 2},
             )
             assert resp.status_code == 200
@@ -368,7 +368,7 @@ class TestEdit:
         # id is not a body field; extra="forbid" rejects it.
         resp = TestClient(_build_app(mock_db)).patch(
             "/activities/1",
-            headers={"Authorization": "Bearer x"},
+            headers={**{"Authorization": "Bearer x"}, "If-Match": "*"},
             json={"id": 1, "name": "Run"},
         )
         assert resp.status_code == 422
@@ -448,15 +448,14 @@ class TestActivityConcurrency:
 
         assert resp.headers["ETag"] == '"3"'
 
-    def test_patch_without_if_match_still_works(self, mock_db):
-        """Making the header mandatory would break every existing client."""
+    def test_patch_without_if_match_is_refused_as_precondition_required(self, mock_db):
         with patch("modules.activities.activity.service.activity_crud") as crud:
-            crud.edit_activity.return_value = _valid_activity()
             resp = TestClient(_build_app(mock_db)).patch(
                 "/activities/1", json={"name": "x"}, headers={"Authorization": "Bearer x"}
             )
 
-        assert resp.status_code == 200
+        assert resp.status_code == 428
+        crud.edit_activity.assert_not_called()
 
     def test_patch_with_a_stale_if_match_is_refused(self, mock_db):
         with patch("modules.activities.activity.service.activity_crud") as crud:

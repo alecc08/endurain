@@ -250,9 +250,9 @@ class TestEditPublishesUpdated:
         from modules.activities.activity import service
 
         db = MagicMock()
-        service.edit_activity(5, 1, activity_schema.ActivityEdit(name="Run"), db)
+        service.edit_activity(5, 1, activity_schema.ActivityEdit(name="Run"), db, if_match="*")
 
-        mock_crud.edit_activity.assert_called_once_with(1, 5, ANY, db, if_match=None)
+        mock_crud.edit_activity.assert_called_once_with(1, 5, ANY, db, if_match="*")
         mock_publishers.publish_activity_updated.assert_called_once_with(5, 1, db, changed_fields=["name"])
 
     @patch("modules.activities.activity.service.gears_integration")
@@ -268,7 +268,7 @@ class TestEditPublishesUpdated:
         db = MagicMock()
 
         with pytest.raises(core_exceptions.NotFoundError):
-            service.edit_activity(5, 1, activity_schema.ActivityEdit(gear_id=9), db)
+            service.edit_activity(5, 1, activity_schema.ActivityEdit(gear_id=9), db, if_match="*")
 
         mock_gears.require_owned_gears.assert_called_once_with(1, [9], db)
         mock_crud.edit_activity.assert_not_called()
@@ -287,7 +287,7 @@ class TestEditPublishesUpdated:
         mock_crud.get_activity_by_id_from_user_id.return_value = None
 
         with pytest.raises(core_exceptions.NotFoundError):
-            service.edit_activity(5, 1, activity_schema.ActivityEdit(name="Run"), MagicMock())
+            service.edit_activity(5, 1, activity_schema.ActivityEdit(name="Run"), MagicMock(), if_match="*")
 
     @patch("modules.activities.activity.service.activities_contributor_registry")
     @patch("modules.activities.activity.service.activity_event_publishers")
@@ -298,7 +298,7 @@ class TestEditPublishesUpdated:
         from modules.activities.activity import service
 
         db = MagicMock()
-        service.edit_activity(5, 1, activity_schema.ActivityEdit(name="Run"), db)
+        service.edit_activity(5, 1, activity_schema.ActivityEdit(name="Run"), db, if_match="*")
 
         db.commit.assert_called_once_with()
 
@@ -328,7 +328,7 @@ class TestEditPublishesUpdated:
         mock_crud.edit_activity.side_effect = StaleDataError()
 
         with pytest.raises(core_exceptions.PreconditionFailedError):
-            service.edit_activity(5, 1, activity_schema.ActivityEdit(name="Run"), db)
+            service.edit_activity(5, 1, activity_schema.ActivityEdit(name="Run"), db, if_match="*")
 
         db.rollback.assert_called_once()
         mock_publishers.publish_activity_updated.assert_not_called()

@@ -535,7 +535,7 @@ def edit_server_settings(
     attributes: server_settings_schema.ServerSettingsEdit,
     db: Session,
     *,
-    if_match: str | None = None,
+    if_match: str,
 ) -> server_settings_schema.ServerSettingsAdminRead:
     """Persist settings and publish a tile-settings fact when the tile source changed.
 
@@ -550,7 +550,7 @@ def edit_server_settings(
     Args:
         attributes: The settings to apply.
         db: Database session.
-        if_match: The ``If-Match`` precondition, or None.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated settings, as an admin read returns them.
@@ -909,7 +909,7 @@ def edit_mail_settings(
     attributes: server_settings_schema.MailSettingsEdit,
     db: Session,
     *,
-    if_match: str | None = None,
+    if_match: str,
 ) -> server_settings_schema.MailSettingsAdminRead:
     """Validate and persist the mail settings.
 
@@ -921,7 +921,7 @@ def edit_mail_settings(
     Args:
         attributes: The settings to apply.
         db: Database session.
-        if_match: The ``If-Match`` precondition, or None.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated settings, as an admin read returns them.

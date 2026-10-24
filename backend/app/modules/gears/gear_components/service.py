@@ -181,7 +181,7 @@ def edit_gear_component(
     user_id: int,
     db: Session,
     *,
-    if_match: str | None = None,
+    if_match: str,
 ) -> gear_components_schema.GearComponentRead:
     """Update one of the user's components.
 
@@ -190,7 +190,7 @@ def edit_gear_component(
         gear_component: Component payload with the fields to change.
         user_id: Owner user ID.
         db: Database session.
-        if_match: The ``If-Match`` precondition, or None.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated component.

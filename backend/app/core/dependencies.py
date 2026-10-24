@@ -4,10 +4,12 @@ from typing import Annotated
 
 import jasil.providers as platform_providers
 import jasil.runtime as platform_runtime
-from fastapi import Depends, HTTPException, Path, status
+from fastapi import Depends, Header, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
 import core.database as core_database
+import core.etag as core_etag
+import core.exceptions as core_exceptions
 
 #: A path-parameter id that must be positive. Declared on the parameter's type, so FastAPI rejects a
 #: bad value with the standard validation problem document and publishes the bound in OpenAPI.
@@ -15,6 +17,28 @@ PositiveId = Annotated[int, Path(gt=0)]
 
 #: The request-scoped database session. Rolled back on an unhandled error and closed afterwards by ``get_db``.
 DbSession = Annotated[Session, Depends(core_database.get_db)]
+
+
+def require_if_match_header(if_match: Annotated[str | None, Header(alias=core_etag.IF_MATCH_HEADER)] = None) -> str:
+    """
+    Return the request's ``If-Match`` precondition, which a write to a versioned resource must carry.
+
+    Args:
+        if_match: The ``If-Match`` header, if the client sent one.
+
+    Returns:
+        The raw header value.
+
+    Raises:
+        PreconditionRequiredError: When the header is absent (428).
+    """
+    if if_match is None:
+        raise core_exceptions.PreconditionRequiredError()
+    return if_match
+
+
+#: The ``If-Match`` precondition of a write to a versioned resource; its absence is refused with 428.
+IfMatch = Annotated[str, Depends(require_if_match_header)]
 
 
 def get_storage() -> platform_providers.StorageProvider:

@@ -674,6 +674,11 @@ one pattern. Recorded here so a review does not reopen them.
 - **Access decisions are service.** A helper that decides what a caller may see and
   logs the refusal (`activity/child_collection_service.py`) is named
   `<thing>_service.py`, even when other services consume it.
+- **Versioned writes.** A resource that two clients can edit carries a `version` column
+  (`version_id_col`), returned as the `ETag` of its reads and writes. Its `PATCH`/`PUT` takes
+  `core.dependencies.IfMatch`, so a request without the header is refused with 428 and a stale one with 412
+  (`core.etag.require_if_match`). `If-Match: *` is the explicit "overwrite whatever is there", used by data
+  migrations. Today that covers activities, gears, gear components and server and mail settings.
 - **Request parameters.** A path or query parameter's constraint is part of its type
   (`core.dependencies.PositiveId`, an enum for a closed set, `AfterValidator` for a
   vocabulary lookup), so FastAPI validates it, answers with the validation problem

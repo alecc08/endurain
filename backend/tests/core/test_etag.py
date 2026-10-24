@@ -23,10 +23,6 @@ class TestParseIfMatch:
 
 
 class TestRequireIfMatch:
-    def test_absent_header_is_allowed(self):
-        """Requiring it would break every existing client at once."""
-        core_etag.require_if_match(None, 7, "activity")
-
     def test_matching_version_passes(self):
         core_etag.require_if_match('"7"', 7, "activity")
 

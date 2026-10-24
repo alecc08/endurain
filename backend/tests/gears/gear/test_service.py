@@ -92,7 +92,7 @@ class TestEditAndDelete:
     def test_edit_commits_the_change(self, db, commit_spy):
         created = crud.create_gear(gear_create(), 1, db)
 
-        updated = service.edit_gear(created.id, schema.GearUpdate(nickname="Gravel"), 1, db)
+        updated = service.edit_gear(created.id, schema.GearUpdate(nickname="Gravel"), 1, db, if_match="*")
 
         commit_spy.assert_called_once_with()
         assert updated.nickname == "Gravel"

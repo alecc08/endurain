@@ -122,14 +122,24 @@ class TestWrites:
         assert mock_edit.call_args.kwargs == {"if_match": '"3"'}
 
     @patch("modules.gears.gear.service.edit_gear")
+    def test_an_edit_without_if_match_is_428(self, mock_edit, client):
+        assert client.patch("/gears/1", json={"brand": "x"}, headers=_HEADERS).status_code == 428
+        mock_edit.assert_not_called()
+
+    @patch("modules.gears.gear.service.edit_gear")
     def test_a_stale_edit_is_412(self, mock_edit, client):
         mock_edit.side_effect = core_exceptions.PreconditionFailedError("stale")
 
-        assert client.patch("/gears/1", json={"brand": "x"}, headers=_HEADERS).status_code == 412
+        assert client.patch("/gears/1", json={"brand": "x"}, headers={**_HEADERS, "If-Match": "*"}).status_code == 412
 
     def test_an_edit_cannot_clear_a_required_field_or_set_a_provider_id(self, client):
-        assert client.patch("/gears/1", json={"nickname": None}, headers=_HEADERS).status_code == 422
-        assert client.patch("/gears/1", json={"strava_gear_id": "b1"}, headers=_HEADERS).status_code == 422
+        assert (
+            client.patch("/gears/1", json={"nickname": None}, headers={**_HEADERS, "If-Match": "*"}).status_code == 422
+        )
+        assert (
+            client.patch("/gears/1", json={"strava_gear_id": "b1"}, headers={**_HEADERS, "If-Match": "*"}).status_code
+            == 422
+        )
 
     @patch("modules.gears.gear.service.delete_gear")
     def test_delete(self, mock_delete, client, mock_db):

@@ -88,8 +88,16 @@ def test_edit_is_partial_and_returns_the_etag(mock_edit, client, mock_db):
 
 
 @patch("modules.gears.gear_components.service.edit_gear_component")
+def test_an_edit_without_if_match_is_428(mock_edit, client):
+    response = client.patch("/gear_components/1", json={"brand": "SRAM"}, headers=_HEADERS)
+
+    assert response.status_code == 428
+    mock_edit.assert_not_called()
+
+
+@patch("modules.gears.gear_components.service.edit_gear_component")
 def test_edit_clearing_the_purchase_date_is_rejected(mock_edit, client):
-    response = client.patch("/gear_components/1", json={"purchase_date": None}, headers=_HEADERS)
+    response = client.patch("/gear_components/1", json={"purchase_date": None}, headers={**_HEADERS, "If-Match": "*"})
 
     assert response.status_code == 422
     mock_edit.assert_not_called()

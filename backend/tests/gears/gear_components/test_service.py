@@ -54,7 +54,9 @@ class TestEditAndDelete:
         created = crud.create_gear_component(component_create(gear_id, purchase_date=date(2024, 5, 1)), 1, db)
 
         with pytest.raises(core_exceptions.InvalidInputError):
-            service.edit_gear_component(created.id, component_update(retired_date=date(2024, 5, 1)), 1, db)
+            service.edit_gear_component(
+                created.id, component_update(retired_date=date(2024, 5, 1)), 1, db, if_match="*"
+            )
 
     def test_moving_the_purchase_past_the_stored_retired_date_is_refused(self, db):
         gear_id = _gear(db)
@@ -63,18 +65,20 @@ class TestEditAndDelete:
         )
 
         with pytest.raises(core_exceptions.InvalidInputError):
-            service.edit_gear_component(created.id, component_update(purchase_date=date(2024, 7, 1)), 1, db)
+            service.edit_gear_component(
+                created.id, component_update(purchase_date=date(2024, 7, 1)), 1, db, if_match="*"
+            )
 
     def test_a_type_that_does_not_fit_the_gear_is_refused(self, db):
         gear_id = _gear(db)
         created = crud.create_gear_component(component_create(gear_id), 1, db)
 
         with pytest.raises(core_exceptions.InvalidInputError):
-            service.edit_gear_component(created.id, component_update(type="not-a-bike-part"), 1, db)
+            service.edit_gear_component(created.id, component_update(type="not-a-bike-part"), 1, db, if_match="*")
 
     def test_editing_a_missing_component_is_not_found(self, db):
         with pytest.raises(core_exceptions.NotFoundError):
-            service.edit_gear_component(1, component_update(brand="x"), 1, db)
+            service.edit_gear_component(1, component_update(brand="x"), 1, db, if_match="*")
 
     def test_a_stale_edit_is_a_precondition_failure(self, db, commit_spy):
         gear_id = _gear(db)
@@ -89,7 +93,7 @@ class TestEditAndDelete:
         gear_id = _gear(db)
         created = crud.create_gear_component(component_create(gear_id), 1, db)
 
-        updated = service.edit_gear_component(created.id, component_update(brand="SRAM"), 1, db)
+        updated = service.edit_gear_component(created.id, component_update(brand="SRAM"), 1, db, if_match="*")
 
         commit_spy.assert_called_once_with()
         assert updated.brand == "SRAM"

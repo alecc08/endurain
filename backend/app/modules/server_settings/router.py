@@ -6,7 +6,6 @@ import jasil.providers as platform_providers
 from fastapi import (
     APIRouter,
     Depends,
-    Header,
     Request,
     Response,
     Security,
@@ -67,7 +66,7 @@ def edit_server_settings(
     server_settings_attributes: server_settings_schema.ServerSettingsEdit,
     db: core_dependencies.DbSession,
     response: Response,
-    if_match: Annotated[str | None, Header(alias=core_etag.IF_MATCH_HEADER)] = None,
+    if_match: core_dependencies.IfMatch,
 ) -> server_settings_schema.ServerSettingsAdminRead:
     """Update server settings.
 
@@ -81,7 +80,7 @@ def edit_server_settings(
         server_settings_attributes: Settings to update.
         db: Database session.
         response: The response, which carries the new ETag.
-        if_match: The ``If-Match`` precondition, or None.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         Updated server settings configuration, without the tile API key.
@@ -211,7 +210,7 @@ def edit_mail_settings(
     mail_settings_attributes: server_settings_schema.MailSettingsEdit,
     db: core_dependencies.DbSession,
     response: Response,
-    if_match: Annotated[str | None, Header(alias=core_etag.IF_MATCH_HEADER)] = None,
+    if_match: core_dependencies.IfMatch,
 ) -> server_settings_schema.MailSettingsAdminRead:
     """Update the mail server settings.
 
@@ -225,7 +224,7 @@ def edit_mail_settings(
         mail_settings_attributes: Settings to update.
         db: Database session.
         response: The response, which carries the new ETag.
-        if_match: The ``If-Match`` precondition, or None.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         Updated mail settings, without the password.

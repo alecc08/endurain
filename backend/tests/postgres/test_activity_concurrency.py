@@ -15,7 +15,7 @@ import modules.activities.activity.schema as activity_schema
 from tests.postgres.test_transaction_ownership import _add_activity
 
 
-def _edit(factory, activity_id: int, name: str, *, if_match: str | None = None) -> None:
+def _edit(factory, activity_id: int, name: str, *, if_match: str = "*") -> None:
     with factory() as db:
         activity_crud.edit_activity(1, activity_id, activity_schema.ActivityEdit(name=name), db, if_match=if_match)
         db.commit()

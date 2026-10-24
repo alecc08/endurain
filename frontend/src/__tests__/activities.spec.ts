@@ -336,15 +336,13 @@ describe('setActivityGear', () => {
     })
   })
 
-  it('omits If-Match when the copy carries no version', async () => {
-    // A conditional write needs something to be conditional on; sending a made
-    // up tag would fail every save.
-    const activity = { ...mapActivity(activityDto), version: null }
+  it('sends a version no stored row has when the copy carries none, so the backend refuses it', async () => {
+    const activity = mapActivity({ ...activityDto, version: null })
     vi.mocked(apiFetch).mockResolvedValueOnce(activityDto)
 
     await setActivityGear(activity, 42)
 
-    expect(vi.mocked(apiFetch).mock.lastCall?.[1]?.headers).toEqual({})
+    expect(vi.mocked(apiFetch).mock.lastCall?.[1]?.headers).toEqual({ 'If-Match': '"0"' })
   })
 })
 
@@ -396,30 +394,34 @@ describe('editActivity', () => {
       visibility: 2,
     })
 
-    const updated = await editActivity(5, {
-      name: 'Evening run',
-      activityType: 1,
-      description: '',
-      privateNotes: 'note',
-      visibility: 2,
-      isHidden: true,
-      hideStartTime: false,
-      hideLocation: false,
-      hideMap: true,
-      hideHr: false,
-      hidePower: false,
-      hideCadence: false,
-      hideElevation: false,
-      hideSpeed: false,
-      hidePace: false,
-      hideLaps: false,
-      hideWorkoutSetsSteps: false,
-      hideGear: false,
-    })
+    const updated = await editActivity(
+      5,
+      {
+        name: 'Evening run',
+        activityType: 1,
+        description: '',
+        privateNotes: 'note',
+        visibility: 2,
+        isHidden: true,
+        hideStartTime: false,
+        hideLocation: false,
+        hideMap: true,
+        hideHr: false,
+        hidePower: false,
+        hideCadence: false,
+        hideElevation: false,
+        hideSpeed: false,
+        hidePace: false,
+        hideLaps: false,
+        hideWorkoutSetsSteps: false,
+        hideGear: false,
+      },
+      3,
+    )
 
     expect(apiFetch).toHaveBeenCalledWith('/activities/5', {
       method: 'PATCH',
-      headers: {},
+      headers: { 'If-Match': '"3"' },
       body: JSON.stringify({
         name: 'Evening run',
         activity_type: 1,

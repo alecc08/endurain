@@ -80,7 +80,7 @@ export function useCreateGearComponentMutation() {
 export function useUpdateGearComponentMutation() {
   return useInvalidatingMutation<
     GearComponent,
-    { id: number; input: GearComponentInput; version?: number }
+    { id: number; input: GearComponentInput; version: number }
   >({
     mutationKey: queryKeys.gears.componentsLists(),
     mutationFn: ({ id, input, version }) => updateGearComponent(id, input, version),

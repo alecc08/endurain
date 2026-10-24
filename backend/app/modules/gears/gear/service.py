@@ -146,7 +146,7 @@ def edit_gear(
     user_id: int,
     db: Session,
     *,
-    if_match: str | None = None,
+    if_match: str,
 ) -> gears_schema.GearRead:
     """Update a user's gear.
 
@@ -155,7 +155,7 @@ def edit_gear(
         gear: Gear payload with the fields to change.
         user_id: Owner user ID.
         db: Database session.
-        if_match: The ``If-Match`` precondition, or None.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated gear.

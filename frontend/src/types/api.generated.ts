@@ -4057,7 +4057,7 @@ export interface paths {
          *         server_settings_attributes: Settings to update.
          *         db: Database session.
          *         response: The response, which carries the new ETag.
-         *         if_match: The ``If-Match`` precondition, or None.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         Updated server settings configuration, without the tile API key.
@@ -4134,7 +4134,7 @@ export interface paths {
          *         mail_settings_attributes: Settings to update.
          *         db: Database session.
          *         response: The response, which carries the new ETag.
-         *         if_match: The ``If-Match`` precondition, or None.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         Updated mail settings, without the password.

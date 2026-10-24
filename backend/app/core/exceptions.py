@@ -137,6 +137,19 @@ class PreconditionFailedError(DomainError):
     default_detail = "Precondition Failed"
 
 
+class PreconditionRequiredError(DomainError):
+    """The request must be conditional and carries no ``If-Match`` header.
+
+    A write to a versioned resource without a precondition is last-writer-wins,
+    so the caller is told to read the resource and send the tag it got.
+    """
+
+    status_code = status.HTTP_428_PRECONDITION_REQUIRED
+    code = "precondition-required"
+    title = "Precondition Required"
+    default_detail = "This request must be conditional; send the ETag you read in an If-Match header"
+
+
 class TooManyRequestsError(DomainError):
     """A per-resource limit is reached, as opposed to the caller's request rate."""
 

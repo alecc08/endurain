@@ -105,7 +105,9 @@ class TestTileServerUrlIsCheckedOnWrite:
 
         with pytest.raises(core_exceptions.InvalidInputError):
             server_settings_service.edit_server_settings(
-                _full_edit(edit_env.stored, tileserver_url="https://internal.example.com/{z}/{x}/{y}.png"), db
+                _full_edit(edit_env.stored, tileserver_url="https://internal.example.com/{z}/{x}/{y}.png"),
+                db,
+                if_match="*",
             )
 
         edit_env.write.assert_not_called()
@@ -114,7 +116,9 @@ class TestTileServerUrlIsCheckedOnWrite:
     def test_the_placeholders_are_filled_before_the_check(self, edit_env):
         """``{z}/{x}/{y}`` is not a parseable URL; the host is what matters."""
         server_settings_service.edit_server_settings(
-            _full_edit(edit_env.stored, tileserver_url="https://other.example.com/{z}/{x}/{y}.png"), MagicMock()
+            _full_edit(edit_env.stored, tileserver_url="https://other.example.com/{z}/{x}/{y}.png"),
+            MagicMock(),
+            if_match="*",
         )
 
         assert edit_env.dns.call_args.args[0] == "https://other.example.com/0/0/0.png"
@@ -124,7 +128,9 @@ class TestTileServerUrlIsCheckedOnWrite:
     )
     def test_every_builtin_template_can_be_saved(self, edit_env, template):
         """``{r}`` (Stadia retina) is dropped by the renderer, so it must not be a 400."""
-        server_settings_service.edit_server_settings(_full_edit(edit_env.stored, tileserver_url=template), MagicMock())
+        server_settings_service.edit_server_settings(
+            _full_edit(edit_env.stored, tileserver_url=template), MagicMock(), if_match="*"
+        )
 
         assert "{" not in edit_env.dns.call_args.args[0]
 
@@ -132,7 +138,9 @@ class TestTileServerUrlIsCheckedOnWrite:
         """The renderer resolves the same template before every tile fetch."""
         with pytest.raises(core_exceptions.InvalidInputError):
             server_settings_service.edit_server_settings(
-                _full_edit(edit_env.stored, tileserver_url="https://tiles.example.com/{}/{z}/{x}/{y}.png"), MagicMock()
+                _full_edit(edit_env.stored, tileserver_url="https://tiles.example.com/{}/{z}/{x}/{y}.png"),
+                MagicMock(),
+                if_match="*",
             )
 
         edit_env.write.assert_not_called()
@@ -143,7 +151,7 @@ class TestOnlyRealChangesCount:
         """The frontend sends every field on every save; that must not look like a tile change."""
         db = MagicMock()
 
-        result = server_settings_service.edit_server_settings(_full_edit(edit_env.stored), db)
+        result = server_settings_service.edit_server_settings(_full_edit(edit_env.stored), db, if_match="*")
 
         edit_env.dns.assert_not_called()
         edit_env.write.assert_not_called()
@@ -155,7 +163,7 @@ class TestOnlyRealChangesCount:
     def test_a_non_tile_change_commits_without_publishing(self, edit_env):
         db = MagicMock()
 
-        server_settings_service.edit_server_settings(_full_edit(edit_env.stored, currency="dollar"), db)
+        server_settings_service.edit_server_settings(_full_edit(edit_env.stored, currency="dollar"), db, if_match="*")
 
         edit_env.dns.assert_not_called()
         edit_env.publish.assert_not_called()
@@ -163,21 +171,23 @@ class TestOnlyRealChangesCount:
 
     def test_a_tile_change_publishes_only_the_changed_map_fields(self, edit_env):
         server_settings_service.edit_server_settings(
-            _full_edit(edit_env.stored, map_background_color="#000000"), MagicMock()
+            _full_edit(edit_env.stored, map_background_color="#000000"), MagicMock(), if_match="*"
         )
 
         assert edit_env.publish.call_args.args[0] == {"map_background_color"}
         edit_env.dns.assert_not_called()
 
     def test_an_unchanged_api_key_keeps_its_stored_token(self, edit_env):
-        server_settings_service.edit_server_settings(_full_edit(edit_env.stored, currency="dollar"), MagicMock())
+        server_settings_service.edit_server_settings(
+            _full_edit(edit_env.stored, currency="dollar"), MagicMock(), if_match="*"
+        )
 
         written = edit_env.write.call_args.args[0]
         assert written.tileserver_api_key == "enc-old"
 
     def test_a_changed_api_key_is_encrypted_and_never_returned(self, edit_env):
         result = server_settings_service.edit_server_settings(
-            _full_edit(edit_env.stored, tileserver_api_key="plain-new"), MagicMock()
+            _full_edit(edit_env.stored, tileserver_api_key="plain-new"), MagicMock(), if_match="*"
         )
 
         assert edit_env.write.call_args.args[0].tileserver_api_key == "enc-new"
@@ -187,7 +197,7 @@ class TestOnlyRealChangesCount:
 
     def test_clearing_the_api_key_stores_none(self, edit_env):
         result = server_settings_service.edit_server_settings(
-            _full_edit(edit_env.stored, tileserver_api_key=None), MagicMock()
+            _full_edit(edit_env.stored, tileserver_api_key=None), MagicMock(), if_match="*"
         )
 
         assert edit_env.write.call_args.args[0].tileserver_api_key is None
@@ -201,7 +211,7 @@ class TestOnlyRealChangesCount:
             side_effect=core_exceptions.UndecryptableError(),
         ):
             server_settings_service.edit_server_settings(
-                _full_edit(edit_env.stored, tileserver_api_key="plain-new"), MagicMock()
+                _full_edit(edit_env.stored, tileserver_api_key="plain-new"), MagicMock(), if_match="*"
             )
 
         assert edit_env.write.call_args.args[0].tileserver_api_key == "enc-new"
@@ -211,7 +221,9 @@ class TestOnlyRealChangesCount:
         with patch.object(
             server_settings_service.server_settings_crud, "get_server_settings", return_value=edit_env.stored
         ) as read:
-            server_settings_service.edit_server_settings(_full_edit(edit_env.stored, currency="dollar"), db)
+            server_settings_service.edit_server_settings(
+                _full_edit(edit_env.stored, currency="dollar"), db, if_match="*"
+            )
 
         assert [call.kwargs for call in read.call_args_list] == [{"for_update": False}, {"for_update": True}]
 
@@ -226,7 +238,9 @@ class TestOnlyRealChangesCount:
 
         with patch.object(server_settings_service.server_settings_crud, "get_server_settings", side_effect=read):
             server_settings_service.edit_server_settings(
-                _full_edit(edit_env.stored, tileserver_url="https://other.example.com/{z}/{x}/{y}.png"), MagicMock()
+                _full_edit(edit_env.stored, tileserver_url="https://other.example.com/{z}/{x}/{y}.png"),
+                MagicMock(),
+                if_match="*",
             )
 
         assert order == ["read", "dns", "lock"]
@@ -263,20 +277,24 @@ class TestGeocodingSettingsOnWrite:
     def test_a_save_that_leaves_geocoding_alone_does_no_lookup(self, geo_env):
         geo_env.geo_dns.reset_mock()
 
-        server_settings_service.edit_server_settings(_full_edit(geo_env.stored, currency="dollar"), MagicMock())
+        server_settings_service.edit_server_settings(
+            _full_edit(geo_env.stored, currency="dollar"), MagicMock(), if_match="*"
+        )
 
         geo_env.geo_dns.assert_not_called()
 
     def test_the_default_host_is_checked_when_none_is_set(self, geo_env):
         server_settings_service.edit_server_settings(
-            _full_edit(geo_env.stored, geocoding_service="photon"), MagicMock()
+            _full_edit(geo_env.stored, geocoding_service="photon"), MagicMock(), if_match="*"
         )
 
         assert geo_env.geo_dns.call_args.args[0] == "https://photon.komoot.io/reverse"
 
     def test_a_custom_host_and_scheme_are_checked(self, geo_env):
         server_settings_service.edit_server_settings(
-            _full_edit(geo_env.stored, geocoding_host="nominatim.lan:8080", geocoding_use_https=False), MagicMock()
+            _full_edit(geo_env.stored, geocoding_host="nominatim.lan:8080", geocoding_use_https=False),
+            MagicMock(),
+            if_match="*",
         )
 
         assert geo_env.geo_dns.call_args.args[0] == "http://nominatim.lan:8080/reverse"
@@ -286,7 +304,7 @@ class TestGeocodingSettingsOnWrite:
 
         with pytest.raises(core_exceptions.InvalidInputError) as exc_info:
             server_settings_service.edit_server_settings(
-                _full_edit(geo_env.stored, geocoding_host="10.0.0.5"), MagicMock()
+                _full_edit(geo_env.stored, geocoding_host="10.0.0.5"), MagicMock(), if_match="*"
             )
 
         assert "SSRF_ALLOWED_HOSTS" in exc_info.value.detail
@@ -297,14 +315,16 @@ class TestGeocodingSettingsOnWrite:
         body = body.model_copy(update={"geocoding_api_key": None})
 
         with pytest.raises(core_exceptions.InvalidInputError) as exc_info:
-            server_settings_service.edit_server_settings(body, MagicMock())
+            server_settings_service.edit_server_settings(body, MagicMock(), if_match="*")
 
         assert "API key" in exc_info.value.detail
         geo_env.geo_dns.assert_not_called()
 
     def test_geocode_with_a_new_key_is_accepted_and_the_key_encrypted(self, geo_env):
         result = server_settings_service.edit_server_settings(
-            _full_edit(geo_env.stored, geocoding_service="geocode", geocoding_api_key="plain-new"), MagicMock()
+            _full_edit(geo_env.stored, geocoding_service="geocode", geocoding_api_key="plain-new"),
+            MagicMock(),
+            if_match="*",
         )
 
         assert geo_env.write.call_args.args[0].geocoding_api_key == "enc-new"
@@ -317,14 +337,14 @@ class TestGeocodingSettingsOnWrite:
             server_settings_service.server_settings_crud, "get_server_settings", return_value=geo_env.stored
         ):
             server_settings_service.edit_server_settings(
-                _full_edit(geo_env.stored, geocoding_service="geocode"), MagicMock()
+                _full_edit(geo_env.stored, geocoding_service="geocode"), MagicMock(), if_match="*"
             )
 
         geo_env.write.assert_called_once()
 
     def test_the_two_keys_are_independent(self, geo_env):
         server_settings_service.edit_server_settings(
-            _full_edit(geo_env.stored, geocoding_api_key="plain-new"), MagicMock()
+            _full_edit(geo_env.stored, geocoding_api_key="plain-new"), MagicMock(), if_match="*"
         )
 
         written = geo_env.write.call_args.args[0]
@@ -374,7 +394,7 @@ class TestServerSettingsEnvManaged:
             pytest.raises(core_exceptions.ConflictError) as exc_info,
         ):
             server_settings_service.edit_server_settings(
-                _full_edit(edit_env.stored, geocoding_rate_limit=2.0), MagicMock()
+                _full_edit(edit_env.stored, geocoding_rate_limit=2.0), MagicMock(), if_match="*"
             )
 
         assert "REVERSE_GEO_RATE_LIMIT" in exc_info.value.detail
@@ -387,7 +407,7 @@ class TestServerSettingsEnvManaged:
             return_value={"geocoding_rate_limit": "REVERSE_GEO_RATE_LIMIT"},
         ):
             result = server_settings_service.edit_server_settings(
-                _full_edit(edit_env.stored, currency="dollar"), MagicMock()
+                _full_edit(edit_env.stored, currency="dollar"), MagicMock(), if_match="*"
             )
 
         assert result.currency == "dollar"
@@ -573,7 +593,7 @@ class TestSessionEnvManaged:
             pytest.raises(core_exceptions.ConflictError) as exc_info,
         ):
             server_settings_service.edit_server_settings(
-                _full_edit(edit_env.stored, access_token_expire_minutes=30), MagicMock()
+                _full_edit(edit_env.stored, access_token_expire_minutes=30), MagicMock(), if_match="*"
             )
 
         assert "ACCESS_TOKEN_EXPIRE_MINUTES" in exc_info.value.detail
@@ -679,7 +699,7 @@ class TestRetention:
             pytest.raises(core_exceptions.ConflictError) as exc_info,
         ):
             server_settings_service.edit_server_settings(
-                _full_edit(edit_env.stored, read_notification_retention_days=30), MagicMock()
+                _full_edit(edit_env.stored, read_notification_retention_days=30), MagicMock(), if_match="*"
             )
 
         assert "READ_NOTIFICATION_RETENTION_DAYS" in exc_info.value.detail
@@ -869,7 +889,7 @@ class TestEditMailSettings:
     def test_resending_the_unchanged_record_does_nothing(self, mail_env):
         db = MagicMock()
 
-        result = server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored), db)
+        result = server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored), db, if_match="*")
 
         mail_env.write.assert_not_called()
         db.commit.assert_not_called()
@@ -877,7 +897,7 @@ class TestEditMailSettings:
         assert result.host == "mail.example.com"
 
     def test_the_row_is_locked_for_the_edit(self, mail_env):
-        server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), MagicMock())
+        server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), MagicMock(), if_match="*")
 
         assert mail_env.read.call_args.kwargs == {"for_update": True}
 
@@ -892,7 +912,7 @@ class TestEditMailSettings:
     def test_an_omitted_password_keeps_the_stored_token(self, mail_env):
         db = MagicMock()
 
-        server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), db)
+        server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), db, if_match="*")
 
         assert "password" not in mail_env.write.call_args.args[0].model_fields_set
         db.commit.assert_called_once()
@@ -900,20 +920,22 @@ class TestEditMailSettings:
     def test_an_unchanged_password_keeps_its_stored_token(self, mail_env):
         body = _mail_edit(mail_env.stored, port=465, password="plain-old")
 
-        server_settings_service.edit_mail_settings(body, MagicMock())
+        server_settings_service.edit_mail_settings(body, MagicMock(), if_match="*")
 
         assert mail_env.write.call_args.args[0].password == "enc-old"
 
     @pytest.mark.parametrize("cleared", [None, ""])
     def test_clearing_the_password_stores_none(self, mail_env, cleared):
-        result = server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, password=cleared), MagicMock())
+        result = server_settings_service.edit_mail_settings(
+            _mail_edit(mail_env.stored, password=cleared), MagicMock(), if_match="*"
+        )
 
         assert mail_env.write.call_args.args[0].password is None
         assert result.password_set is False
 
     def test_a_changed_password_is_encrypted_and_never_returned(self, mail_env):
         result = server_settings_service.edit_mail_settings(
-            _mail_edit(mail_env.stored, password="plain-new"), MagicMock()
+            _mail_edit(mail_env.stored, password="plain-new"), MagicMock(), if_match="*"
         )
 
         assert mail_env.write.call_args.args[0].password == "enc-new"
@@ -928,7 +950,7 @@ class TestEditMailSettings:
         ]
 
         with pytest.raises(core_exceptions.InvalidInputError) as exc_info:
-            server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), MagicMock())
+            server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), MagicMock(), if_match="*")
 
         assert "Port must be between" in exc_info.value.detail
         assert "; " in exc_info.value.detail
@@ -937,13 +959,15 @@ class TestEditMailSettings:
     def test_disabling_mail_skips_validation(self, mail_env):
         mail_env.problems.return_value = ["never shown"]
 
-        result = server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, host=None), MagicMock())
+        result = server_settings_service.edit_mail_settings(
+            _mail_edit(mail_env.stored, host=None), MagicMock(), if_match="*"
+        )
 
         mail_env.problems.assert_not_called()
         assert result.host is None
 
     def test_the_password_is_checked_in_plain_text(self, mail_env):
-        server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), MagicMock())
+        server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), MagicMock(), if_match="*")
 
         config = mail_env.problems.call_args.args[0]
         assert config.password == "plain-old"
@@ -953,7 +977,7 @@ class TestEditMailSettings:
         mail_env.managed.return_value = {"host": "SMTP_HOST", "port": "SMTP_PORT"}
 
         with pytest.raises(core_exceptions.ConflictError) as exc_info:
-            server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), MagicMock())
+            server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), MagicMock(), if_match="*")
 
         assert "port is set by the SMTP_PORT environment variable" in exc_info.value.detail
         mail_env.write.assert_not_called()
@@ -961,7 +985,9 @@ class TestEditMailSettings:
     def test_a_change_to_a_field_that_is_not_env_managed_succeeds(self, mail_env):
         mail_env.managed.return_value = {"host": "SMTP_HOST"}
 
-        result = server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), MagicMock())
+        result = server_settings_service.edit_mail_settings(
+            _mail_edit(mail_env.stored, port=465), MagicMock(), if_match="*"
+        )
 
         assert result.port == 465
 
@@ -969,7 +995,7 @@ class TestEditMailSettings:
         mail_env.managed.return_value = {"host": "SMTP_HOST", "port": "SMTP_PORT"}
 
         server_settings_service.edit_mail_settings(
-            _mail_edit(mail_env.stored, username="other@example.com"), MagicMock()
+            _mail_edit(mail_env.stored, username="other@example.com"), MagicMock(), if_match="*"
         )
 
         assert mail_env.write.call_args.args[0].username == "other@example.com"
@@ -1294,7 +1320,7 @@ class TestEditMailSettingsLocking:
             "mail_problems",
             side_effect=lambda config: calls.append(("dns", {})) or [],
         ):
-            server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), MagicMock())
+            server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), MagicMock(), if_match="*")
 
         assert [name for name, _ in calls] == ["read", "dns", "read"]
         assert calls[-1][1] == {"for_update": True}
@@ -1304,6 +1330,6 @@ class TestEditMailSettingsLocking:
         mail_env.read.side_effect = [mail_env.stored, later]
 
         with pytest.raises(core_exceptions.PreconditionFailedError):
-            server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), MagicMock())
+            server_settings_service.edit_mail_settings(_mail_edit(mail_env.stored, port=465), MagicMock(), if_match="*")
 
         mail_env.write.assert_not_called()

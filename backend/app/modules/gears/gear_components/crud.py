@@ -233,7 +233,7 @@ def edit_gear_component(
     user_id: int,
     db: Session,
     *,
-    if_match: str | None = None,
+    if_match: str,
 ) -> gear_components_schema.GearComponentRead:
     """Stage a partial update to a user's component.
 
@@ -249,7 +249,7 @@ def edit_gear_component(
         gear_component: Component payload with the fields to change.
         user_id: Owner user ID.
         db: Database session.
-        if_match: The ``If-Match`` precondition, or None. Checked against the row this
+        if_match: The ``If-Match`` precondition. Checked against the row this
             function edits, so the flush's ``version_id_col`` guard holds the write to
             the same version.
 

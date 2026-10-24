@@ -116,14 +116,14 @@ class TestWrites:
     def test_edit_changes_sent_fields_and_never_the_owner(self, db):
         created = crud.create_gear(gear_create(brand="Trek"), 1, db)
 
-        updated = crud.edit_gear(created.id, schema.GearUpdate(nickname=" Gravel "), 1, db)
+        updated = crud.edit_gear(created.id, schema.GearUpdate(nickname=" Gravel "), 1, db, if_match="*")
 
         assert (updated.nickname, updated.brand, updated.user_id) == ("Gravel", "Trek", 1)
 
     def test_edit_clears_a_nullable_field_sent_as_null(self, db):
         created = crud.create_gear(gear_create(brand="Trek", purchase_value=10.0), 1, db)
 
-        updated = crud.edit_gear(created.id, schema.GearUpdate(brand=None, purchase_value=None), 1, db)
+        updated = crud.edit_gear(created.id, schema.GearUpdate(brand=None, purchase_value=None), 1, db, if_match="*")
 
         assert (updated.brand, updated.purchase_value) == (None, None)
 
@@ -141,7 +141,7 @@ class TestWrites:
         mine = crud.create_gear(gear_create("Mine"), 1, db)
 
         with pytest.raises(core_exceptions.ConflictError, match="nickname"):
-            crud.edit_gear(mine.id, schema.GearUpdate(nickname="taken"), 1, db)
+            crud.edit_gear(mine.id, schema.GearUpdate(nickname="taken"), 1, db, if_match="*")
 
     def test_update_and_create_requests_reject_provider_ids_and_blank_nicknames(self):
         with pytest.raises(ValueError):
@@ -157,7 +157,7 @@ class TestWrites:
         created = crud.create_gear(gear_create(), 1, db)
 
         with pytest.raises(core_exceptions.NotFoundError):
-            crud.edit_gear(created.id, schema.GearUpdate(nickname="x"), 2, db)
+            crud.edit_gear(created.id, schema.GearUpdate(nickname="x"), 2, db, if_match="*")
 
     def test_delete_removes_the_gear(self, db):
         created = crud.create_gear(gear_create(), 1, db)
