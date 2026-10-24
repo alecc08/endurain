@@ -64,5 +64,6 @@ def edit_user(user_id: int, user: users_schema.UsersEdit, db: Session) -> None:
         NotFoundError: If the user does not exist.
         ConflictError: If the username or email is already taken.
     """
-    users_service.stage_user_edit(user_id, user, db)
+    # A migration overwrites whatever the row holds, so it names no version.
+    users_service.stage_user_edit(user_id, user, db, if_match="*")
     db.commit()

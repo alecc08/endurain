@@ -3,6 +3,8 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import core.exceptions as core_exceptions
+
 
 def _build_app(mock_db):
     import core.database as core_db
@@ -10,6 +12,7 @@ def _build_app(mock_db):
     import modules.users.users_default_gear.router as router
 
     app = FastAPI()
+    core_exceptions.register_exception_handlers(app)
     app.include_router(router.router, prefix="/user_default_gear")
 
     def _uid():
@@ -40,9 +43,18 @@ class TestEditUserDefaultGear:
         client = TestClient(_build_app(mock_db))
         mock_edit.return_value = UsersDefaultGearRead(id=1, user_id=1, run_gear_id=2, ride_gear_id=1)
 
-        response = client.put(
+        response = client.patch(
             "/user_default_gear",
             json={"run_gear_id": 2},
-            headers={"Authorization": "Bearer x"},
+            headers={**{"Authorization": "Bearer x"}, "If-Match": "*"},
         )
         assert response.status_code == 200
+
+
+class TestEditNeedsIfMatch:
+    def test_an_edit_without_if_match_is_428(self, mock_db):
+        response = TestClient(_build_app(mock_db)).patch(
+            "/user_default_gear", json={}, headers={"Authorization": "Bearer mock_token"}
+        )
+
+        assert response.status_code == 428

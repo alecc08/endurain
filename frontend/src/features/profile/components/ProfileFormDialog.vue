@@ -112,7 +112,7 @@ async function submitForm(values: ProfileFormValues): Promise<void> {
     timezone: values.timezone || null,
   }
   try {
-    await updateMutation.mutateAsync(input)
+    await updateMutation.mutateAsync({ input, version: props.profile.version })
     emit('success', t('settings.profile.edit.success'))
     open.value = false
   } catch (error) {

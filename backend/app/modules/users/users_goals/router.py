@@ -2,9 +2,10 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Request, status
+from fastapi import APIRouter, Query, Request, Response, status
 
 import core.dependencies as core_dependencies
+import core.etag as core_etag
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
 import modules.users.users_goals.progress_service as user_goals_progress_service
@@ -105,29 +106,37 @@ def create_user_goal(
 
 
 @router.put(
-    "",
+    "/{goal_id}",
     status_code=status.HTTP_200_OK,
     response_model=user_goals_schema.UsersGoalRead,
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def update_user_goal(
     request: Request,
+    goal_id: core_dependencies.PositiveId,
     user_goal: user_goals_schema.UsersGoalUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
+    if_match: core_dependencies.IfMatch,
 ) -> user_goals_schema.UsersGoalRead:
-    """Update an existing goal for the authenticated user.
+    """Replace an existing goal for the authenticated user.
 
     Args:
         request: The incoming request, read by the rate limiter.
-        user_goal: Updated goal data.
+        goal_id: ID of the goal to replace.
+        user_goal: The goal's new values.
         token_user_id: User ID from access token.
         db: Database session dependency.
+        response: The response, which carries the new ETag.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated goal object.
     """
-    return user_goals_service.update_goal(token_user_id, user_goal, db)
+    updated = user_goals_service.update_goal(token_user_id, goal_id, user_goal, db, if_match=if_match)
+    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    return updated
 
 
 @router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

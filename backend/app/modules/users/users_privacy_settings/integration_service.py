@@ -43,6 +43,8 @@ def edit_privacy_settings(
     user_id: int,
     privacy_settings: users_privacy_settings_schema.UsersPrivacySettingsUpdate,
     db: Session,
+    *,
+    if_match: str,
 ) -> users_privacy_settings_schema.UsersPrivacySettingsRead:
     """Stage an update of a user's privacy settings.
 
@@ -50,14 +52,18 @@ def edit_privacy_settings(
         user_id: The user whose settings to update.
         privacy_settings: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition, or ``*`` to overwrite.
 
     Returns:
         The updated privacy settings.
 
     Raises:
         NotFoundError: If the user has no privacy settings.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
-    return users_privacy_settings_crud.edit_user_privacy_settings(user_id, privacy_settings, db)
+    # The caller composes this into its own unit of work (the profile edit, the importer) and decides the
+    # precondition: the profile edit names the version its client read, the importer overwrites.
+    return users_privacy_settings_crud.edit_user_privacy_settings(user_id, privacy_settings, db, if_match=if_match)
 
 
 def visibility_to_int(

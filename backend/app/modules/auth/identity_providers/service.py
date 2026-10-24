@@ -1663,7 +1663,9 @@ class IdentityProviderService:
         if updates:
             logger.info(f"Applying updates to user {user.username}: {updates}", extra=core_logger.context(console=True))
             updated_user = user.model_copy(update=updates)
-            user = users_integration.edit_user(user.id, users_schema.UsersEdit.from_read(updated_user), db)
+            user = users_integration.edit_user(
+                user.id, users_schema.UsersEdit.from_read(updated_user), db, if_match="*"
+            )
             db.commit()
 
         return user

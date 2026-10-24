@@ -10,6 +10,7 @@ import type {
 } from '@/features/goals/types'
 
 import { apiFetch } from '@/services/http'
+import { ifMatchHeaders, rowVersion } from '@/services/ifMatch'
 
 /**
  * Maps a raw goal payload to the clean {@link Goal} model — the single boundary
@@ -23,6 +24,7 @@ export function mapGoal(dto: GoalDto): Goal {
   return {
     id: dto.id,
     userId: dto.user_id,
+    version: rowVersion(dto.version),
     interval: dto.interval,
     activityType: dto.activity_type,
     goalType: dto.goal_type,
@@ -149,19 +151,20 @@ export async function createGoal(input: GoalInput): Promise<Goal> {
 }
 
 /**
- * Updates a goal for the authenticated user. The backend's update body carries
- * the goal's `id` and `user_id`, so both round-trip from the loaded record.
+ * Updates a goal for the authenticated user. The goal is named by the path and the body is
+ * the whole goal.
  *
  * @param id - The goal id.
- * @param userId - The goal owner's user id.
  * @param input - The clean goal input.
+ * @param version - The goal version the form was loaded at, for `If-Match`.
  * @returns The updated goal, mapped to the clean model.
- * @throws {HttpError} When the request fails.
+ * @throws {HttpError} When the request fails, including 412 when stale.
  */
-export async function updateGoal(id: number, userId: number, input: GoalInput): Promise<Goal> {
-  const payload: GoalUpdateDto = { ...toWire(input), id, user_id: userId }
-  const dto = await apiFetch<GoalDto>('/profile/goals', {
+export async function updateGoal(id: number, input: GoalInput, version: number): Promise<Goal> {
+  const payload: GoalUpdateDto = toWire(input)
+  const dto = await apiFetch<GoalDto>(`/profile/goals/${id}`, {
     method: 'PUT',
+    headers: ifMatchHeaders(version),
     body: JSON.stringify(payload),
   })
   return mapGoal(dto)

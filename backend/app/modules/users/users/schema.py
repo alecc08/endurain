@@ -356,6 +356,7 @@ class UsersRead(Users):
         ge=0,
         description="Number of external auth providers linked",
     )
+    version: StrictInt = Field(default=1, ge=1, description="Optimistic-concurrency counter, also sent as the ETag")
 
 
 class UserPublicRead(BaseModel):
@@ -399,7 +400,7 @@ class UsersEdit(Users):
         Returns:
             The same user as an edit.
         """
-        return cls.model_validate(user.model_dump(exclude={"id", "external_auth_count"}))
+        return cls.model_validate(user.model_dump(exclude={"id", "external_auth_count", "version"}))
 
 
 class UsersMe(UsersRead):
@@ -408,6 +409,7 @@ class UsersMe(UsersRead):
     Includes privacy settings and integration status.
 
     Attributes:
+        privacy_settings_version: Version of the privacy settings, for ``If-Match``.
         is_strava_linked: Strava integration status.
         is_garminconnect_linked: Garmin Connect status.
         default_activity_visibility: Default visibility level.
@@ -428,6 +430,9 @@ class UsersMe(UsersRead):
             password (False for SSO-only accounts).
     """
 
+    privacy_settings_version: StrictInt | None = Field(
+        default=None, description="Version of the privacy settings, sent back in If-Match when they are edited"
+    )
     is_strava_linked: StrictInt | None = Field(default=None, description="Whether Strava is linked")
     is_garminconnect_linked: StrictInt | None = Field(default=None, description="Whether Garmin Connect is linked")
     default_activity_visibility: StrictStr | None = Field(default=None, description="Default activity visibility")

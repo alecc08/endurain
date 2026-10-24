@@ -7,7 +7,7 @@ modules may consume lives in :mod:`modules.users.users_goals.integration_service
 
 from sqlalchemy.orm import Session
 
-import core.exceptions as core_exceptions
+import core.etag as core_etag
 import core.logger as core_logger
 import modules.users.users_goals.crud as user_goals_crud
 import modules.users.users_goals.schema as user_goals_schema
@@ -63,32 +63,36 @@ def create_goal(
 
 def update_goal(
     user_id: int,
+    goal_id: int,
     user_goal: user_goals_schema.UsersGoalUpdate,
     db: Session,
+    *,
+    if_match: str,
 ) -> user_goals_schema.UsersGoalRead:
-    """Update a user's goal and commit.
+    """Replace a user's goal and commit.
 
     Args:
         user_id: The user who owns the goal.
-        user_goal: The fields to change.
+        goal_id: The goal to replace.
+        user_goal: The goal's new values.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated goal.
 
     Raises:
-        PermissionDeniedError: If the update names another user.
         NotFoundError: If the user has no such goal.
+        PreconditionFailedError: If the goal changed since the client read it.
     """
-    if user_goal.user_id != user_id:
-        logger.warning(
-            "Refused an edit of another user's goal",
-            extra=core_logger.context(user_id=user_id, target_user_id=user_goal.user_id),
-        )
-        raise core_exceptions.PermissionDeniedError("Cannot edit user goal for another user")
-
-    updated = user_goals_crud.update_user_goal(user_id, user_goal, db)
-    db.commit()
+    with core_etag.refuse_stale_write(
+        db,
+        "goal",
+        lambda: user_goals_crud.user_goal_exists(user_id, goal_id, db),
+        "User goal not found",
+    ):
+        updated = user_goals_crud.update_user_goal(user_id, goal_id, user_goal, db, if_match=if_match)
+        db.commit()
     logger.debug("User goal updated", extra=core_logger.context(user_id=user_id, goal_id=updated.id))
     return updated
 

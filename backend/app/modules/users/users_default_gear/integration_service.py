@@ -63,6 +63,8 @@ def edit_default_gear(
     user_default_gear: users_default_gear_schema.UsersDefaultGearUpdate,
     user_id: int,
     db: Session,
+    *,
+    if_match: str,
 ) -> users_default_gear_schema.UsersDefaultGearRead:
     """Stage an update of a user's default gear settings.
 
@@ -70,12 +72,13 @@ def edit_default_gear(
         user_default_gear: The fields to change.
         user_id: The user whose settings are edited.
         db: Database session.
+        if_match: The ``If-Match`` precondition, or ``*`` to overwrite (the profile importer).
 
     Returns:
         The updated default gear settings.
 
     Raises:
-        PermissionDeniedError: If the update names another user.
         NotFoundError: If a gear is not the user's, or the user has no settings.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
-    return users_default_gear_service.stage_default_gear_edit(user_default_gear, user_id, db)
+    return users_default_gear_service.stage_default_gear_edit(user_default_gear, user_id, db, if_match=if_match)

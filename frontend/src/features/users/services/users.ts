@@ -12,6 +12,7 @@ import type { Schemas } from '@/types'
 
 import { resolveAvatarUrl } from '@/features/auth/services/mappers'
 import { apiFetch } from '@/services/http'
+import { ifMatchHeaders, rowVersion } from '@/services/ifMatch'
 
 /**
  * Maps a raw `UsersRead` payload to the clean {@link ManagedUser} model — the
@@ -24,6 +25,7 @@ import { apiFetch } from '@/services/http'
 export function mapManagedUser(dto: UserDto): ManagedUser {
   return {
     id: dto.id,
+    version: rowVersion(dto.version),
     name: dto.name,
     username: dto.username,
     email: dto.email,
@@ -175,6 +177,7 @@ export async function updateUser(user: ManagedUser, edits: EditUserFields): Prom
   const merged: ManagedUser = { ...user, ...edits }
   const dto = await apiFetch<UserDto>(`/users/${user.id}`, {
     method: 'PUT',
+    headers: ifMatchHeaders(user.version),
     body: JSON.stringify(toUserWire(merged)),
   })
   return mapManagedUser(dto)

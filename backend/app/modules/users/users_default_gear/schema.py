@@ -132,6 +132,7 @@ class UsersDefaultGearRead(UsersDefaultGearBase):
 
     id: StrictInt = Field(..., ge=1, description="Unique identifier")
     user_id: StrictInt = Field(..., ge=1, description="User ID")
+    version: StrictInt = Field(default=1, ge=1, description="Optimistic-concurrency counter, also sent as the ETag")
 
 
 class UsersDefaultGearUpdate(UsersDefaultGearBase):

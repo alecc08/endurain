@@ -27,6 +27,7 @@ vi.mock('@/services/http', () => ({
 const goalDto: GoalDto = {
   id: 3,
   user_id: 7,
+  version: 4,
   interval: 'weekly',
   activity_type: 'run',
   goal_type: 'distance',
@@ -36,6 +37,7 @@ const goalDto: GoalDto = {
 const mappedGoal = {
   id: 3,
   userId: 7,
+  version: 4,
   interval: 'weekly',
   activityType: 'run',
   goalType: 'distance',
@@ -78,6 +80,7 @@ describe('mapGoal', () => {
       mapGoal({
         id: 1,
         user_id: 2,
+        version: 1,
         interval: 'daily',
         activity_type: 'swim',
         goal_type: 'duration',
@@ -86,6 +89,7 @@ describe('mapGoal', () => {
     ).toEqual({
       id: 1,
       userId: 2,
+      version: 1,
       interval: 'daily',
       activityType: 'swim',
       goalType: 'duration',
@@ -153,14 +157,15 @@ describe('goal service requests', () => {
     })
   })
 
-  it('updates a goal via a PUT that includes the id and user id', async () => {
+  it('replaces a goal via a PUT to its path, guarded by If-Match, without the id', async () => {
     vi.mocked(apiFetch).mockResolvedValue(goalDto)
 
-    await updateGoal(3, 7, goalInput)
+    await updateGoal(3, goalInput, 4)
 
-    expect(apiFetch).toHaveBeenCalledWith('/profile/goals', {
+    expect(apiFetch).toHaveBeenCalledWith('/profile/goals/3', {
       method: 'PUT',
-      body: JSON.stringify({ ...expectedWirePayload, id: 3, user_id: 7 }),
+      headers: { 'If-Match': '"4"' },
+      body: JSON.stringify(expectedWirePayload),
     })
   })
 

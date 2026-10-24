@@ -178,13 +178,14 @@ def upload_profile_image(
     return users_schema.UserPhotoRead(photo_path=users_integration.require_user(token_user_id, db).photo_path)
 
 
-@router.put("", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@router.patch("", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_user(
     request: Request,
     user_attributtes: users_schema.ProfileUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    if_match: core_dependencies.IfMatch,
 ) -> None:
     """Edit self-service profile fields for the authenticated user.
 
@@ -199,8 +200,9 @@ def edit_user(
         user_attributtes: Allow-listed profile updates.
         token_user_id: User ID from access token.
         db: Database session.
+        if_match: The ``If-Match`` precondition, the ``version`` the client read.
     """
-    profile_service.edit_profile(token_user_id, user_attributtes, db)
+    profile_service.edit_profile(token_user_id, user_attributtes, db, if_match=if_match)
 
 
 @router.post("/email/change", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
@@ -242,13 +244,14 @@ def edit_profile_email(
     profile_service.change_email(token_user_id, email_change, token_session_id, identity_service, step_up_store, db)
 
 
-@router.put("/privacy", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@router.patch("/privacy", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_profile_privacy_settings(
     request: Request,
     user_privacy_settings: users_privacy_settings_schema.UsersPrivacySettingsUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    if_match: core_dependencies.IfMatch,
 ) -> None:
     """Edit privacy settings for authenticated user.
 
@@ -257,8 +260,9 @@ def edit_profile_privacy_settings(
         user_privacy_settings: New privacy settings.
         token_user_id: User ID from access token.
         db: Database session.
+        if_match: The ``If-Match`` precondition, the ``privacy_settings_version`` the client read.
     """
-    profile_service.edit_privacy_settings(token_user_id, user_privacy_settings, db)
+    profile_service.edit_privacy_settings(token_user_id, user_privacy_settings, db, if_match=if_match)
 
 
 @router.post("/password/change", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

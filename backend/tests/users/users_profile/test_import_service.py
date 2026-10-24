@@ -130,6 +130,41 @@ class TestImportServiceArchiveCaps:
                 service._read_zip_entry(z, "data/b.json")
 
 
+class TestImportedRowsLoseTheirIdentity:
+    """An archive's rows carry the exporting account's id, owner and version, which an import must not write."""
+
+    def _service(self) -> profile_import_service.ImportService:
+        return profile_import_service.ImportService(user_id=1, storage=MagicMock(), db=MagicMock(spec=Session))
+
+    async def test_a_goal_exported_with_its_version_is_still_imported(self) -> None:
+        service = self._service()
+        row = {
+            "id": 9,
+            "user_id": 3,
+            "version": 4,
+            "interval": "weekly",
+            "activity_type": "run",
+            "goal_type": "calories",
+            "goal_calories": 5000,
+        }
+
+        with patch.object(profile_import_service.users_goals_integration, "create_goal") as create:
+            await service.collect_and_import_user_goals([row])
+
+        create.assert_called_once()
+        assert service.counts["user_goals"] == 1
+
+    async def test_privacy_settings_exported_with_their_version_are_still_imported(self) -> None:
+        service = self._service()
+        row = {"id": 9, "user_id": 3, "version": 4, "hide_activity_map": True}
+
+        with patch.object(profile_import_service.users_privacy_settings_integration, "edit_privacy_settings") as edit:
+            await service.collect_and_import_user_privacy_settings([row])
+
+        edit.assert_called_once()
+        assert service.counts["user_privacy_settings"] == 1
+
+
 class TestImportServiceReadZipEntry:
     def test_read_zip_entry_exceeds_size(self) -> None:
         mock_db = MagicMock(spec=Session)

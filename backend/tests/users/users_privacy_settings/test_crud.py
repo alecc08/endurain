@@ -68,7 +68,7 @@ class TestEditUserPrivacySettings:
             hide_activity_map=True,
         )
 
-        result = users_privacy_settings_crud.edit_user_privacy_settings(1, update, mock_db)
+        result = users_privacy_settings_crud.edit_user_privacy_settings(1, update, mock_db, if_match="*")
 
         assert result == row
         assert row.hide_activity_map is True
@@ -81,4 +81,4 @@ class TestEditUserPrivacySettings:
         update = users_privacy_settings_schema.UsersPrivacySettingsUpdate(hide_activity_map=True)
 
         with pytest.raises(core_exceptions.NotFoundError):
-            users_privacy_settings_crud.edit_user_privacy_settings(1, update, mock_db)
+            users_privacy_settings_crud.edit_user_privacy_settings(1, update, mock_db, if_match="*")

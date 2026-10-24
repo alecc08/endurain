@@ -2468,6 +2468,11 @@ export interface paths {
          *         User object with integration and privacy settings.
          */
         get: operations["read_users_me_api_v1_profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         /**
          * Edit User
          * @description Edit self-service profile fields for the authenticated user.
@@ -2483,13 +2488,9 @@ export interface paths {
          *         user_attributtes: Allow-listed profile updates.
          *         token_user_id: User ID from access token.
          *         db: Database session.
+         *         if_match: The ``If-Match`` precondition, the ``version`` the client read.
          */
-        put: operations["edit_user_api_v1_profile_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
+        patch: operations["edit_user_api_v1_profile_patch"];
         trace?: never;
     };
     "/api/v1/profile/api_keys": {
@@ -2637,6 +2638,11 @@ export interface paths {
          *         User default gear settings.
          */
         get: operations["read_user_default_gear_api_v1_profile_default_gear_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         /**
          * Edit User Default Gear
          * @description Update default gear settings for authenticated user.
@@ -2646,16 +2652,13 @@ export interface paths {
          *         user_default_gear: Updated gear settings.
          *         token_user_id: User ID from access token.
          *         db: Database session dependency.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         Updated user default gear settings.
          */
-        put: operations["edit_user_default_gear_api_v1_profile_default_gear_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
+        patch: operations["edit_user_default_gear_api_v1_profile_default_gear_patch"];
         trace?: never;
     };
     "/api/v1/profile/delete-account": {
@@ -2820,20 +2823,7 @@ export interface paths {
          *         List of user goal objects matching the filters.
          */
         get: operations["get_user_goals_api_v1_profile_goals_get"];
-        /**
-         * Update User Goal
-         * @description Update an existing goal for the authenticated user.
-         *
-         *     Args:
-         *         request: The incoming request, read by the rate limiter.
-         *         user_goal: Updated goal data.
-         *         token_user_id: User ID from access token.
-         *         db: Database session dependency.
-         *
-         *     Returns:
-         *         The updated goal object.
-         */
-        put: operations["update_user_goal_api_v1_profile_goals_put"];
+        put?: never;
         /**
          * Create User Goal
          * @description Create a new goal for the authenticated user.
@@ -2889,7 +2879,23 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /**
+         * Update User Goal
+         * @description Replace an existing goal for the authenticated user.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         goal_id: ID of the goal to replace.
+         *         user_goal: The goal's new values.
+         *         token_user_id: User ID from access token.
+         *         db: Database session dependency.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
+         *
+         *     Returns:
+         *         The updated goal object.
+         */
+        put: operations["update_user_goal_api_v1_profile_goals__goal_id__put"];
         post?: never;
         /**
          * Delete User Goal
@@ -3507,6 +3513,11 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         /**
          * Edit Profile Privacy Settings
          * @description Edit privacy settings for authenticated user.
@@ -3516,13 +3527,9 @@ export interface paths {
          *         user_privacy_settings: New privacy settings.
          *         token_user_id: User ID from access token.
          *         db: Database session.
+         *         if_match: The ``If-Match`` precondition, the ``privacy_settings_version`` the client read.
          */
-        put: operations["edit_profile_privacy_settings_api_v1_profile_privacy_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
+        patch: operations["edit_profile_privacy_settings_api_v1_profile_privacy_patch"];
         trace?: never;
     };
     "/api/v1/profile/sessions": {
@@ -4835,6 +4842,8 @@ export interface paths {
          *         token_user_id: ID of the administrator making the edit.
          *         db: Database session dependency.
          *         identity_service: Identity service dependency.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         Updated user data.
@@ -10937,6 +10946,12 @@ export interface components {
              */
             user_id: number;
             /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
+            /**
              * Virtual Ride Gear Id
              * @description Default gear for virtual ride activities
              */
@@ -11375,12 +11390,19 @@ export interface components {
              * @description User who owns this goal
              */
             user_id: number;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * UsersGoalUpdate
-         * @description Schema for updating an existing users goal.
+         * @description Schema for replacing an existing users goal.
          *
-         *     Supports partial updates. Omitted fields remain unchanged.
+         *     The goal is named by the path, so the body carries neither an id nor an owner. It is the whole
+         *     goal, because the goal type decides which target field is required.
          */
         UsersGoalUpdate: {
             /** @description Type of activity for the goal */
@@ -11412,18 +11434,8 @@ export interface components {
             goal_elevation?: number | null;
             /** @description Type of goal metric being tracked */
             goal_type: components["schemas"]["GoalType"];
-            /**
-             * Id
-             * @description Unique identifier for the goal
-             */
-            id: number;
             /** @description Goal time interval */
             interval: components["schemas"]["modules__users__users_goals__schema__Interval"];
-            /**
-             * User Id
-             * @description User who owns this goal
-             */
-            user_id: number;
         };
         /**
          * UsersIdentityProviderResponse
@@ -11508,6 +11520,7 @@ export interface components {
          *     Includes privacy settings and integration status.
          *
          *     Attributes:
+         *         privacy_settings_version: Version of the privacy settings, for ``If-Match``.
          *         is_strava_linked: Strava integration status.
          *         is_garminconnect_linked: Garmin Connect status.
          *         default_activity_visibility: Default visibility level.
@@ -11701,6 +11714,11 @@ export interface components {
              */
             preferred_language: components["schemas"]["Language"];
             /**
+             * Privacy Settings Version
+             * @description Version of the privacy settings, sent back in If-Match when they are edited
+             */
+            privacy_settings_version?: number | null;
+            /**
              * Timezone
              * @description IANA timezone the athlete lives in. Used as the fallback for activities imported without a GPS track, which would otherwise inherit the server's timezone. Null means not set.
              */
@@ -11715,6 +11733,12 @@ export interface components {
              * @description Unique username (alphanumeric, dots, hyphen, underscore)
              */
             username: string;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * UsersPrivacySettingsUpdate
@@ -11918,6 +11942,12 @@ export interface components {
              * @description Unique username (alphanumeric, dots, hyphen, underscore)
              */
             username: string;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * UsersSessionsRead
@@ -16569,10 +16599,12 @@ export interface operations {
             };
         };
     };
-    edit_user_api_v1_profile_put: {
+    edit_user_api_v1_profile_patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -16785,10 +16817,12 @@ export interface operations {
             };
         };
     };
-    edit_user_default_gear_api_v1_profile_default_gear_put: {
+    edit_user_default_gear_api_v1_profile_default_gear_patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -17037,48 +17071,6 @@ export interface operations {
             };
         };
     };
-    update_user_goal_api_v1_profile_goals_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UsersGoalUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UsersGoalRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-            /** @description Unexpected error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
     create_user_goal_api_v1_profile_goals_post: {
         parameters: {
             query?: never;
@@ -17137,6 +17129,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UsersGoalProgress"][];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    update_user_goal_api_v1_profile_goals__goal_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
+            path: {
+                goal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UsersGoalUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsersGoalRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
                 };
             };
             /** @description Unexpected error */
@@ -17786,10 +17824,12 @@ export interface operations {
             };
         };
     };
-    edit_profile_privacy_settings_api_v1_profile_privacy_put: {
+    edit_profile_privacy_settings_api_v1_profile_privacy_patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -19711,7 +19751,9 @@ export interface operations {
     edit_user_api_v1_users__user_id__put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path: {
                 user_id: number;
             };

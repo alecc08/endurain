@@ -29,6 +29,7 @@ vi.mock('@/services/http', () => ({
 function makeUserDto(overrides: Partial<UserDto> = {}): UserDto {
   return {
     id: 7,
+    version: 5,
     name: 'Ada Lovelace',
     username: 'ada',
     email: 'ada@example.com',
@@ -200,6 +201,7 @@ describe('users service requests', () => {
 
     expect(apiFetch).toHaveBeenCalledWith('/users/7', {
       method: 'PUT',
+      headers: { 'If-Match': '"5"' },
       body: JSON.stringify({
         name: 'Ada L.',
         username: 'ada',

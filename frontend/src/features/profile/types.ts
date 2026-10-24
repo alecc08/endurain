@@ -64,6 +64,8 @@ export type ActivityVisibility = Schemas['ActivityVisibility']
  * @property hideGear - Hide the gear used.
  */
 export interface PrivacySettings {
+  /** The row version, sent back in `If-Match` so an edit of a stale copy is refused. */
+  version: number
   defaultActivityVisibility: ActivityVisibility
   hideStartTime: boolean
   hideLocation: boolean
@@ -109,6 +111,8 @@ export interface PrivacySettings {
  */
 export interface ProfileDetails {
   id: number
+  /** The row version, sent back in `If-Match` so an edit of a stale copy is refused. */
+  version: number
   name: string
   username: string
   email: string
@@ -174,6 +178,8 @@ export type DefaultGearUpdateDto = Schemas['UsersDefaultGearUpdate']
 export interface DefaultGear {
   id: number
   userId: number
+  /** The row version, sent back in `If-Match` so an edit of a stale copy is refused. */
+  version: number
   runGearId: number | null
   trailRunGearId: number | null
   virtualRunGearId: number | null
@@ -196,4 +202,4 @@ export interface DefaultGear {
  * identify the loaded record and are not part of the save body. Every value is a gear id or
  * `null`, so a single homogeneous shape backs the per-activity selectors.
  */
-export type DefaultGearValues = Omit<DefaultGear, 'id' | 'userId'>
+export type DefaultGearValues = Omit<DefaultGear, 'id' | 'userId' | 'version'>

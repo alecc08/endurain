@@ -160,13 +160,14 @@ def stage_email_verification(
     users_service.stage_email_verification(user_id, server_settings, db)
 
 
-def edit_user(user_id: int, user: users_schema.UsersEdit, db: Session) -> users_schema.UsersRead:
+def edit_user(user_id: int, user: users_schema.UsersEdit, db: Session, *, if_match: str) -> users_schema.UsersRead:
     """Stage an administrative edit of a user.
 
     Args:
         user_id: The user to update.
         user: The user data to apply.
         db: Database session.
+        if_match: The ``If-Match`` precondition, or ``*`` to overwrite (a system writer).
 
     Returns:
         The updated user.
@@ -174,17 +175,21 @@ def edit_user(user_id: int, user: users_schema.UsersEdit, db: Session) -> users_
     Raises:
         NotFoundError: If the user does not exist.
         ConflictError: If the username or email is already taken.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
-    return users_service.stage_user_edit(user_id, user, db)
+    return users_service.stage_user_edit(user_id, user, db, if_match=if_match)
 
 
-def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session) -> users_schema.UsersRead:
+def edit_profile(
+    user_id: int, profile: users_schema.ProfileUpdate, db: Session, *, if_match: str
+) -> users_schema.UsersRead:
     """Stage a self-service profile update, keeping only the allow-listed fields.
 
     Args:
         user_id: The authenticated user.
         profile: The validated self-service payload.
         db: Database session.
+        if_match: The ``If-Match`` precondition, or ``*`` to overwrite (the profile importer).
 
     Returns:
         The updated user.
@@ -192,8 +197,9 @@ def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session)
     Raises:
         NotFoundError: If the user does not exist.
         ConflictError: If the username or email is already taken.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
-    return users_service.stage_profile_edit(user_id, profile, db)
+    return users_service.stage_profile_edit(user_id, profile, db, if_match=if_match)
 
 
 def stage_email_change(user_id: int, email: str, db: Session) -> bool:

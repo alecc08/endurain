@@ -66,7 +66,7 @@ class TestEditUserDefaultGear:
         _found(mock_db, row)
         update = user_default_gear_schema.UsersDefaultGearUpdate(run_gear_id=10)
 
-        result = user_default_gear_crud.edit_user_default_gear(update, 1, mock_db)
+        result = user_default_gear_crud.edit_user_default_gear(update, 1, mock_db, if_match="*")
 
         assert result == row
         assert row.run_gear_id == 10
@@ -78,4 +78,4 @@ class TestEditUserDefaultGear:
         update = user_default_gear_schema.UsersDefaultGearUpdate(run_gear_id=10)
 
         with pytest.raises(core_exceptions.NotFoundError):
-            user_default_gear_crud.edit_user_default_gear(update, 1, mock_db)
+            user_default_gear_crud.edit_user_default_gear(update, 1, mock_db, if_match="*")

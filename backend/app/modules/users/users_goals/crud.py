@@ -3,6 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import modules.users.users_goals.models as user_goals_models
 import modules.users.users_goals.schema as user_goals_schema
@@ -112,25 +113,32 @@ def create_user_goal(
 
 def update_user_goal(
     user_id: int,
+    goal_id: int,
     user_goal: user_goals_schema.UsersGoalUpdate,
     db: Session,
+    *,
+    if_match: str,
 ) -> user_goals_schema.UsersGoalRead:
     """Stage an update of a user's goal (flushed, not committed).
 
     Args:
         user_id: The ID of the user who owns the goal.
-        user_goal: Schema with the fields to update.
+        goal_id: The goal to update.
+        user_goal: Schema with the goal's new values.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated goal.
 
     Raises:
         NotFoundError: If the user has no such goal.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
-    db_goal = _select_goal(user_id, user_goal.id, db)
+    db_goal = _select_goal(user_id, goal_id, db)
+    core_etag.require_if_match(if_match, db_goal.version, "goal")
 
-    changes = user_goal.model_dump(exclude_unset=True, exclude={"user_id", "id"})
+    changes = user_goal.model_dump(exclude_unset=True)
     for field, value in changes.items():
         setattr(db_goal, field, value)
 
@@ -155,3 +163,22 @@ def delete_user_goal(user_id: int, goal_id: int, db: Session) -> None:
 
     db.delete(db_goal)
     db.flush()
+
+
+def user_goal_exists(user_id: int, goal_id: int, db: Session) -> bool:
+    """Report whether a user has a goal.
+
+    Args:
+        user_id: The ID of the user.
+        goal_id: The ID of the goal.
+        db: Database session.
+
+    Returns:
+        True when the user has such a goal.
+    """
+    stmt = select(
+        select(user_goals_models.UsersGoal.id)
+        .where(user_goals_models.UsersGoal.user_id == user_id, user_goals_models.UsersGoal.id == goal_id)
+        .exists()
+    )
+    return bool(db.execute(stmt).scalar())

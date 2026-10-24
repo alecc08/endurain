@@ -23,6 +23,7 @@ PREFIX = core_config.ROOT_PATH + "/profile"  # /api/v1/profile
 def _make_user_mock() -> MagicMock:
     user = MagicMock()
     user.id = 1
+    user.version = 1
     user.name = "Test User"
     user.username = "testuser"
     user.email = "test@example.com"
@@ -44,6 +45,7 @@ def _make_user_mock() -> MagicMock:
     user.pending_admin_approval = False
     user.external_auth_count = 0
     user.is_strava_linked = 0
+    user.privacy_settings_version = None
     user.is_garminconnect_linked = 0
     user.default_activity_visibility = "public"
     user.hide_activity_start_time = False
@@ -74,6 +76,7 @@ def _make_integration_mock() -> MagicMock:
 
 def _make_privacy_mock() -> MagicMock:
     p = MagicMock()
+    p.version = 1
     p.default_activity_visibility = "public"
     p.hide_activity_start_time = False
     p.hide_activity_location = False
@@ -362,19 +365,20 @@ class TestUploadProfileImage:
 
 
 # ===================================================================
-# PUT /profile
+# PATCH /profile
 # ===================================================================
 
 
 class TestEditUser:
-    """Tests for PUT /profile — edit_user."""
+    """Tests for PATCH /profile — edit_user."""
 
     @patch("modules.users.users_profile.router.users_integration.edit_profile")
     def test_success(self, mock_edit, profile_client):
         """Happy path: update profile."""
-        response = profile_client.put(
+        response = profile_client.patch(
             PREFIX,
             json={"name": "Updated Name"},
+            headers={"If-Match": "*"},
         )
 
         assert response.status_code == 204
@@ -382,7 +386,7 @@ class TestEditUser:
 
 
 # ===================================================================
-# PUT /profile/privacy
+# PATCH /profile/privacy
 # ===================================================================
 
 
@@ -419,20 +423,21 @@ class TestEditProfileEmail:
         assert response.status_code == 422
 
     def test_the_plain_profile_edit_refuses_an_email(self, profile_client):
-        response = profile_client.put(PREFIX, json={"email": "new@example.com"})
+        response = profile_client.patch(PREFIX, json={"email": "new@example.com"}, headers={"If-Match": "*"})
 
         assert response.status_code == 422
 
 
 class TestEditProfilePrivacySettings:
-    """Tests for PUT /profile/privacy — edit_profile_privacy_settings."""
+    """Tests for PATCH /profile/privacy — edit_profile_privacy_settings."""
 
     @patch("modules.users.users_profile.service.users_privacy_settings_integration.edit_privacy_settings")
     def test_success(self, mock_edit, profile_client):
         """Happy path: update privacy settings."""
-        response = profile_client.put(
+        response = profile_client.patch(
             PREFIX + "/privacy",
             json={"default_activity_visibility": "followers"},
+            headers={"If-Match": "*"},
         )
 
         assert response.status_code == 204
@@ -1188,3 +1193,13 @@ class TestDeleteMyAccount:
         response = profile_client.post(PREFIX + "/delete-account", json={"current_password": "wrong"})
 
         assert response.status_code == 401
+
+
+class TestProfileEditsNeedIfMatch:
+    """The profile and privacy edits are conditional on the version the client read."""
+
+    @pytest.mark.parametrize("path", ["", "/privacy"])
+    def test_an_edit_without_if_match_is_428(self, path, profile_client):
+        response = profile_client.patch(PREFIX + path, json={})
+
+        assert response.status_code == 428

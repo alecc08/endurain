@@ -46,6 +46,8 @@ export type UserAccessType = Schemas['UserAccessType']
  */
 export interface ManagedUser {
   id: number
+  /** The row version, sent back in `If-Match` so an edit of a stale copy is refused. */
+  version: number
   name: string
   username: string
   email: string

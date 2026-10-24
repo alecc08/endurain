@@ -65,8 +65,23 @@ from modules.users.users_profile.exceptions import (
 
 logger = core_logger.get_logger(__name__)
 
+#: What an archive carries of a row's identity: the exporting account's id, owner and version, none of which an import writes.
+_ROW_IDENTITY = frozenset({"id", "user_id", "version"})
+
 #: Archive folders holding the files written after the database rows are committed.
 _FILE_FOLDERS = ("activity_files/", "activity_media/", "user_images/")
+
+
+def _without_row_identity(data: dict[str, Any]) -> dict[str, Any]:
+    """Drop the row identity an archive carries, leaving the fields an import writes.
+
+    Args:
+        data: One exported row.
+
+    Returns:
+        The row without its id, owner and version.
+    """
+    return {key: value for key, value in data.items() if key not in _ROW_IDENTITY}
 
 
 class ImportPerformanceConfig(profile_utils.BasePerformanceConfig):
@@ -582,7 +597,7 @@ class ImportService:
                 key: value for key, value in user_profile.items() if key in users_constants.PROFILE_SELF_SERVICE_FIELDS
             }
             profile_payload = users_schema.ProfileUpdate.model_validate(sanitized)
-            users_integration.edit_profile(self.user_id, profile_payload, self.db)
+            users_integration.edit_profile(self.user_id, profile_payload, self.db, if_match="*")
             self.counts["user"] += 1
         else:
             logger.debug("No user data to import, but continuing with sub-settings")
@@ -614,8 +629,7 @@ class ImportService:
 
         gear_data = user_default_gear_data[0]
         # The archive's record and owner are the exporting account's; the update names neither.
-        gear_data.pop("id", None)
-        gear_data.pop("user_id", None)
+        gear_data = _without_row_identity(gear_data)
 
         # Map gear IDs
         gear_fields = [
@@ -645,7 +659,7 @@ class ImportService:
         except ValidationError:
             logger.warning("Skipped invalid user default gear")
             return
-        users_default_gear_integration.edit_default_gear(user_default_gear, self.user_id, self.db)
+        users_default_gear_integration.edit_default_gear(user_default_gear, self.user_id, self.db, if_match="*")
         logger.debug("Imported user default gear")
         self.counts["user_default_gear"] += 1
 
@@ -691,8 +705,7 @@ class ImportService:
             return
 
         for goal_data in user_goals_data:
-            goal_data.pop("id", None)
-            goal_data.pop("user_id", None)
+            goal_data = _without_row_identity(goal_data)
 
             try:
                 goal = user_goals_schema.UsersGoalCreate(**goal_data)
@@ -720,15 +733,16 @@ class ImportService:
             return
 
         privacy_data = user_privacy_settings_data[0]
-        privacy_data.pop("id", None)
-        privacy_data.pop("user_id", None)
+        privacy_data = _without_row_identity(privacy_data)
 
         try:
             user_privacy_settings = users_privacy_settings_schema.UsersPrivacySettingsUpdate(**privacy_data)
         except ValidationError:
             logger.warning("Skipped invalid user privacy settings")
             return
-        users_privacy_settings_integration.edit_privacy_settings(self.user_id, user_privacy_settings, self.db)
+        users_privacy_settings_integration.edit_privacy_settings(
+            self.user_id, user_privacy_settings, self.db, if_match="*"
+        )
         logger.debug("Imported user privacy settings")
         self.counts["user_privacy_settings"] += 1
 
@@ -992,8 +1006,7 @@ class ImportService:
         # Import health data
         if health_weight_data:
             for health_weight in health_weight_data:
-                health_weight.pop("id", None)
-                health_weight.pop("user_id", None)
+                health_weight = _without_row_identity(health_weight)
 
                 # Convert string numeric values to floats
                 numeric_fields = [

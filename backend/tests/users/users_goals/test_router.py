@@ -19,6 +19,7 @@ class TestGetUserGoals:
         mock_goal1 = MagicMock(spec=user_goals_models.UsersGoal)
         mock_goal1.id = 1
         mock_goal1.user_id = 1
+        mock_goal1.version = 1
         mock_goal1.interval = "weekly"
         mock_goal1.activity_type = "run"
         mock_goal1.goal_type = "calories"
@@ -132,6 +133,7 @@ class TestCreateUserGoal:
         mock_created_goal = MagicMock(spec=user_goals_models.UsersGoal)
         mock_created_goal.id = 1
         mock_created_goal.user_id = 1
+        mock_created_goal.version = 1
         mock_created_goal.interval = "weekly"
         mock_created_goal.activity_type = "run"
         mock_created_goal.goal_type = "calories"
@@ -212,11 +214,9 @@ class TestUpdateUserGoal:
 
         # Act
         response = fast_api_client.put(
-            "/user_goals",
-            headers={"Authorization": "Bearer mock_token"},
+            "/user_goals/1",
+            headers={"Authorization": "Bearer mock_token", "If-Match": "*"},
             json={
-                "id": 1,
-                "user_id": 1,
                 "interval": "monthly",
                 "activity_type": "run",  # RUN
                 "goal_type": "calories",  # CALORIES
@@ -243,11 +243,9 @@ class TestUpdateUserGoal:
 
         # Act
         response = fast_api_client.put(
-            "/user_goals",
-            headers={"Authorization": "Bearer mock_token"},
+            "/user_goals/999",
+            headers={"Authorization": "Bearer mock_token", "If-Match": "*"},
             json={
-                "id": 999,
-                "user_id": 1,
                 "interval": "weekly",
                 "activity_type": "run",
                 "goal_type": "calories",
@@ -308,3 +306,14 @@ class TestDeleteUserGoal:
 
         # Assert
         assert response.status_code == 404
+
+
+class TestUpdateNeedsIfMatch:
+    def test_an_update_without_if_match_is_428(self, fast_api_client):
+        response = fast_api_client.put(
+            "/user_goals/1",
+            json={"interval": "weekly", "activity_type": "run", "goal_type": "calories", "goal_calories": 5000},
+            headers={"Authorization": "Bearer mock_token"},
+        )
+
+        assert response.status_code == 428

@@ -182,6 +182,18 @@ class TestUploadUserImage:
         mock_upload.assert_called_once()
 
 
+class TestEditUserNeedsIfMatch:
+    @patch(f"{_SERVICE}.edit_user")
+    def test_an_edit_without_if_match_is_428(self, mock_edit, client):
+        response = client.put(
+            "/users/1",
+            json={"name": "U", "username": "u", "email": "u@example.com", "active": True, "access_type": "regular"},
+        )
+
+        assert response.status_code == 428
+        mock_edit.assert_not_called()
+
+
 class TestEditUser:
     @pytest.mark.parametrize("read_only", [{"id": 1}, {"external_auth_count": 2}])
     def test_a_read_only_field_is_not_accepted_in_the_body(self, read_only, client):
@@ -189,6 +201,7 @@ class TestEditUser:
             "/users/1",
             json={"name": "U", "username": "u", "email": "u@example.com", "active": True, "access_type": "regular"}
             | read_only,
+            headers={"If-Match": "*"},
         )
 
         assert response.status_code == 422
@@ -206,6 +219,7 @@ class TestEditUser:
                 "active": True,
                 "access_type": "regular",
             },
+            headers={"If-Match": "*"},
         )
 
         assert response.status_code == 200
@@ -217,7 +231,7 @@ class TestEditUser:
 class TestApproveUser:
     @patch(f"{_SERVICE}.approve_user")
     def test_approves_with_the_notice_in_the_same_unit_of_work(self, mock_approve, client, identity_service, mock_db):
-        response = client.put("/users/1/approve")
+        response = client.put("/users/1/approve", headers={"If-Match": "*"})
 
         assert response.status_code == 204
         assert response.content == b""
@@ -227,7 +241,7 @@ class TestApproveUser:
     def test_unverified_email_is_refused(self, mock_approve, client):
         mock_approve.side_effect = core_exceptions.InvalidInputError("User email is not verified")
 
-        response = client.put("/users/1/approve")
+        response = client.put("/users/1/approve", headers={"If-Match": "*"})
 
         assert response.status_code == 400
 

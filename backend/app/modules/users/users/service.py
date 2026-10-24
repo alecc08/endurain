@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 import jasil.providers as platform_providers
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.pagination as core_pagination
@@ -395,7 +396,9 @@ def _refuse_to_remove_last_admin(user: users_schema.UsersRead, action: str, db: 
         raise core_exceptions.ConflictError(f"The only administrator cannot be {action}")
 
 
-def stage_user_edit(user_id: int, user: users_schema.UsersEdit, db: Session) -> users_schema.UsersRead:
+def stage_user_edit(
+    user_id: int, user: users_schema.UsersEdit, db: Session, *, if_match: str
+) -> users_schema.UsersRead:
     """Stage an administrative edit of a user.
 
     Intended for admin endpoints that legitimately set fields like ``access_type``, ``active``
@@ -406,6 +409,7 @@ def stage_user_edit(user_id: int, user: users_schema.UsersEdit, db: Session) -> 
         user_id: ID of the user to update.
         user: The user data to apply.
         db: Database session.
+        if_match: The ``If-Match`` precondition, or ``*`` to overwrite (a system writer).
 
     Returns:
         The updated user.
@@ -414,6 +418,7 @@ def stage_user_edit(user_id: int, user: users_schema.UsersEdit, db: Session) -> 
         NotFoundError: If the user does not exist.
         ConflictError: If the username or email is already taken, or the edit would demote or
             deactivate the only administrator.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
     existing = require_user(user_id, db)
     if not user.active:
@@ -428,7 +433,7 @@ def stage_user_edit(user_id: int, user: users_schema.UsersEdit, db: Session) -> 
     changes["username"] = user.username.lower()
     changes["email"] = user.email.lower()
 
-    updated = users_crud.update_user(user_id, changes, db)
+    updated = users_crud.update_user(user_id, changes, db, if_match=if_match)
     _recalculate_bmi_if_height_changed(existing, updated, db)
     return updated
 
@@ -458,6 +463,8 @@ def edit_user(
     actor_id: int,
     identity_service: "auth_identity_service.IdentityService",
     db: Session,
+    *,
+    if_match: str,
 ) -> users_schema.UsersRead:
     """Edit a user as an administrator, commit, and add their authentication status.
 
@@ -471,6 +478,7 @@ def edit_user(
         actor_id: ID of the administrator making the edit.
         identity_service: Identity service that answers the authentication status and ends sessions.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated user, with its identity provider count and MFA status.
@@ -478,14 +486,18 @@ def edit_user(
     Raises:
         NotFoundError: If the user does not exist.
         ConflictError: If the username or email is already taken.
+        PreconditionFailedError: If the user changed since the client read them.
     """
     existing = require_user(user_id, db)
-    try:
-        updated = stage_user_edit(user_id, user, db)
-    except core_exceptions.ConflictError:
-        db.rollback()
-        raise
-    db.commit()
+    with core_etag.refuse_stale_write(
+        db, "user", lambda: users_crud.get_user_by_id(user_id, db) is not None, "User not found"
+    ):
+        try:
+            updated = stage_user_edit(user_id, user, db, if_match=if_match)
+        except core_exceptions.ConflictError:
+            db.rollback()
+            raise
+        db.commit()
     logger.info("User edited by an administrator", extra=core_logger.context(user_id=user_id))
 
     if user_id != actor_id and _edit_ends_sessions(existing, updated):
@@ -496,7 +508,9 @@ def edit_user(
     return updated
 
 
-def stage_profile_edit(user_id: int, profile: users_schema.ProfileUpdate, db: Session) -> users_schema.UsersRead:
+def stage_profile_edit(
+    user_id: int, profile: users_schema.ProfileUpdate, db: Session, *, if_match: str
+) -> users_schema.UsersRead:
     """Stage a self-service profile update, keeping only the allow-listed fields.
 
     Administrative attributes such as ``access_type``, ``active``, ``email_verified`` and
@@ -507,6 +521,7 @@ def stage_profile_edit(user_id: int, profile: users_schema.ProfileUpdate, db: Se
         user_id: ID of the authenticated user.
         profile: The validated self-service payload.
         db: Database session.
+        if_match: The ``If-Match`` precondition, or ``*`` to overwrite (the profile importer).
 
     Returns:
         The updated user.
@@ -514,6 +529,7 @@ def stage_profile_edit(user_id: int, profile: users_schema.ProfileUpdate, db: Se
     Raises:
         NotFoundError: If the user does not exist.
         ConflictError: If the username or email is already taken.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
     existing = require_user(user_id, db)
 
@@ -522,34 +538,9 @@ def stage_profile_edit(user_id: int, profile: users_schema.ProfileUpdate, db: Se
     if isinstance(changes.get("username"), str):
         changes["username"] = changes["username"].lower()
 
-    updated = users_crud.update_user(user_id, changes, db)
+    updated = users_crud.update_user(user_id, changes, db, if_match=if_match)
     if "height" in changes:
         _recalculate_bmi_if_height_changed(existing, updated, db)
-    return updated
-
-
-def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session) -> users_schema.UsersRead:
-    """Apply a self-service profile update and commit.
-
-    Args:
-        user_id: ID of the authenticated user.
-        profile: The validated self-service payload.
-        db: Database session.
-
-    Returns:
-        The updated user.
-
-    Raises:
-        NotFoundError: If the user does not exist.
-        ConflictError: If the username or email is already taken.
-    """
-    try:
-        updated = stage_profile_edit(user_id, profile, db)
-    except core_exceptions.ConflictError:
-        db.rollback()
-        raise
-    db.commit()
-    logger.debug("User profile edited", extra=core_logger.context(user_id=user_id))
     return updated
 
 

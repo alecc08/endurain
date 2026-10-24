@@ -82,12 +82,13 @@ class TestCreateUserGoal:
 class TestUpdateUserGoal:
     def test_applies_the_set_fields_and_stages(self, mock_db):
         row = MagicMock(spec=user_goals_models.UsersGoal)
+        row.version = 1
         _one(mock_db, row)
         update = user_goals_schema.UsersGoalUpdate(
-            id=1, user_id=1, interval="weekly", activity_type="run", goal_type="calories", goal_calories=9000
+            interval="weekly", activity_type="run", goal_type="calories", goal_calories=9000
         )
 
-        result = user_goals_crud.update_user_goal(1, update, mock_db)
+        result = user_goals_crud.update_user_goal(1, 7, update, mock_db, if_match="*")
 
         assert result == row
         assert row.goal_calories == 9000
@@ -97,11 +98,11 @@ class TestUpdateUserGoal:
     def test_missing_goal_is_not_found(self, mock_db):
         _one(mock_db, None)
         update = user_goals_schema.UsersGoalUpdate(
-            id=1, user_id=1, interval="weekly", activity_type="run", goal_type="calories", goal_calories=9000
+            interval="weekly", activity_type="run", goal_type="calories", goal_calories=9000
         )
 
         with pytest.raises(core_exceptions.NotFoundError):
-            user_goals_crud.update_user_goal(1, update, mock_db)
+            user_goals_crud.update_user_goal(1, 7, update, mock_db, if_match="*")
 
 
 class TestDeleteUserGoal:

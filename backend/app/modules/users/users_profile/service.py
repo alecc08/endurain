@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import jasil.providers as platform_providers
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import modules.users.users.integration_service as users_integration
@@ -72,6 +73,7 @@ def get_profile(
         update={
             "is_strava_linked": 1 if user_integrations.strava_token else 0,
             "is_garminconnect_linked": 1 if user_integrations.garminconnect_token else 0,
+            "privacy_settings_version": privacy_settings.version,
             "default_activity_visibility": privacy_settings.default_activity_visibility,
             "hide_activity_start_time": privacy_settings.hide_activity_start_time,
             "hide_activity_location": privacy_settings.hide_activity_location,
@@ -94,20 +96,25 @@ def get_profile(
     )
 
 
-def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session) -> None:
+def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session, *, if_match: str) -> None:
     """Apply the user's own profile edits and commit.
 
     Args:
         user_id: The authenticated user.
         profile: The allow-listed profile fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Raises:
         NotFoundError: If the user does not exist.
         ConflictError: If the username or email is already taken.
+        PreconditionFailedError: If the user changed since the client read them.
     """
-    users_integration.edit_profile(user_id, profile, db)
-    db.commit()
+    with core_etag.refuse_stale_write(
+        db, "profile", lambda: users_integration.get_user(user_id, db) is not None, "User not found"
+    ):
+        users_integration.edit_profile(user_id, profile, db, if_match=if_match)
+        db.commit()
     logger.debug("Profile updated", extra=core_logger.context(user_id=user_id))
 
 
@@ -167,6 +174,8 @@ def edit_privacy_settings(
     user_id: int,
     privacy_settings: users_privacy_settings_schema.UsersPrivacySettingsUpdate,
     db: Session,
+    *,
+    if_match: str,
 ) -> None:
     """Apply the user's own privacy settings and commit.
 
@@ -174,12 +183,20 @@ def edit_privacy_settings(
         user_id: The authenticated user.
         privacy_settings: The privacy fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Raises:
         NotFoundError: If the user has no privacy settings.
+        PreconditionFailedError: If the settings changed since the client read them.
     """
-    users_privacy_settings_integration.edit_privacy_settings(user_id, privacy_settings, db)
-    db.commit()
+    with core_etag.refuse_stale_write(
+        db,
+        "privacy settings",
+        lambda: users_privacy_settings_integration.get_privacy_settings(user_id, db) is not None,
+        "User privacy settings not found",
+    ):
+        users_privacy_settings_integration.edit_privacy_settings(user_id, privacy_settings, db, if_match=if_match)
+        db.commit()
     logger.debug("Privacy settings updated", extra=core_logger.context(user_id=user_id))
 
 

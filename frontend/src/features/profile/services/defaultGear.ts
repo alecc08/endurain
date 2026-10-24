@@ -1,6 +1,7 @@
 import type { DefaultGear, DefaultGearDto, DefaultGearUpdateDto } from '@/features/profile/types'
 
 import { apiFetch } from '@/services/http'
+import { ifMatchHeaders, rowVersion } from '@/services/ifMatch'
 
 /**
  * Maps a raw default-gear payload to the clean {@link DefaultGear} model — the
@@ -13,6 +14,7 @@ export function mapDefaultGear(dto: DefaultGearDto): DefaultGear {
   return {
     id: dto.id,
     userId: dto.user_id,
+    version: rowVersion(dto.version),
     runGearId: dto.run_gear_id ?? null,
     trailRunGearId: dto.trail_run_gear_id ?? null,
     virtualRunGearId: dto.virtual_run_gear_id ?? null,
@@ -74,13 +76,14 @@ export async function fetchDefaultGear(signal?: AbortSignal): Promise<DefaultGea
 /**
  * Updates the authenticated user's default-gear assignments.
  *
- * @param gear - The full default-gear record to persist (with edits merged).
+ * @param gear - The full default-gear record to persist (with edits merged), carrying the version it was loaded at.
  * @returns The updated default gear, mapped to the clean model.
  * @throws {HttpError} When the request fails.
  */
 export async function updateDefaultGear(gear: DefaultGear): Promise<DefaultGear> {
   const dto = await apiFetch<DefaultGearDto>('/profile/default_gear', {
-    method: 'PUT',
+    method: 'PATCH',
+    headers: ifMatchHeaders(gear.version),
     body: JSON.stringify(toDefaultGearWire(gear)),
   })
   return mapDefaultGear(dto)

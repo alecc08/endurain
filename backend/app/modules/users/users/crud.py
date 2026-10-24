@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.sanitization as core_sanitization
 import modules.users.users.models as users_models
@@ -337,7 +338,9 @@ def create_user(fields: dict[str, Any], db: Session) -> users_schema.UsersRead:
     return users_serializers.to_read_schema(db_user)
 
 
-def update_user(user_id: int, changes: dict[str, Any], db: Session) -> users_schema.UsersRead:
+def update_user(
+    user_id: int, changes: dict[str, Any], db: Session, *, if_match: str | None = None
+) -> users_schema.UsersRead:
     """Stage column changes on a user (flushed, not committed).
 
     Args:
@@ -345,6 +348,9 @@ def update_user(user_id: int, changes: dict[str, Any], db: Session) -> users_sch
         changes: The column values to set. Names that are read-only properties on the model
             are skipped.
         db: Database session.
+        if_match: The ``If-Match`` precondition of a client edit, checked against the row this function
+            edits. ``None`` for a system writer, which the flush's ``version_id_col`` guard still holds to
+            the version it loaded.
 
     Returns:
         The updated user.
@@ -352,8 +358,11 @@ def update_user(user_id: int, changes: dict[str, Any], db: Session) -> users_sch
     Raises:
         NotFoundError: If the user does not exist.
         ConflictError: If the username or email is already taken.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
     db_user = _get_user_model_by_id(user_id, db)
+    if if_match is not None:
+        core_etag.require_if_match(if_match, db_user.version, "user")
 
     for key, value in changes.items():
         # Response-only fields are excluded by the caller; this guards any computed

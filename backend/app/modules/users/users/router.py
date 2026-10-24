@@ -3,9 +3,10 @@
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Security, UploadFile, status
+from fastapi import APIRouter, Depends, Query, Request, Response, Security, UploadFile, status
 
 import core.dependencies as core_dependencies
+import core.etag as core_etag
 import core.pagination as core_pagination
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
@@ -284,6 +285,8 @@ def edit_user(
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
+    response: Response,
+    if_match: core_dependencies.IfMatch,
 ) -> users_schema.UsersRead:
     """Update user information.
 
@@ -296,11 +299,15 @@ def edit_user(
         token_user_id: ID of the administrator making the edit.
         db: Database session dependency.
         identity_service: Identity service dependency.
+        response: The response, which carries the new ETag.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         Updated user data.
     """
-    return users_service.edit_user(user_id, user_attributtes, token_user_id, identity_service, db)
+    updated = users_service.edit_user(user_id, user_attributtes, token_user_id, identity_service, db, if_match=if_match)
+    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    return updated
 
 
 @router.put(

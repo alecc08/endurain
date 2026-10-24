@@ -165,12 +165,14 @@ class UsersGoalRead(UsersGoalBase):
 
     id: StrictInt = Field(..., ge=1, description="Unique identifier for the goal")
     user_id: StrictInt = Field(..., ge=1, description="User who owns this goal")
+    version: StrictInt = Field(default=1, ge=1, description="Optimistic-concurrency counter, also sent as the ETag")
 
 
-class UsersGoalUpdate(UsersGoalRead):
-    """Schema for updating an existing users goal.
+class UsersGoalUpdate(UsersGoalBase):
+    """Schema for replacing an existing users goal.
 
-    Supports partial updates. Omitted fields remain unchanged.
+    The goal is named by the path, so the body carries neither an id nor an owner. It is the whole
+    goal, because the goal type decides which target field is required.
     """
 
 

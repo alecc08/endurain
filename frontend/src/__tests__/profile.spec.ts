@@ -26,6 +26,7 @@ vi.mock('@/services/http', () => ({
 function makeProfileDto(overrides: Partial<ProfileDto> = {}): ProfileDto {
   return {
     id: 5,
+    version: 6,
     name: 'Ada Lovelace',
     username: 'ada',
     email: 'ada@example.com',
@@ -144,9 +145,12 @@ describe('profile service requests', () => {
       timezone: 'America/Los_Angeles',
     }
 
-    await updateProfile(input)
+    await updateProfile(input, 6)
 
-    expect(apiFetch).toHaveBeenCalledWith('/profile', expect.objectContaining({ method: 'PUT' }))
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/profile',
+      expect.objectContaining({ method: 'PATCH', headers: { 'If-Match': '"6"' } }),
+    )
     expect(JSON.parse(body as string)).toEqual({
       name: 'Ada L',
       username: 'ada',
@@ -163,13 +167,14 @@ describe('profile service requests', () => {
     })
   })
 
-  it('updatePrivacySettings PUTs the snake-cased privacy fields', async () => {
+  it('updatePrivacySettings PATCHes the snake-cased privacy fields', async () => {
     let body: unknown
     vi.mocked(apiFetch).mockImplementation((_path, init) => {
       body = init?.body
       return Promise.resolve(undefined)
     })
     const privacy: PrivacySettings = {
+      version: 2,
       defaultActivityVisibility: 'private',
       hideStartTime: true,
       hideLocation: true,
@@ -189,7 +194,7 @@ describe('profile service requests', () => {
 
     expect(apiFetch).toHaveBeenCalledWith(
       '/profile/privacy',
-      expect.objectContaining({ method: 'PUT' }),
+      expect.objectContaining({ method: 'PATCH', headers: { 'If-Match': '"2"' } }),
     )
     const parsed = JSON.parse(body as string) as Record<string, unknown>
     expect(parsed.default_activity_visibility).toBe('private')

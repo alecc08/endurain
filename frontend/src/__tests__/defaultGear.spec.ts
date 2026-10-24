@@ -21,6 +21,7 @@ function makeDefaultGearDto(overrides: Partial<DefaultGearDto> = {}): DefaultGea
   return {
     id: 1,
     user_id: 5,
+    version: 3,
     run_gear_id: 10,
     trail_run_gear_id: null,
     virtual_run_gear_id: null,
@@ -55,8 +56,8 @@ describe('mapDefaultGear', () => {
 })
 
 describe('toDefaultGearWire', () => {
-  it('round-trips every assignment and leaves out the record and user ids', () => {
-    const { id: _id, user_id: _userId, ...assignments } = makeDefaultGearDto()
+  it('round-trips every assignment and leaves out the record, user id and version', () => {
+    const { id: _id, user_id: _userId, version: _version, ...assignments } = makeDefaultGearDto()
 
     expect(toDefaultGearWire(mapDefaultGear(makeDefaultGearDto()))).toEqual(assignments)
   })
@@ -79,7 +80,7 @@ describe('default gear service requests', () => {
     expect(await fetchDefaultGear()).toBeNull()
   })
 
-  it('updateDefaultGear PUTs the full snake-cased body', async () => {
+  it('updateDefaultGear PATCHes the snake-cased body, guarded by If-Match', async () => {
     let body: unknown
     vi.mocked(apiFetch).mockImplementation((_path, init) => {
       body = init?.body
@@ -90,11 +91,12 @@ describe('default gear service requests', () => {
 
     expect(apiFetch).toHaveBeenCalledWith(
       '/profile/default_gear',
-      expect.objectContaining({ method: 'PUT' }),
+      expect.objectContaining({ method: 'PATCH', headers: { 'If-Match': '"3"' } }),
     )
     const parsed = JSON.parse(body as string) as Record<string, unknown>
     expect(parsed).not.toHaveProperty('id')
     expect(parsed).not.toHaveProperty('user_id')
+    expect(parsed).not.toHaveProperty('version')
     expect(parsed.run_gear_id).toBe(10)
     expect(parsed.hike_gear_id).toBe(30)
     expect(parsed.windsurf_gear_id).toBeNull()
