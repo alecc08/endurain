@@ -27,6 +27,7 @@ _IMPORTLINTER = pathlib.Path(".importlinter")
 #: application-wide state or wiring and are the ones to shrink, or to move into
 #: ``jasil`` when they are generic enough to be shared by other products.
 _ALLOWED_CORE: dict[str, str] = {
+    "core.attempt_state": "The claim-and-poll state of an attempt that runs off the request.",
     "core.async_bridge": "Hands a best-effort websocket push from a worker-thread subscriber to the main loop.",
     "core.calendar": "Period boundaries for activity summaries.",
     "core.cryptography": "Encrypts and decrypts the tile-provider API key at rest.",

@@ -16,9 +16,9 @@ Interface::
 
 from jasil.providers import StateBackendUnavailableError, StateProvider
 
+import core.attempt_state as core_attempt_state
 import core.logger as core_logger
 import modules.garmin.constants as garmin_constants
-import modules.garmin.state_store as garmin_state_store
 
 logger = core_logger.get_logger(__name__)
 
@@ -46,7 +46,7 @@ class GarminMFACodeStore:
 
     def _key(self, user_id: int) -> str:
         """Build the storage key for a user's pending MFA code."""
-        return garmin_state_store.key("mfa:code", str(user_id))
+        return core_attempt_state.key("garmin", "mfa:code", str(user_id))
 
     def add_code(self, user_id: int, code: str) -> None:
         """Store a Garmin MFA code with TTL.
@@ -56,12 +56,12 @@ class GarminMFACodeStore:
             code: The MFA code submitted by the user.
 
         Raises:
-            GarminStateUnavailableError: When storage is unavailable.
+            StateUnavailableError: When storage is unavailable.
         """
         try:
             self._state.set(self._key(user_id), code.encode(), ttl_seconds=self._ttl_seconds)
         except StateBackendUnavailableError as err:
-            garmin_state_store.raise_unavailable("add Garmin MFA code", err)
+            core_attempt_state.raise_unavailable("add Garmin MFA code", err)
         logger.debug(
             "Stored Garmin MFA code",
             extra=core_logger.context(user_id=user_id),
@@ -77,12 +77,12 @@ class GarminMFACodeStore:
             The stored code string, or None if missing or expired.
 
         Raises:
-            GarminStateUnavailableError: When storage is unavailable.
+            StateUnavailableError: When storage is unavailable.
         """
         try:
             value = self._state.get(self._key(user_id))
         except StateBackendUnavailableError as err:
-            garmin_state_store.raise_unavailable("get Garmin MFA code", err)
+            core_attempt_state.raise_unavailable("get Garmin MFA code", err)
         return value.decode() if value is not None else None
 
     def delete_code(self, user_id: int) -> None:

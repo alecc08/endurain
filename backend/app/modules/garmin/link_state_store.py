@@ -2,7 +2,7 @@
 
 Linking logs in to Garmin in a background thread that may wait for an MFA code, while the
 browser polls ``GET /garminconnect/link/status``. The poll can land on any replica, so the
-state lives in the platform ``StateProvider`` (see :mod:`modules.garmin.state_store`). The state
+state lives in the platform ``StateProvider`` (see :mod:`core.attempt_state`). The state
 is the contract: the browser learns that an MFA code is wanted by reading it, never from a push
 that could be lost.
 
@@ -16,8 +16,8 @@ Interface::
 from jasil.providers import StateProvider
 from pydantic import BaseModel
 
+import core.attempt_state as core_attempt_state
 import modules.garmin.constants as garmin_constants
-import modules.garmin.state_store as garmin_state_store
 
 
 class LinkState(BaseModel):
@@ -49,7 +49,7 @@ class GarminLinkStateStore:
             state: The platform state provider.
             ttl_seconds: How long a link attempt's claim and state last.
         """
-        self._attempts = garmin_state_store.AttemptStateStore(state, "link", ttl_seconds)
+        self._attempts = core_attempt_state.AttemptStateStore(state, "garmin", "link", ttl_seconds)
 
     def begin(self, user_id: int) -> bool:
         """Start a link attempt unless one is still running.
@@ -63,7 +63,7 @@ class GarminLinkStateStore:
             True when the attempt was recorded as pending, False when another is in progress.
 
         Raises:
-            GarminStateUnavailableError: When storage is unavailable.
+            StateUnavailableError: When storage is unavailable.
         """
         return self._attempts.begin(str(user_id), LinkState(status=garmin_constants.LinkStatus.PENDING))
 
@@ -97,7 +97,7 @@ class GarminLinkStateStore:
             The state, or None when no attempt is recorded or it has expired.
 
         Raises:
-            GarminStateUnavailableError: When storage is unavailable.
+            StateUnavailableError: When storage is unavailable.
         """
         value = self._attempts.read(str(user_id))
         return LinkState.model_validate_json(value) if value is not None else None

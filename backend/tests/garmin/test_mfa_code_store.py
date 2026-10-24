@@ -6,8 +6,8 @@ import pytest
 from jasil.backends.state_memory import MemoryState
 from jasil.providers import StateBackendUnavailableError
 
+import core.attempt_state as core_attempt_state
 import modules.garmin.mfa_code_store as mfa_code_store
-import modules.garmin.state_store as garmin_state_store
 
 
 class TestGarminMFACodeStore:
@@ -53,7 +53,7 @@ class TestGarminMFACodeStore:
 
 
 class TestGarminMFACodeStoreUnavailable:
-    """Backend outages surface as GarminStateUnavailableError; delete swallows."""
+    """Backend outages surface as StateUnavailableError; delete swallows."""
 
     def _failing_store(self) -> mfa_code_store.GarminMFACodeStore:
         state = MagicMock()
@@ -62,11 +62,11 @@ class TestGarminMFACodeStoreUnavailable:
         return mfa_code_store.GarminMFACodeStore(state=state)
 
     def test_add_code_raises_unavailable(self):
-        with pytest.raises(garmin_state_store.GarminStateUnavailableError):
+        with pytest.raises(core_attempt_state.StateUnavailableError):
             self._failing_store().add_code(1, "x")
 
     def test_get_code_raises_unavailable(self):
-        with pytest.raises(garmin_state_store.GarminStateUnavailableError):
+        with pytest.raises(core_attempt_state.StateUnavailableError):
             self._failing_store().get_code(1)
 
     def test_delete_code_swallows_outage(self):
