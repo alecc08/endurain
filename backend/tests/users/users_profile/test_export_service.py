@@ -431,7 +431,7 @@ class TestExportServiceCollectUserSettings:
                     return_value=None,
                 ),
                 patch(
-                    "modules.users.users_profile.export_service.user_goals_crud.get_user_goals_by_user_id",
+                    "modules.users.users_profile.export_service.users_goals_integration.list_goals",
                     return_value=[],
                 ),
                 patch(
@@ -458,7 +458,7 @@ class TestExportServiceCollectUserSettings:
                     return_value=MagicMock(),
                 ),
                 patch(
-                    "modules.users.users_profile.export_service.user_goals_crud.get_user_goals_by_user_id",
+                    "modules.users.users_profile.export_service.users_goals_integration.list_goals",
                     return_value=[MagicMock()],
                 ),
                 patch(
@@ -490,7 +490,7 @@ class TestExportServiceCollectUserSettings:
                     return_value=None,
                 ),
                 patch(
-                    "modules.users.users_profile.export_service.user_goals_crud.get_user_goals_by_user_id",
+                    "modules.users.users_profile.export_service.users_goals_integration.list_goals",
                     return_value=[],
                 ),
                 patch(
@@ -1181,7 +1181,7 @@ class TestExportServiceCollectUserSettingsEdgeCases:
                     side_effect=Exception("gear fail"),
                 ),
                 patch(
-                    "modules.users.users_profile.export_service.user_goals_crud.get_user_goals_by_user_id",
+                    "modules.users.users_profile.export_service.users_goals_integration.list_goals",
                     side_effect=Exception("goals fail"),
                 ),
                 patch(

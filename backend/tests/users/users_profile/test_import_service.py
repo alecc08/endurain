@@ -459,7 +459,7 @@ class TestImportServiceUserData:
             db=mock_db,
         )
 
-        with patch("modules.users.users_profile.import_service.user_goals_crud.create_user_goal"):
+        with patch("modules.users.users_profile.import_service.users_goals_integration.create_goal"):
             await service.collect_and_import_user_goals(
                 [{"interval": "daily", "activity_type": "run", "goal_type": "distance", "goal_distance": 5000}]
             )

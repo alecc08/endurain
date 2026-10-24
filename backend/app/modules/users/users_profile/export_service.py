@@ -34,7 +34,7 @@ import modules.health.health_weight.integration_service as health_weight_integra
 import modules.users.users.signing as users_signing
 import modules.users.users_default_gear.integration_service as users_default_gear_integration
 import modules.users.users_default_gear.schema as user_default_gear_schema
-import modules.users.users_goals.crud as user_goals_crud
+import modules.users.users_goals.integration_service as users_goals_integration
 import modules.users.users_integrations.crud as user_integrations_crud
 import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 import modules.users.users_profile.utils as users_profile_utils
@@ -590,7 +590,7 @@ class ExportService:
 
             # Collect and write user goals
             try:
-                user_goals = user_goals_crud.get_user_goals_by_user_id(self.user_id, self.db)
+                user_goals = users_goals_integration.list_goals(self.user_id, self.db)
                 if user_goals:
                     user_goals_dicts = [ug.model_dump() for ug in user_goals]
                     users_profile_utils.write_json_to_zip(zipf, "data/user_goals.json", user_goals_dicts, self.counts)

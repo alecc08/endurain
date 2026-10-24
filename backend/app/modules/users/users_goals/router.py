@@ -2,16 +2,13 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Query, status
 
 import core.dependencies as core_dependencies
-import core.timezone as core_timezone
 import modules.auth.dependencies as auth_dependencies
-import modules.users.users.utils as users_utils
-import modules.users.users_goals.crud as user_goals_crud
-import modules.users.users_goals.dependencies as user_goals_dependencies
+import modules.users.users_goals.progress_service as user_goals_progress_service
 import modules.users.users_goals.schema as user_goals_schema
-import modules.users.users_goals.utils as user_goals_utils
+import modules.users.users_goals.service as user_goals_service
 
 # Define the API router
 router = APIRouter()
@@ -51,7 +48,7 @@ async def get_user_goals(
     Returns:
         List of user goal objects matching the filters.
     """
-    return user_goals_crud.get_user_goals_by_user_id(
+    return user_goals_service.list_goals(
         user_id=token_user_id,
         db=db,
         interval=interval,
@@ -79,9 +76,7 @@ async def get_user_goals_results(
     Returns:
         List of goal progress objects, or None if no goals.
     """
-    user = users_utils.get_user_by_id_or_404(token_user_id, db)
-    today = core_timezone.today_in(users_utils.timezone_or_default(user.timezone))
-    return user_goals_utils.calculate_user_goals(token_user_id, today.strftime("%Y-%m-%d"), db, user.first_day_of_week)
+    return user_goals_progress_service.get_goals_progress(token_user_id, db)
 
 
 @router.post(
@@ -105,7 +100,7 @@ async def create_user_goal(
     Returns:
         The created goal object.
     """
-    return user_goals_crud.create_user_goal(token_user_id, user_goal, db)
+    return user_goals_service.create_goal(token_user_id, user_goal, db)
 
 
 @router.put(
@@ -129,15 +124,14 @@ async def update_user_goal(
     Returns:
         The updated goal object.
     """
-    return user_goals_crud.update_user_goal(token_user_id, user_goal, db)
+    return user_goals_service.update_goal(token_user_id, user_goal, db)
 
 
 @router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_user_goal(
-    goal_id: int,
+    goal_id: core_dependencies.PositiveId,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    _: None = Depends(user_goals_dependencies.validate_goal_id),
 ) -> None:
     """
     Delete a goal for the authenticated user.
@@ -147,4 +141,4 @@ async def delete_user_goal(
         token_user_id: User ID from access token.
         db: Database session dependency.
     """
-    return user_goals_crud.delete_user_goal(token_user_id, goal_id, db)
+    return user_goals_service.delete_goal(token_user_id, goal_id, db)

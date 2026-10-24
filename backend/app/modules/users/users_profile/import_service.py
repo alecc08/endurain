@@ -45,7 +45,7 @@ import modules.users.users.schema as users_schema
 import modules.users.users.signing as users_signing
 import modules.users.users_default_gear.integration_service as users_default_gear_integration
 import modules.users.users_default_gear.schema as user_default_gear_schema
-import modules.users.users_goals.crud as user_goals_crud
+import modules.users.users_goals.integration_service as users_goals_integration
 import modules.users.users_goals.schema as user_goals_schema
 import modules.users.users_integrations.crud as user_integrations_crud
 import modules.users.users_integrations.schema as users_integrations_schema
@@ -642,7 +642,7 @@ class ImportService:
             goal_data.pop("user_id", None)
 
             goal = user_goals_schema.UsersGoalCreate(**goal_data)
-            user_goals_crud.create_user_goal(self.user_id, goal, self.db)
+            users_goals_integration.create_goal(self.user_id, goal, self.db)
             self.counts["user_goals"] += 1
 
         logger.info(f"Imported {self.counts['user_goals']} user goals")
