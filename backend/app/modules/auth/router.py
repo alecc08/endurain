@@ -30,8 +30,7 @@ import modules.auth.sessions.rotated_refresh_tokens.utils as auth_sessions_rotat
 import modules.auth.sessions.utils as auth_sessions_utils
 import modules.auth.utils as auth_utils
 import modules.server_settings.integration_service as server_settings_integration
-import modules.users.users.crud as users_crud
-import modules.users.users.utils as users_utils
+import modules.users.users.integration_service as users_integration
 
 logger = core_logger.get_logger(__name__)
 
@@ -205,7 +204,7 @@ async def login_for_access_token(
         raise err
 
     # Check if the user is active
-    users_utils.check_user_is_active(user)
+    users_integration.require_active_user(user)
 
     # Check if MFA is enabled for this user
     if mfa_service.is_mfa_enabled_for_user(user.id, db):
@@ -388,7 +387,7 @@ async def verify_mfa_and_login(
         )
 
     # Get the user and complete login
-    user = users_crud.get_user_by_id(user_id, db)
+    user = users_integration.get_user(user_id, db)
     if not user:
         logger.warning(f"User ID {user_id} not found during MFA verification")
         raise HTTPException(
@@ -398,7 +397,7 @@ async def verify_mfa_and_login(
         )
 
     # Check if the user is still active
-    users_utils.check_user_is_active(user)
+    users_integration.require_active_user(user)
 
     # MFA verification successful - reset both MFA and login failed attempts counters
     try:
@@ -594,7 +593,7 @@ async def refresh_token(
         replay_refresh_token, replay_refresh_token_exp = replay
 
         # Validate the user is still present and active before re-issuing.
-        replay_user = users_crud.get_user_by_id(token_user_id, db)
+        replay_user = users_integration.get_user(token_user_id, db)
 
         if replay_user is None:
             logger.warning(f"User ID {token_user_id} not found during token refresh replay")
@@ -604,7 +603,7 @@ async def refresh_token(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        users_utils.check_user_is_active(replay_user)
+        users_integration.require_active_user(replay_user)
 
         # Mint a fresh, stateless access token (safe to re-issue every retry).
         replay_access_token_exp, replay_access_token = auth_utils.mint_access_token(
@@ -640,7 +639,7 @@ async def refresh_token(
         )
 
     # get user
-    user = users_crud.get_user_by_id(token_user_id, db)
+    user = users_integration.get_user(token_user_id, db)
 
     if user is None:
         logger.warning(f"User ID {token_user_id} not found during token refresh")
@@ -651,7 +650,7 @@ async def refresh_token(
         )
 
     # Check if the user is active
-    users_utils.check_user_is_active(user)
+    users_integration.require_active_user(user)
 
     # Create the new token bundle first so the rotated record can persist the
     # replacement refresh token used for idempotent in-grace replay.

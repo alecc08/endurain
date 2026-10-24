@@ -93,14 +93,12 @@ class TestSignupEndpoint:
     """Tests for POST /sign-up/sign-up/request."""
 
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_verification_email")
-    @patch("modules.auth.sign_up_tokens.router.users_utils.create_user_default_data")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.create_signup_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.create_signup_user")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_signup_success_no_verification_no_approval(
         self,
         mock_settings,
         mock_create_user,
-        mock_create_default,
         mock_send_email,
         signup_client,
     ) -> None:
@@ -114,7 +112,6 @@ class TestSignupEndpoint:
             signup_require_admin_approval=False,
         )
         mock_create_user.return_value = MagicMock(id=1)
-        mock_create_default.return_value = None
 
         response = signup_client.post(
             "/sign-up/sign-up/request",
@@ -135,14 +132,12 @@ class TestSignupEndpoint:
         assert data["admin_approval_required"] is None
 
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_verification_email")
-    @patch("modules.auth.sign_up_tokens.router.users_utils.create_user_default_data")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.create_signup_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.create_signup_user")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_signup_success_email_verification_required(
         self,
         mock_settings,
         mock_create_user,
-        mock_create_default,
         mock_send_email,
         signup_client,
     ) -> None:
@@ -156,7 +151,6 @@ class TestSignupEndpoint:
             signup_require_admin_approval=False,
         )
         mock_create_user.return_value = MagicMock(id=2)
-        mock_create_default.return_value = None
         mock_send_email.return_value = True
 
         response = signup_client.post(
@@ -219,7 +213,7 @@ class TestSignupEndpoint:
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
-    @patch("modules.auth.sign_up_tokens.router.users_crud.create_signup_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.create_signup_user")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_signup_duplicate_user_propagates_conflict(
         self,
@@ -255,14 +249,12 @@ class TestSignupEndpoint:
         assert response.status_code == status.HTTP_409_CONFLICT
 
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_verification_email")
-    @patch("modules.auth.sign_up_tokens.router.users_utils.create_user_default_data")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.create_signup_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.create_signup_user")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_signup_admin_approval_required_returns_flag(
         self,
         mock_settings,
         mock_create_user,
-        mock_create_default,
         mock_send_email,
         signup_client,
     ) -> None:
@@ -276,7 +268,6 @@ class TestSignupEndpoint:
             signup_require_admin_approval=True,
         )
         mock_create_user.return_value = MagicMock(id=4)
-        mock_create_default.return_value = None
 
         response = signup_client.post(
             "/sign-up/sign-up/request",
@@ -294,14 +285,12 @@ class TestSignupEndpoint:
         assert data["admin_approval_required"] is True
 
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_verification_email")
-    @patch("modules.auth.sign_up_tokens.router.users_utils.create_user_default_data")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.create_signup_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.create_signup_user")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_signup_propagates_503_when_request_verification_email_raises(
         self,
         mock_settings,
         mock_create_user,
-        mock_create_default,
         mock_send_email,
         signup_client,
     ) -> None:
@@ -316,7 +305,6 @@ class TestSignupEndpoint:
             signup_require_admin_approval=False,
         )
         mock_create_user.return_value = MagicMock(id=5)
-        mock_create_default.return_value = None
         mock_send_email.side_effect = HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Email service is not configured",
@@ -346,8 +334,8 @@ class TestVerifyEmailEndpoint:
 
     @patch("modules.auth.sign_up_tokens.router.notifications_integration.create_admin_sign_up_approval_notifications")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_admin_approval_emails")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.get_user_by_id")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.verify_user_email")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.get_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.stage_email_verification")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.use_sign_up_token")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_verify_email_success_no_admin_approval(
@@ -456,8 +444,8 @@ class TestVerifyEmailEndpoint:
 
     @patch("modules.auth.sign_up_tokens.router.notifications_integration.create_admin_sign_up_approval_notifications")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_admin_approval_emails")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.get_user_by_id")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.verify_user_email")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.get_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.stage_email_verification")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.use_sign_up_token")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_verify_email_with_admin_approval_sets_flag(
@@ -495,7 +483,7 @@ class TestVerifyEmailEndpoint:
         data = response.json()
         assert data["admin_approval_required"] is True
 
-    @patch("modules.auth.sign_up_tokens.router.users_crud.verify_user_email")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.stage_email_verification")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.use_sign_up_token")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_verify_email_skips_notifications_when_email_not_configured(
@@ -533,8 +521,8 @@ class TestVerifyEmailEndpoint:
         assert data["admin_approval_required"] is None
 
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_admin_approval_emails")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.get_user_by_id")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.verify_user_email")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.get_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.stage_email_verification")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.use_sign_up_token")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_verify_email_returns_500_when_get_user_by_id_returns_none(
@@ -571,8 +559,8 @@ class TestVerifyEmailEndpoint:
 
     @patch("modules.auth.sign_up_tokens.router.notifications_integration.create_admin_sign_up_approval_notifications")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_admin_approval_emails")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.get_user_by_id")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.verify_user_email")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.get_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.stage_email_verification")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.use_sign_up_token")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_verify_email_returns_500_when_notification_raises_http500(
@@ -612,8 +600,8 @@ class TestVerifyEmailEndpoint:
 
     @patch("modules.auth.sign_up_tokens.router.notifications_integration.create_admin_sign_up_approval_notifications")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_admin_approval_emails")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.get_user_by_id")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.verify_user_email")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.get_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.stage_email_verification")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.use_sign_up_token")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_verify_email_returns_500_when_notification_raises_runtime(

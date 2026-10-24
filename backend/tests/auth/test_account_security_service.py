@@ -36,7 +36,7 @@ class TestChangeOwnPassword:
                 return_value=mock_settings,
             ),
             patch(
-                "modules.auth._internal.services.account_security_service.users_utils.get_user_by_id_or_404",
+                "modules.auth._internal.services.account_security_service.users_integration.require_user",
                 return_value=mock_user,
             ),
         ):
@@ -98,7 +98,7 @@ class TestChangeOwnPassword:
                 return_value=mock_settings,
             ),
             patch(
-                "modules.auth._internal.services.account_security_service.users_utils.get_user_by_id_or_404",
+                "modules.auth._internal.services.account_security_service.users_integration.require_user",
                 return_value=mock_user,
             ),
         ):
@@ -147,7 +147,7 @@ class TestChangeManagedUserPassword:
                 return_value=mock_settings,
             ),
             patch(
-                "modules.auth._internal.services.account_security_service.users_utils.get_user_by_id_or_404",
+                "modules.auth._internal.services.account_security_service.users_integration.require_user",
                 return_value=mock_user,
             ),
         ):

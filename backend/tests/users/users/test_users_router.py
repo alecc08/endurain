@@ -1,6 +1,6 @@
 """Tests for the users management router endpoints."""
 
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -8,9 +8,13 @@ from fastapi.testclient import TestClient
 
 import core.database as core_database
 import core.dependencies as core_dependencies
+import core.exceptions as core_exceptions
 import modules.auth.dependencies as auth_dependencies
 import modules.auth.identity_service as auth_identity_service
-import modules.users.users.dependencies as users_dependencies
+import modules.users.users.schema as users_schema
+
+_SERVICE = "modules.users.users.router.users_service"
+_PHOTO = "modules.users.users.router.users_photo_service"
 
 
 @pytest.fixture
@@ -19,186 +23,65 @@ def mock_db():
 
 
 @pytest.fixture
-def auth_app(mock_db):
-    app = FastAPI()
+def identity_service():
+    return MagicMock()
+
+
+@pytest.fixture
+def client(mock_db, identity_service):
     from modules.users.users.router import router
 
+    app = FastAPI()
     app.include_router(router, prefix="/users")
-
+    core_exceptions.register_exception_handlers(app)
     app.dependency_overrides[auth_dependencies.check_scopes] = lambda: None
     app.dependency_overrides[core_database.get_db] = lambda: mock_db
-
-    return app
-
-
-def _make_mock_user(user_id, **overrides):
-    """Build a mock user object compatible with UsersRead.model_validate."""
-    user = MagicMock()
-    user.id = user_id
-    user.name = overrides.get("name", f"User {user_id}")
-    user.username = overrides.get("username", f"user{user_id}")
-    user.email = overrides.get("email", f"user{user_id}@example.com")
-    user.city = overrides.get("city")
-    user.birthdate = overrides.get("birthdate")
-    user.preferred_language = overrides.get("preferred_language", "en")
-    user.gender = overrides.get("gender", "unspecified")
-    user.units = overrides.get("units", "metric")
-    user.height = overrides.get("height")
-    user.max_heart_rate = overrides.get("max_heart_rate")
-    user.first_day_of_week = overrides.get("first_day_of_week", "monday")
-    user.currency = overrides.get("currency", "euro")
-    user.timezone = overrides.get("timezone")
-    user.photo_path = overrides.get("photo_path")
-    user.active = overrides.get("active", True)
-    user.access_type = overrides.get("access_type", "regular")
-    user.mfa_enabled = overrides.get("mfa_enabled", False)
-    user.email_verified = overrides.get("email_verified", True)
-    user.pending_admin_approval = overrides.get("pending_admin_approval", False)
-    user.external_auth_count = overrides.get("external_auth_count", 0)
-    return user
+    app.dependency_overrides[core_dependencies.get_storage] = lambda: MagicMock()
+    app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: identity_service
+    app.dependency_overrides[core_dependencies.validate_pagination_values_on_query] = lambda: None
+    return TestClient(app)
 
 
-class TestReadUsersAllPagination:
-    @patch("modules.users.users.router.users_crud.get_users_number")
-    @patch("modules.users.users.router.users_crud.get_users_with_pagination")
-    def test_success(
-        self,
-        mock_get_paginated,
-        mock_get_number,
-        mock_db,
-        auth_app,
-    ):
-        mock_identity_service = MagicMock()
-        auth_app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: mock_identity_service
-        auth_app.dependency_overrides[core_dependencies.validate_pagination_values_on_query] = lambda: None
-        client = TestClient(auth_app)
+def _user(user_id: int, **overrides) -> users_schema.UsersRead:
+    fields = {
+        "id": user_id,
+        "name": f"User {user_id}",
+        "username": f"user{user_id}",
+        "email": f"user{user_id}@example.com",
+        "active": True,
+        "access_type": "regular",
+    }
+    fields.update(overrides)
+    return users_schema.UsersRead(**fields)
 
-        mock_get_number.return_value = 3
-        mock_get_paginated.return_value = [
-            _make_mock_user(1, name="Alice", email="alice@example.com"),
-            _make_mock_user(2, name="Bob", email="bob@example.com"),
-        ]
-        mock_identity_service.get_identity_link_counts_for_users.return_value = {}
-        mock_identity_service.get_mfa_enabled_for_users.return_value = {}
 
-        response = client.get("/users?page_number=1&num_records=10")
+class TestReadUsers:
+    @patch(f"{_SERVICE}.list_users")
+    def test_list_passes_the_query_through(self, mock_list, client, mock_db, identity_service):
+        mock_list.return_value = users_schema.UsersListResponse(
+            total=1, num_records=10, page_number=1, records=[_user(1, name="Alice")]
+        )
+
+        response = client.get("/users?page_number=1&num_records=10&show_external_auth=false")
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["total"] == 3
-        assert data["num_records"] == 10
-        assert data["page_number"] == 1
-        assert len(data["records"]) == 2
-        assert data["records"][0]["name"] == "Alice"
-        assert data["records"][1]["name"] == "Bob"
+        assert response.json()["records"][0]["name"] == "Alice"
+        mock_list.assert_called_once()
+        assert mock_list.call_args.args == (identity_service, mock_db)
+        assert mock_list.call_args.kwargs["page_number"] == 1
+        assert mock_list.call_args.kwargs["show_external_auth"] is False
 
-    @patch("modules.users.users.router.users_crud.get_users_number")
-    @patch("modules.users.users.router.users_crud.get_users_with_pagination")
-    def test_filter_external_auth_false(
-        self,
-        mock_get_paginated,
-        mock_get_number,
-        mock_db,
-        auth_app,
-    ):
-        mock_identity_service = MagicMock()
-        auth_app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: mock_identity_service
-        auth_app.dependency_overrides[core_dependencies.validate_pagination_values_on_query] = lambda: None
-        client = TestClient(auth_app)
-
-        mock_get_number.return_value = 3
-        mock_get_paginated.return_value = [
-            _make_mock_user(1, name="Alice"),
-            _make_mock_user(2, name="Bob"),
-        ]
-        # Alice (id=1) has 1 IdP link; Bob (id=2) has none
-        mock_identity_service.get_identity_link_counts_for_users.return_value = {1: 1}
-        mock_identity_service.get_mfa_enabled_for_users.return_value = {}
-
-        response = client.get("/users?show_external_auth=false")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data["records"]) == 1
-        assert data["records"][0]["name"] == "Bob"
-
-    @patch("modules.users.users.router.users_crud.get_users_number")
-    @patch("modules.users.users.router.users_crud.get_users_with_pagination")
-    def test_filter_local_auth_false(
-        self,
-        mock_get_paginated,
-        mock_get_number,
-        mock_db,
-        auth_app,
-    ):
-        mock_identity_service = MagicMock()
-        auth_app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: mock_identity_service
-        auth_app.dependency_overrides[core_dependencies.validate_pagination_values_on_query] = lambda: None
-        client = TestClient(auth_app)
-
-        mock_get_number.return_value = 2
-        mock_get_paginated.return_value = [
-            _make_mock_user(1, name="Alice"),
-            _make_mock_user(2, name="Bob"),
-        ]
-        # Alice (id=1) has 1 IdP link; Bob (id=2) has none
-        mock_identity_service.get_identity_link_counts_for_users.return_value = {1: 1}
-        mock_identity_service.get_mfa_enabled_for_users.return_value = {}
-
-        response = client.get("/users?show_local_auth=false")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data["records"]) == 1
-        assert data["records"][0]["name"] == "Alice"
-
-
-class TestReadUsersContainUsername:
-    @patch("modules.users.users.router.users_crud.get_user_by_username")
-    def test_success(self, mock_get, mock_db, auth_app):
-        client = TestClient(auth_app)
-
-        mock_get.return_value = [
-            _make_mock_user(1, username="testuser1"),
-            _make_mock_user(2, username="testuser2"),
-        ]
+    @patch(f"{_SERVICE}.search_users_by_username")
+    def test_contains_username(self, mock_search, client):
+        mock_search.return_value = [_user(1, username="testuser1"), _user(2, username="testuser2")]
 
         response = client.get("/users/username/contains/test")
 
         assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 2
-        assert data[0]["username"] == "testuser1"
+        assert [u["username"] for u in response.json()] == ["testuser1", "testuser2"]
 
-    @patch("modules.users.users.router.users_crud.get_user_by_username")
-    def test_empty(self, mock_get, mock_db, auth_app):
-        client = TestClient(auth_app)
-
-        mock_get.return_value = []
-
-        response = client.get("/users/username/contains/unknown")
-
-        assert response.status_code == 200
-        assert response.json() == []
-
-
-class TestReadUsersUsername:
-    @patch("modules.users.users.router.users_crud.get_user_by_username")
-    def test_found(self, mock_get, mock_db, auth_app):
-        client = TestClient(auth_app)
-
-        mock_get.return_value = _make_mock_user(1, name="Found User")
-
-        response = client.get("/users/username/founduser")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["name"] == "Found User"
-
-    @patch("modules.users.users.router.users_crud.get_user_by_username")
-    def test_not_found(self, mock_get, mock_db, auth_app):
-        client = TestClient(auth_app)
-
+    @patch(f"{_SERVICE}.get_user_by_username")
+    def test_exact_username_not_found_is_null(self, mock_get, client):
         mock_get.return_value = None
 
         response = client.get("/users/username/nonexistent")
@@ -206,73 +89,31 @@ class TestReadUsersUsername:
         assert response.status_code == 200
         assert response.json() is None
 
-
-class TestReadUsersEmail:
-    @patch("modules.users.users.router.users_crud.get_user_by_email")
-    def test_found(self, mock_get, mock_db, auth_app):
-        client = TestClient(auth_app)
-
-        mock_get.return_value = _make_mock_user(1, email="test@example.com")
+    @patch(f"{_SERVICE}.get_user_by_email")
+    def test_email_found(self, mock_get, client):
+        mock_get.return_value = _user(1, email="test@example.com")
 
         response = client.get("/users/email/test@example.com")
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["email"] == "test@example.com"
+        assert response.json()["email"] == "test@example.com"
 
-    @patch("modules.users.users.router.users_crud.get_user_by_email")
-    def test_not_found(self, mock_get, mock_db, auth_app):
-        client = TestClient(auth_app)
-
-        mock_get.return_value = None
-
-        response = client.get("/users/email/unknown@example.com")
-
-        assert response.status_code == 200
-        assert response.json() is None
-
-
-class TestReadUsersId:
-    @patch("modules.users.users.router.users_crud.get_user_by_id")
-    def test_found(self, mock_get, mock_db, auth_app):
-        auth_app.dependency_overrides[users_dependencies.validate_user_id] = lambda: None
-        client = TestClient(auth_app)
-
-        mock_get.return_value = _make_mock_user(42, name="ID User")
+    @patch(f"{_SERVICE}.get_user")
+    def test_id_found(self, mock_get, client):
+        mock_get.return_value = _user(42, name="ID User")
 
         response = client.get("/users/id/42")
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["id"] == 42
-        assert data["name"] == "ID User"
+        assert response.json()["id"] == 42
 
-    @patch("modules.users.users.router.users_crud.get_user_by_id")
-    def test_not_found(self, mock_get, mock_db, auth_app):
-        auth_app.dependency_overrides[users_dependencies.validate_user_id] = lambda: None
-        client = TestClient(auth_app)
-
-        mock_get.return_value = None
-
-        response = client.get("/users/id/999")
-
-        assert response.status_code == 200
-        assert response.json() is None
+    def test_id_must_be_positive(self, client):
+        assert client.get("/users/id/0").status_code == 422
 
 
 class TestCreateUser:
-    @patch("modules.users.users.router.users_crud.create_user")
-    @patch("modules.users.users.router.users_utils.create_user_default_data")
-    def test_success(self, mock_default_data, mock_create, mock_db, auth_app):
-        auth_app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: MagicMock()
-        client = TestClient(auth_app)
-
-        mock_create.return_value = _make_mock_user(
-            1,
-            name="New User",
-            username="newuser",
-            email="new@example.com",
-        )
+    @patch(f"{_SERVICE}.create_user")
+    def test_creates_through_the_service(self, mock_create, client, identity_service, mock_db):
+        mock_create.return_value = _user(1, name="New User", username="newuser", email="new@example.com")
 
         response = client.post(
             "/users",
@@ -287,51 +128,46 @@ class TestCreateUser:
         )
 
         assert response.status_code == 201
-        data = response.json()
-        assert data["name"] == "New User"
-        assert data["username"] == "newuser"
-        assert data["email"] == "new@example.com"
-        mock_default_data.assert_called_once_with(1, ANY, mock_db)
+        assert response.json()["username"] == "newuser"
+        assert mock_create.call_args.args[1:] == (identity_service, mock_db)
+
+    @patch(f"{_SERVICE}.create_user")
+    def test_duplicate_is_a_conflict(self, mock_create, client):
+        mock_create.side_effect = core_exceptions.ConflictError("Duplicate entry error")
+
+        response = client.post(
+            "/users",
+            json={
+                "name": "New User",
+                "username": "newuser",
+                "email": "new@example.com",
+                "active": True,
+                "access_type": "regular",
+                "password": "testpass123",
+            },
+        )
+
+        assert response.status_code == 409
 
 
 class TestUploadUserImage:
-    @patch("modules.users.users.router.users_utils.save_user_image_file", new_callable=AsyncMock)
-    @patch("modules.users.users.router.users_crud.get_user_by_id")
-    def test_success(self, mock_get, mock_save, mock_db, auth_app):
-        auth_app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: MagicMock()
-        auth_app.dependency_overrides[users_dependencies.validate_user_id] = lambda: None
-        client = TestClient(auth_app)
+    @patch(f"{_SERVICE}.get_user")
+    @patch(f"{_PHOTO}.upload_photo")
+    def test_returns_the_resolved_photo_url(self, mock_upload, mock_get, client):
+        mock_upload.return_value = "1.jpg"
+        mock_get.return_value = _user(1, photo_path="/users/1/photo?t=x")
 
-        mock_user = MagicMock()
-        mock_user.photo_path = "data/user_images/1.jpg"
-        mock_get.return_value = mock_user
-
-        response = client.post(
-            "/users/1/image",
-            files={"file": ("avatar.jpg", b"fake-image-data", "image/jpeg")},
-        )
+        response = client.post("/users/1/image", files={"file": ("avatar.jpg", b"fake-image-data", "image/jpeg")})
 
         assert response.status_code == 201
-        assert response.json() == "data/user_images/1.jpg"
-        mock_save.assert_awaited_once()
+        assert response.json() == "/users/1/photo?t=x"
+        mock_upload.assert_awaited_once()
 
 
 class TestEditUser:
-    @patch("modules.users.users.router.users_crud.edit_user", new_callable=AsyncMock)
-    def test_success(self, mock_edit, mock_db, auth_app):
-        mock_identity_service = MagicMock()
-        auth_app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: mock_identity_service
-        auth_app.dependency_overrides[users_dependencies.validate_user_id] = lambda: None
-        client = TestClient(auth_app)
-
-        mock_edit.return_value = _make_mock_user(
-            1,
-            name="Updated User",
-            username="updated",
-            email="updated@example.com",
-        )
-        mock_identity_service.get_identity_link_counts_for_users.return_value = {1: 2}
-        mock_identity_service.get_mfa_enabled_for_users.return_value = {}
+    @patch(f"{_SERVICE}.edit_user")
+    def test_returns_the_edited_user(self, mock_edit, client, identity_service, mock_db):
+        mock_edit.return_value = _user(1, name="Updated User", external_auth_count=2)
 
         response = client.put(
             "/users/1",
@@ -346,66 +182,61 @@ class TestEditUser:
         )
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["name"] == "Updated User"
-        assert data["external_auth_count"] == 2
-        mock_edit.assert_awaited_once()
+        assert response.json()["external_auth_count"] == 2
+        assert mock_edit.call_args.args[0] == 1
+        assert mock_edit.call_args.args[2:] == (identity_service, mock_db)
 
 
 class TestApproveUser:
-    @patch("modules.users.users.router.users_crud.approve_user")
-    @patch("modules.users.users.router.sign_up_tokens_utils.request_sign_up_approved_email")
-    def test_success(self, mock_send_email, mock_approve, mock_db, auth_app):
-        auth_app.dependency_overrides[users_dependencies.validate_user_id] = lambda: None
-        client = TestClient(auth_app)
-
+    @patch(f"{_SERVICE}.approve_user")
+    def test_approves_then_sends_the_notice(self, mock_approve, client, identity_service, mock_db):
         response = client.put("/users/1/approve")
 
         assert response.status_code == 200
         assert response.json() == {"message": "User ID 1 approved successfully."}
         mock_approve.assert_called_once_with(1, mock_db)
-        mock_send_email.assert_called_once_with(1, mock_db)
+        identity_service.request_sign_up_approved_email.assert_called_once_with(1)
+
+    @patch(f"{_SERVICE}.approve_user")
+    def test_unverified_email_sends_no_notice(self, mock_approve, client, identity_service):
+        mock_approve.side_effect = core_exceptions.InvalidInputError("User email is not verified")
+
+        response = client.put("/users/1/approve")
+
+        assert response.status_code == 400
+        identity_service.request_sign_up_approved_email.assert_not_called()
 
 
 class TestEditUserPassword:
-    def test_success(self, mock_db, auth_app):
-        mock_identity_service = MagicMock()
-        auth_app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: mock_identity_service
-        auth_app.dependency_overrides[users_dependencies.validate_user_id] = lambda: None
-        client = TestClient(auth_app)
-
-        response = client.put(
-            "/users/1/password",
-            json={"password": "newpassword123"},
-        )
+    def test_success(self, client, identity_service):
+        response = client.put("/users/1/password", json={"password": "newpassword123"})
 
         assert response.status_code == 200
         assert response.json() == {"message": "User ID 1 password updated successfully"}
-        mock_identity_service.change_managed_user_password.assert_called_once_with(
-            1,
-            "newpassword123",
-        )
+        identity_service.change_managed_user_password.assert_called_once_with(1, "newpassword123")
 
 
 class TestDeleteUserPhoto:
-    @patch("modules.users.users.router.users_crud.update_user_photo", new_callable=AsyncMock)
-    def test_success(self, mock_update, mock_db, auth_app):
-        auth_app.dependency_overrides[users_dependencies.validate_user_id] = lambda: None
-        client = TestClient(auth_app)
-
+    @patch(f"{_PHOTO}.delete_photo")
+    def test_success(self, mock_delete, client, mock_db):
         response = client.delete("/users/1/photo")
 
         assert response.status_code == 204
-        mock_update.assert_awaited_once_with(1, mock_db)
+        assert mock_delete.call_args.args[0] == 1
+        assert mock_delete.call_args.args[2] == mock_db
 
 
 class TestDeleteUser:
-    @patch("modules.users.users.router.users_crud.delete_user", new_callable=AsyncMock)
-    def test_success(self, mock_delete, mock_db, auth_app):
-        auth_app.dependency_overrides[users_dependencies.validate_user_id] = lambda: None
-        client = TestClient(auth_app)
-
+    @patch(f"{_SERVICE}.delete_user")
+    def test_success(self, mock_delete, client, mock_db):
         response = client.delete("/users/1")
 
         assert response.status_code == 204
-        mock_delete.assert_awaited_once_with(1, mock_db)
+        assert mock_delete.call_args.args[0] == 1
+        assert mock_delete.call_args.args[2] == mock_db
+
+    @patch(f"{_SERVICE}.delete_user")
+    def test_unknown_user_is_not_found(self, mock_delete, client):
+        mock_delete.side_effect = core_exceptions.NotFoundError("User not found")
+
+        assert client.delete("/users/1").status_code == 404

@@ -17,7 +17,7 @@ import modules.activities.activity_streams.contracts as activity_streams_contrac
 import modules.activities.computation as activities_computation
 import modules.gears.gear.integration_service as gears_integration
 import modules.strava.utils as strava_utils
-import modules.users.users.crud as users_crud
+import modules.users.users.integration_service as users_integration
 import modules.users.users_default_gear.integration_service as users_default_gear_integration
 import modules.users.users_integrations.schema as user_integrations_schema
 import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
@@ -94,7 +94,7 @@ def fetch_and_process_activities(
         return None
 
     with SessionLocal() as db:
-        user = users_crud.get_user_by_id(user_id, db)
+        user = users_integration.get_user(user_id, db)
         if user is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -125,7 +125,7 @@ def parse_activity(
     # prefer the athlete's own timezone over the server's, which is meaningless
     # for a user on another continent.
     with SessionLocal() as db:
-        owner = users_crud.get_user_by_id(user_id, db)
+        owner = users_integration.get_user(user_id, db)
     timezone = (owner.timezone if owner and owner.timezone else None) or core_config.settings.TZ
 
     # Check rate limit before detailed activity fetch

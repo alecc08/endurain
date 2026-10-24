@@ -9,7 +9,6 @@ def _build_app(mock_db):
     import core.exceptions as core_exceptions
     import modules.auth.dependencies as auth_deps
     import modules.followers.router as router
-    import modules.users.users.dependencies as users_deps
 
     app = FastAPI()
     app.include_router(router.router)
@@ -25,8 +24,6 @@ def _build_app(mock_db):
 
     app.dependency_overrides[auth_deps.check_scopes] = _mock
     app.dependency_overrides[auth_deps.get_sub_from_access_token] = _uid
-    app.dependency_overrides[users_deps.validate_user_id] = _mock
-    app.dependency_overrides[users_deps.validate_target_user_id] = _mock
     app.dependency_overrides[core_db.get_db] = lambda: mock_db
     return app
 

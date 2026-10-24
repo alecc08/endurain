@@ -162,7 +162,7 @@ class TestLoginEndpoint:
 
     @patch("modules.auth.router.auth_utils.complete_login")
     @patch("modules.auth.router.mfa_service.is_mfa_enabled_for_user")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
+    @patch("modules.auth.router.users_integration.require_active_user")
     @patch("modules.auth.router.auth_utils.authenticate_user")
     def test_login_web_success(
         self,
@@ -201,7 +201,7 @@ class TestLoginEndpoint:
 
     @patch("modules.auth.router.auth_utils.complete_login")
     @patch("modules.auth.router.mfa_service.is_mfa_enabled_for_user")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
+    @patch("modules.auth.router.users_integration.require_active_user")
     @patch("modules.auth.router.auth_utils.authenticate_user")
     def test_login_mobile_success(
         self,
@@ -249,7 +249,7 @@ class TestLoginEndpoint:
 
         assert response.status_code == 401
 
-    @patch("modules.auth.router.users_utils.check_user_is_active")
+    @patch("modules.auth.router.users_integration.require_active_user")
     @patch("modules.auth.router.auth_utils.authenticate_user")
     def test_login_inactive_user_returns_403(
         self,
@@ -291,7 +291,7 @@ class TestLoginEndpoint:
         assert "locked" in response.json()["detail"].lower()
 
     @patch("modules.auth.router.mfa_service.is_mfa_enabled_for_user")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
+    @patch("modules.auth.router.users_integration.require_active_user")
     @patch("modules.auth.router.auth_utils.authenticate_user")
     def test_login_mfa_required_returns_202(
         self,
@@ -332,7 +332,7 @@ class TestLoginEndpoint:
 
     @patch("modules.auth.router.auth_utils.create_mobile_pkce_session_response")
     @patch("modules.auth.router.mfa_service.is_mfa_enabled_for_user")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
+    @patch("modules.auth.router.users_integration.require_active_user")
     @patch("modules.auth.router.auth_utils.authenticate_user")
     def test_login_mobile_pkce_returns_session_response(
         self,
@@ -435,7 +435,7 @@ class TestLoginEndpoint:
 
     @patch("modules.auth.router.auth_utils.complete_login")
     @patch("modules.auth.router.mfa_service.is_mfa_enabled_for_user")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
+    @patch("modules.auth.router.users_integration.require_active_user")
     @patch("modules.auth.router.auth_utils.authenticate_user")
     def test_login_store_unavailable_on_reset_attempts_returns_503(
         self,
@@ -465,7 +465,7 @@ class TestLoginEndpoint:
 
     @patch("modules.auth.router.auth_utils.complete_login")
     @patch("modules.auth.router.mfa_service.is_mfa_enabled_for_user")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
+    @patch("modules.auth.router.users_integration.require_active_user")
     @patch("modules.auth.router.auth_utils.authenticate_user")
     def test_login_store_unavailable_on_add_pending_returns_503(
         self,
@@ -492,7 +492,7 @@ class TestLoginEndpoint:
         assert response.status_code == 503
 
     @patch("modules.auth.router.mfa_service.is_mfa_enabled_for_user")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
+    @patch("modules.auth.router.users_integration.require_active_user")
     @patch("modules.auth.router.auth_utils.authenticate_user")
     def test_login_mfa_required_mobile_returns_dict(
         self,
@@ -525,8 +525,8 @@ class TestMFAVerifyEndpoint:
     """Tests for POST /auth/mfa/verify endpoint."""
 
     @patch("modules.auth.router.auth_utils.complete_login")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
-    @patch("modules.auth.router.users_crud.get_user_by_id")
+    @patch("modules.auth.router.users_integration.require_active_user")
+    @patch("modules.auth.router.users_integration.get_user")
     @patch("modules.auth.router.mfa_service.verify_user_mfa")
     def test_mfa_verify_success(
         self,
@@ -589,11 +589,13 @@ class TestMFAVerifyEndpoint:
         assert "Invalid MFA code" in response.json()["detail"]
 
     @patch("modules.auth.router.auth_utils.complete_login")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
-    @patch("modules.auth.router.users_crud.get_user_by_id")
+    @patch("modules.auth.router.users_integration.require_active_user")
+    @patch("modules.auth.router.users_integration.require_user")
+    @patch("modules.auth.router.users_integration.get_user")
     def test_mfa_verify_backup_code_calls_utils_directly(
         self,
         mock_get_user,
+        mock_require_user,
         mock_check_active,
         mock_complete_login,
         auth_client,
@@ -610,6 +612,7 @@ class TestMFAVerifyEndpoint:
         mock_user.id = 1
         mock_user.auth_mfa = mock_mfa
         mock_get_user.return_value = mock_user
+        mock_require_user.return_value = mock_user
         mock_check_active.return_value = None
         mock_complete_login.return_value = {
             "session_id": "sid-backup",
@@ -773,7 +776,7 @@ class TestMFAVerifyEndpoint:
         assert response.status_code == 503
         assert "unavailable" in response.json()["detail"].lower()
 
-    @patch("modules.auth.router.users_crud.get_user_by_id")
+    @patch("modules.auth.router.users_integration.get_user")
     @patch("modules.auth.router.mfa_service.verify_user_mfa")
     def test_mfa_verify_user_not_found_returns_401(
         self,
@@ -794,8 +797,8 @@ class TestMFAVerifyEndpoint:
         assert response.status_code == 401
         assert "Unable to authenticate" in response.json()["detail"]
 
-    @patch("modules.auth.router.users_utils.check_user_is_active")
-    @patch("modules.auth.router.users_crud.get_user_by_id")
+    @patch("modules.auth.router.users_integration.require_active_user")
+    @patch("modules.auth.router.users_integration.get_user")
     @patch("modules.auth.router.mfa_service.verify_user_mfa")
     def test_mfa_verify_store_unavailable_on_reset_returns_503(
         self,
@@ -824,8 +827,8 @@ class TestMFAVerifyEndpoint:
         assert "unavailable" in response.json()["detail"].lower()
 
     @patch("modules.auth.router.auth_utils.create_mobile_pkce_session_response")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
-    @patch("modules.auth.router.users_crud.get_user_by_id")
+    @patch("modules.auth.router.users_integration.require_active_user")
+    @patch("modules.auth.router.users_integration.get_user")
     @patch("modules.auth.router.mfa_service.verify_user_mfa")
     def test_mfa_verify_mobile_pkce_returns_session_response(
         self,
@@ -873,8 +876,8 @@ class TestRefreshEndpoint:
     @patch("modules.auth.router.auth_utils.set_refresh_token_cookie")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.store_rotated_token")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.check_token_reuse")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
-    @patch("modules.auth.router.users_crud.get_user_by_id")
+    @patch("modules.auth.router.users_integration.require_active_user")
+    @patch("modules.auth.router.users_integration.get_user")
     @patch("modules.auth.router.auth_sessions_utils.validate_session_timeout")
     @patch("modules.auth.router.auth_sessions_crud.get_session_by_id_not_expired")
     def test_refresh_web_success(
@@ -1030,8 +1033,8 @@ class TestRefreshEndpoint:
     @patch("modules.auth.router.auth_utils.set_refresh_token_cookie")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.store_rotated_token")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.check_token_reuse")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
-    @patch("modules.auth.router.users_crud.get_user_by_id")
+    @patch("modules.auth.router.users_integration.require_active_user")
+    @patch("modules.auth.router.users_integration.get_user")
     @patch("modules.auth.router.auth_sessions_utils.validate_session_timeout")
     @patch("modules.auth.router.auth_sessions_utils.verify_csrf_token")
     @patch("modules.auth.router.auth_sessions_crud.get_session_by_id_not_expired")
@@ -1178,8 +1181,8 @@ class TestRefreshEndpoint:
     @patch("modules.auth.router.auth_utils.set_refresh_token_cookie")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.store_rotated_token")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.check_token_reuse")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
-    @patch("modules.auth.router.users_crud.get_user_by_id")
+    @patch("modules.auth.router.users_integration.require_active_user")
+    @patch("modules.auth.router.users_integration.get_user")
     @patch("modules.auth.router.auth_sessions_utils.validate_session_timeout")
     @patch("modules.auth.router.auth_sessions_crud.get_session_by_id_not_expired")
     def test_refresh_missing_csrf_with_stored_hash_succeeds(
@@ -1268,8 +1271,8 @@ class TestRefreshEndpoint:
     @patch("modules.auth.router.auth_utils.set_refresh_token_cookie")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.store_rotated_token")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.check_token_reuse")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
-    @patch("modules.auth.router.users_crud.get_user_by_id")
+    @patch("modules.auth.router.users_integration.require_active_user")
+    @patch("modules.auth.router.users_integration.get_user")
     @patch("modules.auth.router.auth_sessions_utils.validate_session_timeout")
     @patch("modules.auth.router.auth_sessions_crud.get_session_by_id_not_expired")
     def test_refresh_mobile_bypasses_csrf_with_stored_hash(
@@ -1461,8 +1464,8 @@ class TestRefreshEndpoint:
 
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.store_rotated_token")
     @patch("modules.auth.router.auth_sessions_utils.edit_session")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
-    @patch("modules.auth.router.users_crud.get_user_by_id")
+    @patch("modules.auth.router.users_integration.require_active_user")
+    @patch("modules.auth.router.users_integration.get_user")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.check_token_reuse")
     @patch("modules.auth.router.auth_sessions_utils.validate_session_timeout")
     @patch("modules.auth.router.auth_sessions_crud.get_session_by_id_not_expired")
@@ -1530,8 +1533,8 @@ class TestRefreshEndpoint:
     @patch("modules.auth.router.auth_utils.set_refresh_token_cookie")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.store_rotated_token")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.check_token_reuse")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
-    @patch("modules.auth.router.users_crud.get_user_by_id")
+    @patch("modules.auth.router.users_integration.require_active_user")
+    @patch("modules.auth.router.users_integration.get_user")
     @patch("modules.auth.router.auth_sessions_utils.validate_session_timeout")
     @patch("modules.auth.router.auth_sessions_crud.get_session_by_id_not_expired")
     def test_refresh_mobile_success_includes_refresh_token_no_cookie(
@@ -1622,8 +1625,8 @@ class TestRefreshEndpoint:
     @patch("modules.auth.router.auth_sessions_utils.edit_session")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.store_rotated_token")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.check_token_reuse")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
-    @patch("modules.auth.router.users_crud.get_user_by_id")
+    @patch("modules.auth.router.users_integration.require_active_user")
+    @patch("modules.auth.router.users_integration.get_user")
     @patch("modules.auth.router.auth_sessions_utils.validate_session_timeout")
     @patch("modules.auth.router.auth_sessions_crud.get_session_by_id_not_expired")
     def test_refresh_in_grace_replay_mobile_returns_replayed_token(
@@ -1690,8 +1693,8 @@ class TestRefreshEndpoint:
     @patch("modules.auth.router.auth_sessions_utils.edit_session")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.store_rotated_token")
     @patch("modules.auth.router.auth_sessions_rotated_tokens_utils.check_token_reuse")
-    @patch("modules.auth.router.users_utils.check_user_is_active")
-    @patch("modules.auth.router.users_crud.get_user_by_id")
+    @patch("modules.auth.router.users_integration.require_active_user")
+    @patch("modules.auth.router.users_integration.get_user")
     @patch("modules.auth.router.auth_sessions_utils.validate_session_timeout")
     @patch("modules.auth.router.auth_sessions_crud.get_session_by_id_not_expired")
     def test_refresh_in_grace_replay_web_mints_fresh_csrf(

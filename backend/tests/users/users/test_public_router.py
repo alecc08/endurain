@@ -6,7 +6,6 @@ from fastapi.testclient import TestClient
 
 def _build_app(mock_db):
     import core.database as core_db
-    import modules.users.users.dependencies as users_deps
     import modules.users.users.public_router as router
 
     app = FastAPI()
@@ -15,13 +14,12 @@ def _build_app(mock_db):
     def _mock():
         return None
 
-    app.dependency_overrides[users_deps.validate_user_id] = _mock
     app.dependency_overrides[core_db.get_db] = lambda: mock_db
     return app
 
 
 class TestReadUsersById:
-    @patch("modules.users.users.public_router.users_crud.get_user_by_id")
+    @patch("modules.users.users.public_router.users_service.get_public_user")
     def test_success(self, mock_get, mock_db):
         from modules.users.users.schema import UsersRead
 
@@ -38,7 +36,7 @@ class TestReadUsersById:
         response = client.get("/public/users/id/1")
         assert response.status_code == 200
 
-    @patch("modules.users.users.public_router.users_crud.get_user_by_id")
+    @patch("modules.users.users.public_router.users_service.get_public_user")
     def test_not_found(self, mock_get, mock_db):
         client = TestClient(_build_app(mock_db))
         mock_get.return_value = None

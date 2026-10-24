@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import HTTPException, status
 
+import core.exceptions as core_exceptions
 import modules.auth.mfa.models as auth_mfa_models
 import modules.auth.mfa.service as mfa_service
 import modules.users.users.models as users_models
@@ -49,9 +50,9 @@ def _make_user(
 
 
 def _patch_get_user(user: MagicMock) -> Any:
-    """Patch users_utils.get_user_by_id_or_404 to return a user."""
+    """Patch users_integration.require_user to return a user."""
     return patch(
-        "modules.auth.mfa.service.users_utils.get_user_by_id_or_404",
+        "modules.auth.mfa.service.users_integration.require_user",
         return_value=user,
     )
 
@@ -68,7 +69,7 @@ def _wire_mfa_row():
     """
 
     def _row(_user_id, _db):
-        user = mfa_service.users_utils.get_user_by_id_or_404.return_value
+        user = mfa_service.users_integration.require_user.return_value
         return getattr(user, "auth_mfa", None)
 
     with patch("modules.auth.mfa.service.auth_mfa_crud.get_user_mfa_row", side_effect=_row):
@@ -247,7 +248,7 @@ class TestIsMFAEnabledForUserReadSwitch:
         """
 
         def _row(_user_id, _db):
-            user = mfa_service.users_utils.get_user_by_id_or_404.return_value
+            user = mfa_service.users_integration.require_user.return_value
             return getattr(user, "auth_mfa", None)
 
         with patch("modules.auth.mfa.service.auth_mfa_crud.get_user_mfa_row", side_effect=_row):
@@ -291,11 +292,8 @@ class TestIsMFAEnabledForUserReadSwitch:
     def test_returns_false_when_user_not_found(self, mock_db):
         """Returns False when user does not exist."""
         with patch(
-            "modules.auth.mfa.service.users_utils.get_user_by_id_or_404",
-            side_effect=HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            ),
+            "modules.auth.mfa.service.users_integration.require_user",
+            side_effect=core_exceptions.NotFoundError("User not found"),
         ):
             result = mfa_service.is_mfa_enabled_for_user(99, mock_db)
 

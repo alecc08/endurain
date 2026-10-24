@@ -15,10 +15,11 @@ the avatar, while removing the ability to enumerate ids.
 
 from typing import Annotated
 
-import jasil.runtime as platform_runtime
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
+import core.dependencies as core_dependencies
 import core.logger as core_logger
+import modules.users.users.constants as users_constants
 import modules.users.users.signing as users_signing
 
 logger = core_logger.get_logger(__name__)
@@ -45,12 +46,14 @@ _CONTENT_TYPES = {
 )
 def read_user_photo(
     user_id: int,
+    storage: core_dependencies.Storage,
     token: Annotated[str, Query(alias="t", description="Signed photo access token")],
 ) -> Response:
     """Serve a user's profile photo when the signed token is valid.
 
     Args:
         user_id: The user whose photo to serve.
+        storage: The platform storage provider.
         token: The signed access token (``?t=``) minted at serialization time.
 
     Returns:
@@ -69,9 +72,8 @@ def read_user_photo(
         )
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User photo not found")
 
-    storage = platform_runtime.get_active_platform().storage
     for extension, content_type in _CONTENT_TYPES.items():
-        data = storage.get(users_signing.USER_IMAGE_STORAGE_AREA, f"{user_id}{extension}")
+        data = storage.get(users_constants.USER_IMAGE_STORAGE_AREA, f"{user_id}{extension}")
         if data is not None:
             return Response(
                 content=data,

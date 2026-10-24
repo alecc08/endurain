@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import HTTPException, status
 
+import core.exceptions as core_exceptions
 import modules.auth.mfa.service as mfa_service
 
 
@@ -106,7 +107,7 @@ class TestSetupUserMFA:
 
     @patch("modules.auth.mfa.service.generate_qr_code")
     @patch("modules.auth.mfa.service.generate_totp_secret")
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_successful_setup(self, mock_get_user, mock_gen_secret, mock_gen_qr):
         mock_user = MagicMock()
         mock_user.username = "testuser"
@@ -123,7 +124,7 @@ class TestSetupUserMFA:
         assert result.app_name == "Endurain"
         mock_gen_qr.assert_called_once_with("NEWSECRET", "testuser")
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_user_not_found(self, mock_get_user):
         mock_get_user.side_effect = HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -136,7 +137,7 @@ class TestSetupUserMFA:
         assert exc_info.typename == "HTTPException"
         assert exc_info.value.status_code == 404
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_mfa_already_enabled(self, mock_get_user):
         mock_user = MagicMock()
         mock_user.mfa_enabled = True
@@ -156,7 +157,7 @@ class TestEnableUserMFA:
     @patch("modules.auth.mfa.service.verify_totp")
     @patch("modules.auth.mfa.service.core_cryptography.encrypt_token_fernet")
     @patch("modules.auth.mfa.service.auth_mfa_crud.update_user_mfa")
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_successful_enable(self, mock_get_user, mock_update_mfa, mock_encrypt, mock_verify, mock_create_backup):
         mock_user = MagicMock()
         mock_user.mfa_enabled = False
@@ -174,7 +175,7 @@ class TestEnableUserMFA:
         mock_update_mfa.assert_called_once()
         mock_create_backup.assert_called_once_with(1, mock_identity_service, mock_create_backup.call_args[0][2])
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_user_not_found(self, mock_get_user):
         mock_get_user.side_effect = HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -187,7 +188,7 @@ class TestEnableUserMFA:
         assert exc_info.typename == "HTTPException"
         assert exc_info.value.status_code == 404
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_mfa_already_enabled(self, mock_get_user):
         mock_user = MagicMock()
         mock_user.mfa_enabled = True
@@ -200,7 +201,7 @@ class TestEnableUserMFA:
         assert exc_info.value.status_code == 400
 
     @patch("modules.auth.mfa.service.verify_totp")
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_invalid_mfa_code(self, mock_get_user, mock_verify):
         mock_user = MagicMock()
         mock_user.mfa_enabled = False
@@ -218,7 +219,7 @@ class TestEnableUserMFA:
 
     @patch("modules.auth.mfa.service.verify_totp")
     @patch("modules.auth.mfa.service.core_cryptography.encrypt_token_fernet")
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_encryption_failure(self, mock_get_user, mock_encrypt, mock_verify):
         mock_user = MagicMock()
         mock_user.mfa_enabled = False
@@ -241,7 +242,7 @@ class TestDisableUserMFA:
 
     @patch("modules.auth.mfa.service.mfa_backup_codes_crud.delete_user_backup_codes")
     @patch("modules.auth.mfa.service.auth_mfa_crud.update_user_mfa")
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_successful_disable(self, mock_get_user, mock_update_mfa, mock_delete_codes):
         mock_user = MagicMock()
         mock_user.mfa_enabled = True
@@ -252,7 +253,7 @@ class TestDisableUserMFA:
         mock_update_mfa.assert_called_once()
         mock_delete_codes.assert_called_once()
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_user_not_found(self, mock_get_user):
         mock_get_user.side_effect = HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -265,7 +266,7 @@ class TestDisableUserMFA:
         assert exc_info.typename == "HTTPException"
         assert exc_info.value.status_code == 404
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_mfa_not_enabled(self, mock_get_user):
         mock_user = MagicMock()
         mock_user.mfa_enabled = False
@@ -295,7 +296,7 @@ class TestVerifyUserMFA:
         """
 
         def _row(_user_id, _db):
-            user = mfa_service.users_utils.get_user_by_id_or_404.return_value
+            user = mfa_service.users_integration.require_user.return_value
             return getattr(user, "auth_mfa", None)
 
         with patch("modules.auth.mfa.service.auth_mfa_crud.get_user_mfa_row", side_effect=_row):
@@ -303,7 +304,7 @@ class TestVerifyUserMFA:
 
     @patch("modules.auth.mfa.service.verify_totp")
     @patch("modules.auth.mfa.service.core_cryptography.decrypt_token_fernet")
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_totp_verification_success(self, mock_get_user, mock_decrypt, mock_verify):
         mock_user = MagicMock()
         mock_user.auth_mfa.mfa_enabled = True
@@ -319,7 +320,7 @@ class TestVerifyUserMFA:
 
     @patch("modules.auth.mfa.service.verify_totp")
     @patch("modules.auth.mfa.service.core_cryptography.decrypt_token_fernet")
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_totp_verify_value_error_returns_false(self, mock_get_user, mock_decrypt, mock_verify):
         mock_user = MagicMock()
         mock_user.auth_mfa.mfa_enabled = True
@@ -333,7 +334,7 @@ class TestVerifyUserMFA:
 
     @patch("modules.auth.mfa.service.verify_totp")
     @patch("modules.auth.mfa.service.core_cryptography.decrypt_token_fernet")
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_totp_verify_unexpected_exception_propagates(self, mock_get_user, mock_decrypt, mock_verify):
         """Unexpected non-OTP errors bubble up instead of being swallowed as False."""
         mock_user = MagicMock()
@@ -346,7 +347,7 @@ class TestVerifyUserMFA:
         with pytest.raises(RuntimeError, match="unexpected infrastructure error"):
             mfa_service.verify_user_mfa(1, "123456", MagicMock(), MagicMock())
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_user_not_found(self, mock_get_user):
         mock_get_user.side_effect = HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -359,7 +360,7 @@ class TestVerifyUserMFA:
         assert exc_info.typename == "HTTPException"
         assert exc_info.value.status_code == 404
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_mfa_not_enabled_returns_false(self, mock_get_user):
         mock_user = MagicMock()
         mock_user.auth_mfa = None
@@ -368,7 +369,7 @@ class TestVerifyUserMFA:
         result = mfa_service.verify_user_mfa(1, "123456", MagicMock(), MagicMock())
         assert result is False
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_mfa_disabled_returns_false(self, mock_get_user):
         mock_user = MagicMock()
         mock_user.auth_mfa.mfa_enabled = False
@@ -377,7 +378,7 @@ class TestVerifyUserMFA:
         result = mfa_service.verify_user_mfa(1, "123456", MagicMock(), MagicMock())
         assert result is False
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_mfa_no_secret_returns_false(self, mock_get_user):
         mock_user = MagicMock()
         mock_user.auth_mfa.mfa_enabled = True
@@ -388,7 +389,7 @@ class TestVerifyUserMFA:
         assert result is False
 
     @patch("modules.auth.mfa.service.core_cryptography.decrypt_token_fernet")
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_totp_decrypt_failure_returns_false(self, mock_get_user, mock_decrypt):
         mock_user = MagicMock()
         mock_user.auth_mfa.mfa_enabled = True
@@ -401,7 +402,7 @@ class TestVerifyUserMFA:
 
     @patch("modules.auth.mfa.service.verify_totp")
     @patch("modules.auth.mfa.service.core_cryptography.decrypt_token_fernet")
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_backup_code_verification_success(self, mock_get_user, mock_decrypt, mock_verify):
         mock_user = MagicMock()
         mock_user.auth_mfa.mfa_enabled = True
@@ -420,7 +421,7 @@ class TestVerifyUserMFA:
 
     @patch("modules.auth.mfa.service.verify_totp")
     @patch("modules.auth.mfa.service.core_cryptography.decrypt_token_fernet")
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_backup_code_verification_failure_returns_false(self, mock_get_user, mock_decrypt, mock_verify):
         mock_user = MagicMock()
         mock_user.auth_mfa.mfa_enabled = True
@@ -436,7 +437,7 @@ class TestVerifyUserMFA:
             result = mfa_service.verify_user_mfa(1, "ABCD-EFGH", mock_identity_service, MagicMock())
             assert result is False
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_invalid_code_format_returns_false(self, mock_get_user):
         mock_user = MagicMock()
         mock_user.auth_mfa.mfa_enabled = True
@@ -448,7 +449,7 @@ class TestVerifyUserMFA:
 
     @patch("modules.auth.mfa.service.verify_totp")
     @patch("modules.auth.mfa.service.core_cryptography.decrypt_token_fernet")
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_backup_code_unexpected_exception_propagates(self, mock_get_user, mock_decrypt, mock_verify):
         """Unexpected errors from backup-code verification propagate to the global handler.
 
@@ -487,13 +488,13 @@ class TestIsMFAEnabledForUser:
         """
 
         def _row(_user_id, _db):
-            user = mfa_service.users_utils.get_user_by_id_or_404.return_value
+            user = mfa_service.users_integration.require_user.return_value
             return getattr(user, "auth_mfa", None)
 
         with patch("modules.auth.mfa.service.auth_mfa_crud.get_user_mfa_row", side_effect=_row):
             yield
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_mfa_enabled(self, mock_get_user):
         mock_user = MagicMock()
         mock_user.auth_mfa.mfa_enabled = True
@@ -503,17 +504,14 @@ class TestIsMFAEnabledForUser:
         result = mfa_service.is_mfa_enabled_for_user(1, MagicMock())
         assert result is True
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_user_not_found_returns_false(self, mock_get_user):
-        mock_get_user.side_effect = HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+        mock_get_user.side_effect = core_exceptions.NotFoundError("User not found")
 
         result = mfa_service.is_mfa_enabled_for_user(1, MagicMock())
         assert result is False
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_mfa_not_enabled_returns_false(self, mock_get_user):
         mock_user = MagicMock()
         mock_user.auth_mfa = None
@@ -522,7 +520,7 @@ class TestIsMFAEnabledForUser:
         result = mfa_service.is_mfa_enabled_for_user(1, MagicMock())
         assert result is False
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_mfa_disabled_returns_false(self, mock_get_user):
         mock_user = MagicMock()
         mock_user.auth_mfa.mfa_enabled = False
@@ -531,7 +529,7 @@ class TestIsMFAEnabledForUser:
         result = mfa_service.is_mfa_enabled_for_user(1, MagicMock())
         assert result is False
 
-    @patch("modules.auth.mfa.service.users_utils.get_user_by_id_or_404")
+    @patch("modules.auth.mfa.service.users_integration.require_user")
     def test_mfa_no_secret_returns_false(self, mock_get_user):
         mock_user = MagicMock()
         mock_user.auth_mfa.mfa_enabled = True

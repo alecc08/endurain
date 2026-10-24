@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 import core.logger as core_logger
 import migrations.crud as migrations_crud
-import modules.users.users.crud as user_crud
+import modules.users.users.migration_service as users_migration
 import modules.users.users.schema as users_schema
 
 logger = core_logger.get_logger(__name__)
@@ -29,7 +29,7 @@ async def process_migration_6(db: Session) -> None:
     users = []
 
     try:
-        users = user_crud.get_all_users(db)
+        users = users_migration.list_users(db)
     except Exception as err:
         logger.error(
             f"Migration 6 - Error fetching users: {err}", exc_info=err, extra=core_logger.context(console=True)
@@ -48,7 +48,7 @@ async def process_migration_6(db: Session) -> None:
                     }
                 )
 
-                await user_crud.edit_user(user.id, user_converted, db)
+                users_migration.edit_user(user.id, user_converted, db)
             except Exception as err:
                 logger.error(
                     f"Migration 6 - Error processing user {user.id}: {err}",

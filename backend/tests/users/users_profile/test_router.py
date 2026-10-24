@@ -125,7 +125,7 @@ class TestReadUsersMe:
 
     @patch("modules.users.users_profile.router.users_privacy_settings_integration.get_privacy_settings")
     @patch("modules.users.users_profile.router.user_integrations_integration.get_user_integrations")
-    @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
+    @patch("modules.users.users_profile.router.users_integration.get_user")
     def test_success(
         self,
         mock_get_user,
@@ -153,7 +153,7 @@ class TestReadUsersMe:
 
     @patch("modules.users.users_profile.router.users_privacy_settings_integration.get_privacy_settings")
     @patch("modules.users.users_profile.router.user_integrations_integration.get_user_integrations")
-    @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
+    @patch("modules.users.users_profile.router.users_integration.get_user")
     def test_user_not_found(
         self,
         mock_get_user,
@@ -171,7 +171,7 @@ class TestReadUsersMe:
 
     @patch("modules.users.users_profile.router.users_privacy_settings_integration.get_privacy_settings")
     @patch("modules.users.users_profile.router.user_integrations_integration.get_user_integrations")
-    @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
+    @patch("modules.users.users_profile.router.users_integration.get_user")
     def test_integrations_not_found(
         self,
         mock_get_user,
@@ -190,7 +190,7 @@ class TestReadUsersMe:
 
     @patch("modules.users.users_profile.router.users_privacy_settings_integration.get_privacy_settings")
     @patch("modules.users.users_profile.router.user_integrations_integration.get_user_integrations")
-    @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
+    @patch("modules.users.users_profile.router.users_integration.get_user")
     def test_privacy_not_found(
         self,
         mock_get_user,
@@ -343,7 +343,7 @@ class TestGenerateLinkToken:
 class TestUploadProfileImage:
     """Tests for POST /profile/image — upload_profile_image."""
 
-    @patch("modules.users.users_profile.router.users_utils.save_user_image_file", new_callable=AsyncMock)
+    @patch("modules.users.users_profile.router.users_integration.upload_user_photo", new_callable=AsyncMock)
     def test_success(self, mock_save, profile_client):
         """Happy path: upload profile image."""
         mock_save.return_value = "photo.jpg"
@@ -365,7 +365,7 @@ class TestUploadProfileImage:
 class TestEditUser:
     """Tests for PUT /profile — edit_user."""
 
-    @patch("modules.users.users_profile.router.users_crud.edit_profile_user", new_callable=AsyncMock)
+    @patch("modules.users.users_profile.router.users_integration.edit_profile", new_callable=AsyncMock)
     def test_success(self, mock_edit, profile_client):
         """Happy path: update profile."""
         response = profile_client.put(
@@ -455,7 +455,7 @@ class TestEditProfilePassword:
 class TestDeleteProfilePhoto:
     """Tests for PUT /profile/photo — delete_profile_photo."""
 
-    @patch("modules.users.users_profile.router.users_crud.update_user_photo", new_callable=AsyncMock)
+    @patch("modules.users.users_profile.router.users_integration.delete_user_photo", new_callable=AsyncMock)
     def test_success(self, mock_update, profile_client):
         """Happy path: delete profile photo."""
         mock_update.return_value = None
@@ -506,7 +506,7 @@ class TestExportProfileData:
 
     @patch("modules.users.users_profile.router.profile_export_service.ExportService")
     @patch("modules.users.users_profile.router.profile_utils.sqlalchemy_obj_to_dict")
-    @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
+    @patch("modules.users.users_profile.router.users_integration.get_user")
     def test_success(
         self,
         mock_get_user,
@@ -527,7 +527,7 @@ class TestExportProfileData:
 
     @patch("modules.users.users_profile.router.profile_export_service.ExportService")
     @patch("modules.users.users_profile.router.profile_utils.sqlalchemy_obj_to_dict")
-    @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
+    @patch("modules.users.users_profile.router.users_integration.get_user")
     def test_user_not_found(
         self,
         mock_get_user,
@@ -545,7 +545,7 @@ class TestExportProfileData:
 
     @patch("modules.users.users_profile.router.profile_export_service.ExportService")
     @patch("modules.users.users_profile.router.profile_utils.sqlalchemy_obj_to_dict")
-    @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
+    @patch("modules.users.users_profile.router.users_integration.get_user")
     def test_sensitive_fields_stripped(
         self,
         mock_get_user,
@@ -587,7 +587,7 @@ class TestExportProfileData:
     )
     @patch("modules.users.users_profile.router.profile_export_service.ExportService")
     @patch("modules.users.users_profile.router.profile_utils.sqlalchemy_obj_to_dict")
-    @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
+    @patch("modules.users.users_profile.router.users_integration.get_user")
     def test_export_exceptions(
         self,
         mock_get_user,
@@ -609,7 +609,7 @@ class TestExportProfileData:
 
     @patch("modules.users.users_profile.router.profile_export_service.ExportService")
     @patch("modules.users.users_profile.router.profile_utils.sqlalchemy_obj_to_dict")
-    @patch("modules.users.users_profile.router.users_crud.get_user_by_id")
+    @patch("modules.users.users_profile.router.users_integration.get_user")
     def test_unexpected_exception(
         self,
         mock_get_user,

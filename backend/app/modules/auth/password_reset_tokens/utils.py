@@ -24,9 +24,8 @@ import modules.auth.password_reset_tokens.schema as password_reset_tokens_schema
 import modules.auth.sessions.crud as auth_sessions_crud
 import modules.auth.token_hashing as token_hashing
 import modules.server_settings.integration_service as server_settings_integration
-import modules.users.users.crud as users_crud
+import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
-import modules.users.users.utils as users_utils
 from core.database import SessionLocal
 from modules.auth.identity_service import IdentityService
 from modules.auth.password_reset_tokens import (
@@ -97,7 +96,7 @@ def request_password_reset_email(email: str, db: Session) -> None:
         )
 
     # Find user by email
-    user = users_crud.get_user_by_email(email, db)
+    user = users_integration.get_user_by_email(email, db)
     if not user or not user.active:
         # Don't reveal if the email exists or the user is inactive
         return
@@ -122,7 +121,7 @@ def send_password_reset_email_to_user(user_id: int, mail: platform_providers.Mai
     Raises:
         MailError: On a transient delivery failure.
     """
-    user = users_crud.get_user_by_id(user_id, db)
+    user = users_integration.get_user(user_id, db)
     if not user or not user.active:
         logger.debug(
             "Skipped password reset email: user missing or inactive", extra=core_logger.context(user_id=user_id)
@@ -174,7 +173,7 @@ def use_password_reset_token(
         )
 
     server_settings = server_settings_integration.get_server_settings(db)
-    db_user = users_utils.get_user_by_id_or_404(token_user_id, db)
+    db_user = users_integration.require_user(token_user_id, db)
     access_type = users_schema.normalize_access_type(db_user.access_type)
     try:
         hashed_password = auth_password_policy.validate_and_hash_for_user(

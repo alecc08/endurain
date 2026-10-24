@@ -398,8 +398,7 @@ class TestImportServiceUserData:
 
         with (
             patch(
-                "modules.users.users_profile.import_service.users_crud.edit_profile_user",
-                new_callable=AsyncMock,
+                "modules.users.users_profile.import_service.users_integration.edit_profile",
             ),
             patch.object(service, "collect_and_import_user_default_gear", new_callable=AsyncMock),
             patch.object(service, "collect_and_import_user_goals", new_callable=AsyncMock),
@@ -515,13 +514,12 @@ class TestImportServiceUserData:
 
         assert not hasattr(service, "collect_and_import_user_identity_providers")
         with patch(
-            "modules.users.users_profile.import_service.users_crud.edit_profile_user",
-            new_callable=AsyncMock,
+            "modules.users.users_profile.import_service.users_integration.edit_profile",
         ) as mock_edit_profile:
             result = await service.import_from_zip_data(zip_data)
 
         assert result["detail"] == "Import completed"
-        mock_edit_profile.assert_awaited_once()
+        mock_edit_profile.assert_called_once()
         assert service.counts["user"] == 1
         assert service.counts.get("user_identity_providers", 0) == 0
 

@@ -49,11 +49,13 @@ import modules.auth.api_keys.crud as auth_api_keys_crud
 import modules.auth.api_keys.utils as auth_api_keys_utils
 import modules.auth.credentials.crud as auth_credentials_crud
 import modules.auth.mfa.crud as auth_mfa_crud
+import modules.auth.password_policy as auth_password_policy
 import modules.auth.sessions.crud as auth_sessions_crud
+import modules.auth.sign_up_tokens.utils as auth_sign_up_tokens_utils
 import modules.auth.utils as auth_utils
 import modules.server_settings.contracts as server_settings_contracts
+import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
-import modules.users.users.utils as users_utils
 from modules.auth.principal import (
     AccessTokenCred,
     ApiKeyCred,
@@ -73,6 +75,7 @@ if TYPE_CHECKING:
     import modules.auth.mfa.schema as auth_mfa_schema
     import modules.auth.mfa.setup_store as auth_mfa_setup_store
     import modules.auth.sessions.schema as auth_sessions_schema
+    import modules.server_settings.schema as server_settings_schema
 
 __all__ = [
     "DefaultIdentityService",
@@ -257,6 +260,38 @@ class IdentityService(Protocol):
 
         Raises:
             HTTPException: 400 if the password policy fails.
+        """
+        ...
+
+    def validate_and_hash_password_for_user(
+        self,
+        server_settings: server_settings_schema.ServerSettingsRead,
+        access_type: str,
+        password: str,
+    ) -> str:
+        """Validate a password against the policy of a user's access type and hash it.
+
+        Args:
+            server_settings: Settings containing the password policy.
+            access_type: User access type string ("admin" or other).
+            password: Plaintext password to validate and hash.
+
+        Returns:
+            Secure password hash.
+
+        Raises:
+            HTTPException: 400 if the password policy fails.
+        """
+        ...
+
+    def request_sign_up_approved_email(self, user_id: int) -> None:
+        """Queue the notice telling a user their sign-up was approved.
+
+        Args:
+            user_id: ID of the approved user.
+
+        Raises:
+            HTTPException: 503 if the email service is not configured.
         """
         ...
 
@@ -838,8 +873,8 @@ class DefaultIdentityService:
                 detail=("Invalid token: 'sid' claim must be a string"),
             )
 
-        user = users_utils.get_user_by_id_or_404(int(sub), self._db)
-        users_utils.check_user_is_active(user)
+        user = users_integration.require_user(int(sub), self._db)
+        users_integration.require_active_user(user)
 
         return self._build_principal(
             user,
@@ -885,8 +920,8 @@ class DefaultIdentityService:
                 headers={"WWW-Authenticate": "ApiKey"},
             )
 
-        user = users_utils.get_user_by_id_or_404(db_key.user_id, self._db)
-        users_utils.check_user_is_active(user)
+        user = users_integration.require_user(db_key.user_id, self._db)
+        users_integration.require_active_user(user)
 
         if not db_key.is_active:
             raise HTTPException(
@@ -954,8 +989,8 @@ class DefaultIdentityService:
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        user = users_utils.get_user_by_id_or_404(db_session.user_id, self._db)
-        users_utils.check_user_is_active(user)
+        user = users_integration.require_user(db_session.user_id, self._db)
+        users_integration.require_active_user(user)
 
         return self._build_principal(
             user,
@@ -1057,6 +1092,38 @@ class DefaultIdentityService:
                 detail=str(err),
             ) from err
         return self._password_hasher.hash_password(password)
+
+    def validate_and_hash_password_for_user(
+        self,
+        server_settings: server_settings_schema.ServerSettingsRead,
+        access_type: str,
+        password: str,
+    ) -> str:
+        """Validate a password against the policy of a user's access type and hash it.
+
+        Args:
+            server_settings: Settings containing the password policy.
+            access_type: User access type string ("admin" or other).
+            password: Plaintext password to validate and hash.
+
+        Returns:
+            Secure password hash.
+
+        Raises:
+            HTTPException: 400 if the password policy fails.
+        """
+        return auth_password_policy.validate_and_hash_for_user(self, server_settings, access_type, password)
+
+    def request_sign_up_approved_email(self, user_id: int) -> None:
+        """Queue the notice telling a user their sign-up was approved.
+
+        Args:
+            user_id: ID of the approved user.
+
+        Raises:
+            HTTPException: 503 if the email service is not configured.
+        """
+        auth_sign_up_tokens_utils.request_sign_up_approved_email(user_id, self._db)
 
     def hash_password(self, password: str) -> str:
         """Return a secure hash for a trusted generated secret.

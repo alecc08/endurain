@@ -1,0 +1,194 @@
+"""Tests for users.users.crud module."""
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+from sqlalchemy.exc import IntegrityError
+
+import core.exceptions as core_exceptions
+import model_registry
+import modules.users.users.crud as users_crud
+import modules.users.users.models as users_models
+
+model_registry.import_all_models()
+
+
+@pytest.fixture(autouse=True)
+def _patch_serializer():
+    """Patch the serializer to a passthrough for MagicMock compatibility."""
+    with patch(
+        "modules.users.users.crud.users_serializers.to_read_schema",
+        side_effect=lambda x: x,
+    ):
+        yield
+
+
+def _one(mock_db, row):
+    """Make the session's single-row SELECT return ``row`` (or None)."""
+    mock_db.execute.return_value.scalar_one_or_none.return_value = row
+
+
+def _many(mock_db, rows):
+    """Make the session's multi-row SELECT return ``rows``."""
+    mock_db.execute.return_value.scalars.return_value.all.return_value = rows
+
+
+def _sql(mock_db) -> str:
+    """Return the last statement the session was asked to execute, as SQL text."""
+    return str(mock_db.execute.call_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+
+
+class TestReads:
+    def test_get_all_users(self, mock_db):
+        rows = [MagicMock(), MagicMock()]
+        _many(mock_db, rows)
+
+        assert users_crud.get_all_users(mock_db) == rows
+
+    def test_get_user_by_id_found(self, mock_db):
+        row = MagicMock(spec=users_models.Users)
+        _one(mock_db, row)
+
+        assert users_crud.get_user_by_id(1, mock_db) == row
+
+    def test_get_user_by_id_missing(self, mock_db):
+        _one(mock_db, None)
+
+        assert users_crud.get_user_by_id(1, mock_db) is None
+
+    def test_get_user_by_email_is_case_insensitive(self, mock_db):
+        _one(mock_db, MagicMock())
+
+        users_crud.get_user_by_email("Test@Example.COM", mock_db)
+
+        assert "test@example.com" in _sql(mock_db)
+
+    def test_get_user_by_username_decodes_and_lowercases(self, mock_db):
+        _one(mock_db, None)
+
+        users_crud.get_user_by_username("Some%20Body+Else", mock_db)
+
+        assert "some body else" in _sql(mock_db)
+
+    def test_search_escapes_like_wildcards(self, mock_db):
+        _many(mock_db, [])
+
+        users_crud.search_users_by_username("50%_off", mock_db)
+
+        assert "ESCAPE" in _sql(mock_db)
+        assert "50\\%\\_off" in _sql(mock_db)
+
+    def test_get_users_admin_filters_on_access_type(self, mock_db):
+        _many(mock_db, [])
+
+        users_crud.get_users_admin(mock_db)
+
+        assert "access_type" in _sql(mock_db)
+
+    def test_get_stored_photo_keys_returns_scalars(self, mock_db):
+        mock_db.execute.return_value.all.return_value = [(1, "1.png"), (2, None)]
+
+        assert users_crud.get_stored_photo_keys(mock_db) == [(1, "1.png"), (2, None)]
+
+
+class TestListFilters:
+    def test_count_without_filters_has_no_where(self, mock_db):
+        mock_db.execute.return_value.scalar_one.return_value = 3
+
+        assert users_crud.get_users_number(mock_db) == 3
+        assert "WHERE" not in _sql(mock_db)
+
+    def test_count_applies_every_false_filter(self, mock_db):
+        mock_db.execute.return_value.scalar_one.return_value = 0
+
+        users_crud.get_users_number(mock_db, False, False, False)
+
+        sql = _sql(mock_db)
+        assert "active" in sql and "email_verified" in sql and "pending_admin_approval" in sql
+
+    def test_page_is_ordered_and_offset(self, mock_db):
+        _many(mock_db, [])
+
+        users_crud.get_users_with_pagination(mock_db, page_number=3, num_records=10)
+
+        sql = _sql(mock_db)
+        assert "ORDER BY" in sql
+        assert "LIMIT 10 OFFSET 20" in sql
+
+    def test_no_pagination_without_both_arguments(self, mock_db):
+        _many(mock_db, [])
+
+        users_crud.get_users_with_pagination(mock_db, page_number=3)
+
+        assert "LIMIT" not in _sql(mock_db)
+
+
+class TestCreateUser:
+    def test_stages_without_committing(self, mock_db):
+        result = users_crud.create_user({"name": "A", "username": "a", "email": "a@x.com"}, mock_db)
+
+        assert isinstance(result, users_models.Users)
+        assert result.username == "a"
+        mock_db.add.assert_called_once_with(result)
+        mock_db.flush.assert_called_once()
+        mock_db.commit.assert_not_called()
+
+    def test_duplicate_is_a_conflict(self, mock_db):
+        mock_db.flush.side_effect = IntegrityError("", "", "duplicate key")
+
+        with pytest.raises(core_exceptions.ConflictError):
+            users_crud.create_user({"name": "A", "username": "a", "email": "a@x.com"}, mock_db)
+
+
+class TestUpdateUser:
+    def test_applies_the_changes_and_stages(self, mock_db):
+        row = MagicMock(spec=users_models.Users)
+        _one(mock_db, row)
+
+        result = users_crud.update_user(1, {"name": "New", "height": 180}, mock_db)
+
+        assert result == row
+        assert row.name == "New"
+        assert row.height == 180
+        mock_db.flush.assert_called_once()
+        mock_db.commit.assert_not_called()
+
+    def test_skips_read_only_properties(self, mock_db):
+        row = MagicMock(spec=users_models.Users)
+        _one(mock_db, row)
+
+        with patch.object(users_models.Users, "computed", property(lambda self: 1), create=True):
+            users_crud.update_user(1, {"computed": 5, "name": "New"}, mock_db)
+
+        assert row.name == "New"
+
+    def test_missing_user_is_not_found(self, mock_db):
+        _one(mock_db, None)
+
+        with pytest.raises(core_exceptions.NotFoundError):
+            users_crud.update_user(1, {"name": "New"}, mock_db)
+
+    def test_duplicate_is_a_conflict(self, mock_db):
+        _one(mock_db, MagicMock(spec=users_models.Users))
+        mock_db.flush.side_effect = IntegrityError("", "", "duplicate key")
+
+        with pytest.raises(core_exceptions.ConflictError):
+            users_crud.update_user(1, {"username": "taken"}, mock_db)
+
+
+class TestDeleteUser:
+    def test_stages_the_deletion(self, mock_db):
+        row = MagicMock(spec=users_models.Users)
+        _one(mock_db, row)
+
+        users_crud.delete_user(1, mock_db)
+
+        mock_db.delete.assert_called_once_with(row)
+        mock_db.flush.assert_called_once()
+        mock_db.commit.assert_not_called()
+
+    def test_missing_user_is_not_found(self, mock_db):
+        _one(mock_db, None)
+
+        with pytest.raises(core_exceptions.NotFoundError):
+            users_crud.delete_user(1, mock_db)

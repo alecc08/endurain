@@ -42,7 +42,7 @@ class TestAuthenticateUser:
 
         # Mock the CRUD function to return our user
         with (
-            patch("modules.auth.utils.users_crud.get_user_by_username", return_value=mock_user),
+            patch("modules.auth.utils.users_integration.get_user_by_username", return_value=mock_user),
             patch("modules.auth.utils.auth_credentials_crud.get_credential", return_value=mock_credential),
         ):
             # Act
@@ -53,7 +53,7 @@ class TestAuthenticateUser:
 
     def test_authenticate_user_invalid_username(self, password_hasher, mock_db):
         """Test authentication with invalid username raises 401."""
-        with patch("modules.auth.utils.users_crud.get_user_by_username", return_value=None):
+        with patch("modules.auth.utils.users_integration.get_user_by_username", return_value=None):
             with pytest.raises(HTTPException) as exc_info:
                 auth_utils.authenticate_user("nonexistent", "password", password_hasher, mock_db)
             assert exc_info.value.status_code == 401
@@ -72,7 +72,7 @@ class TestAuthenticateUser:
         mock_credential.password_hash = hashed_password
 
         with (
-            patch("modules.auth.utils.users_crud.get_user_by_username", return_value=mock_user),
+            patch("modules.auth.utils.users_integration.get_user_by_username", return_value=mock_user),
             patch("modules.auth.utils.auth_credentials_crud.get_credential", return_value=mock_credential),
         ):
             with pytest.raises(HTTPException) as exc_info:
@@ -99,7 +99,7 @@ class TestAuthenticateUser:
         mock_credential.password_hash = old_hash
 
         with (
-            patch("modules.auth.utils.users_crud.get_user_by_username", return_value=mock_user),
+            patch("modules.auth.utils.users_integration.get_user_by_username", return_value=mock_user),
             patch("modules.auth.utils.auth_credentials_crud.get_credential", return_value=mock_credential),
             patch("modules.auth.utils.auth_credentials_crud.upsert_password_hash") as mock_edit,
         ):
@@ -115,7 +115,7 @@ class TestAuthenticateUser:
         """SSO-only account (no local password) raises 401."""
         mock_user = MagicMock()
         with (
-            patch("modules.auth.utils.users_crud.get_user_by_username", return_value=mock_user),
+            patch("modules.auth.utils.users_integration.get_user_by_username", return_value=mock_user),
             patch("modules.auth.utils.auth_credentials_crud.get_credential", return_value=None),
         ):
             with pytest.raises(HTTPException) as exc_info:

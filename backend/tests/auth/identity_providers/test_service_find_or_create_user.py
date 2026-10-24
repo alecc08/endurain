@@ -70,7 +70,7 @@ class TestFindOrCreateUserEmailLinking:
                 return_value=None,
             ),
             patch(
-                "modules.auth.identity_providers.service.users_crud.get_user_by_email",
+                "modules.auth.identity_providers.service.users_integration.get_user_by_email",
                 return_value=existing_user,
             ),
             patch(
@@ -103,7 +103,7 @@ class TestFindOrCreateUserEmailLinking:
                 return_value=None,
             ),
             patch(
-                "modules.auth.identity_providers.service.users_crud.get_user_by_email",
+                "modules.auth.identity_providers.service.users_integration.get_user_by_email",
                 return_value=existing_user,
             ),
             patch(
@@ -132,7 +132,7 @@ class TestFindOrCreateUserEmailLinking:
                 return_value=None,
             ),
             patch(
-                "modules.auth.identity_providers.service.users_crud.get_user_by_email",
+                "modules.auth.identity_providers.service.users_integration.get_user_by_email",
                 return_value=None,
             ),
             patch.object(

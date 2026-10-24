@@ -31,7 +31,7 @@ import modules.gears.gear.integration_service as gear_integration
 import modules.gears.gear_components.integration_service as gear_components_integration
 import modules.health.health_targets.integration_service as health_targets_integration
 import modules.health.health_weight.integration_service as health_weight_integration
-import modules.users.users.signing as users_signing
+import modules.users.users.constants as users_constants
 import modules.users.users_default_gear.integration_service as users_default_gear_integration
 import modules.users.users_default_gear.schema as user_default_gear_schema
 import modules.users.users_goals.integration_service as users_goals_integration
@@ -721,7 +721,7 @@ class ExportService:
             zipf: ZipFile instance to write to.
         """
         storage = platform_runtime.get_active_platform().storage
-        area = users_signing.USER_IMAGE_STORAGE_AREA
+        area = users_constants.USER_IMAGE_STORAGE_AREA
 
         try:
             keys = storage.list_keys(area, f"{self.user_id}.")

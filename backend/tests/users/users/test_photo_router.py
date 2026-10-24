@@ -77,46 +77,44 @@ class TestUserImageUrl:
 
 
 class TestReadUserPhoto:
-    @patch(f"{_ROUTER}.platform_runtime")
     @patch(f"{_ROUTER}.users_signing")
-    def test_serves_the_first_matching_extension(self, mock_signing, mock_runtime):
+    def test_serves_the_first_matching_extension(self, mock_signing):
         from modules.users.users.photo_router import read_user_photo
 
         mock_signing.verify_user_image_token.return_value = True
-        mock_signing.USER_IMAGE_STORAGE_AREA = "user_images"
-        storage = mock_runtime.get_active_platform.return_value.storage
+        storage = MagicMock()
         storage.get.side_effect = lambda _area, key: b"png" if key == "7.png" else None
 
-        response = read_user_photo(7, "tok")
+        response = read_user_photo(7, storage, "tok")
 
         assert response.status_code == 200
         assert response.media_type == "image/png"
         assert response.body == b"png"
         assert response.headers["Cache-Control"] == "private, max-age=3600"
 
-    @patch(f"{_ROUTER}.platform_runtime")
     @patch(f"{_ROUTER}.users_signing")
-    def test_404_for_an_invalid_token_without_touching_storage(self, mock_signing, mock_runtime):
+    def test_404_for_an_invalid_token_without_touching_storage(self, mock_signing):
         from modules.users.users.photo_router import read_user_photo
 
         mock_signing.verify_user_image_token.return_value = False
+        storage = MagicMock()
 
         with pytest.raises(HTTPException) as exc:
-            read_user_photo(7, "forged")
+            read_user_photo(7, storage, "forged")
 
         assert exc.value.status_code == 404
-        mock_runtime.get_active_platform.assert_not_called()
+        storage.get.assert_not_called()
 
-    @patch(f"{_ROUTER}.platform_runtime")
     @patch(f"{_ROUTER}.users_signing")
-    def test_404_when_no_photo_is_stored(self, mock_signing, mock_runtime):
+    def test_404_when_no_photo_is_stored(self, mock_signing):
         from modules.users.users.photo_router import read_user_photo
 
         mock_signing.verify_user_image_token.return_value = True
-        mock_runtime.get_active_platform.return_value.storage.get.return_value = None
+        storage = MagicMock()
+        storage.get.return_value = None
 
         with pytest.raises(HTTPException) as exc:
-            read_user_photo(7, "tok")
+            read_user_photo(7, storage, "tok")
 
         assert exc.value.status_code == 404
 
@@ -124,14 +122,14 @@ class TestReadUserPhoto:
 class TestUserReadSerialization:
     def test_photo_path_is_resolved_to_a_url(self):
         """The row stores a key; a client must receive an address."""
-        import modules.users.users.crud as users_crud
+        import modules.users.users.serializers as users_serializers
 
         row = MagicMock()
         row.id = 7
         row.photo_path = "7.png"
 
-        with patch.object(users_crud.users_schema.UsersRead, "model_validate") as validate:
+        with patch.object(users_serializers.users_schema.UsersRead, "model_validate") as validate:
             validate.return_value = MagicMock(photo_path="7.png")
-            result = users_crud._to_read_schema(row)
+            result = users_serializers.to_read_schema(row)
 
         assert "/users/7/photo?t=" in result.photo_path

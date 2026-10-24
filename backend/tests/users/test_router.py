@@ -22,7 +22,6 @@ class TestEditUserPassword:
 
         result = users_router.edit_user_password(
             user_id=user_id,
-            _validate_id=MagicMock(),
             user_attributes=user_attributes,
             _check_scope=MagicMock(),
             identity_service=identity_service,

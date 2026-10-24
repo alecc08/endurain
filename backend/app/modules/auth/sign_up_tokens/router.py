@@ -17,9 +17,8 @@ import modules.auth.sign_up_tokens.schema as sign_up_tokens_schema
 import modules.auth.sign_up_tokens.utils as sign_up_tokens_utils
 import modules.notifications.integration_service as notifications_integration
 import modules.server_settings.integration_service as server_settings_integration
-import modules.users.users.crud as users_crud
+import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
-import modules.users.users.utils as users_utils
 
 # Define the API router
 router = APIRouter()
@@ -66,10 +65,9 @@ def signup(
         )
 
     # Create the user in the database
-    created_user: users_schema.UsersRead = users_crud.create_signup_user(user, server_settings, identity_service, db)
-
-    # Create default data for the user
-    users_utils.create_user_default_data(created_user.id, identity_service, db)
+    created_user: users_schema.UsersRead = users_integration.create_signup_user(
+        user, server_settings, identity_service, db
+    )
 
     # Return appropriate response based on server configuration
     message = "User created successfully."
@@ -127,10 +125,11 @@ def verify_email(
 
     # Verify the email
     user_id = sign_up_tokens_utils.use_sign_up_token(confirm_data.token, db)
-    users_crud.verify_user_email(user_id, server_settings, db)
+    users_integration.stage_email_verification(user_id, server_settings, db)
+    db.commit()
 
     if server_settings_integration.is_mail_configured(db):
-        user: users_schema.UsersRead | None = users_crud.get_user_by_id(user_id, db)
+        user: users_schema.UsersRead | None = users_integration.get_user(user_id, db)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

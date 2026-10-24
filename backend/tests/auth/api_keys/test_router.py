@@ -68,7 +68,7 @@ class TestCreateUserApiKey:
     @patch("modules.auth.api_keys.router.auth_api_keys_crud.create_api_key")
     @patch("modules.auth.api_keys.router.api_keys_utils.validate_api_key_scopes")
     @patch("modules.auth.api_keys.router.step_up_service.verify_step_up_credentials")
-    @patch("modules.auth.api_keys.router.users_crud.get_user_by_id")
+    @patch("modules.auth.api_keys.router.users_integration.get_user")
     def test_create_user_api_key_success(
         self,
         mock_get_user,
@@ -118,7 +118,7 @@ class TestCreateUserApiKey:
         assert "key" in data
         assert data["key"] == "endurain_rawsecretkey"
 
-    @patch("modules.auth.api_keys.router.users_crud.get_user_by_id")
+    @patch("modules.auth.api_keys.router.users_integration.get_user")
     def test_create_user_api_key_user_not_found_returns_404(self, mock_get_user, fast_api_client, fast_api_app):
         """Test that 404 is returned when the authenticated user is not found."""
         # Arrange
@@ -141,7 +141,7 @@ class TestCreateUserApiKey:
 
     @patch("modules.auth.api_keys.router.api_keys_utils.validate_api_key_scopes")
     @patch("modules.auth.api_keys.router.step_up_service.verify_step_up_credentials")
-    @patch("modules.auth.api_keys.router.users_crud.get_user_by_id")
+    @patch("modules.auth.api_keys.router.users_integration.get_user")
     def test_create_user_api_key_scope_exceeds_permission_returns_400(
         self,
         mock_get_user,
@@ -225,7 +225,7 @@ class TestCreateUserApiKey:
 
     @patch("modules.auth.api_keys.router.auth_api_keys_crud.create_api_key")
     @patch("modules.auth.api_keys.router.step_up_service.verify_step_up_credentials")
-    @patch("modules.auth.api_keys.router.users_crud.get_user_by_id")
+    @patch("modules.auth.api_keys.router.users_integration.get_user")
     def test_create_user_api_key_missing_password_returns_401(
         self,
         mock_get_user,
@@ -265,7 +265,7 @@ class TestCreateUserApiKey:
 
     @patch("modules.auth.api_keys.router.auth_api_keys_crud.create_api_key")
     @patch("modules.auth.api_keys.router.step_up_service.verify_step_up_credentials")
-    @patch("modules.auth.api_keys.router.users_crud.get_user_by_id")
+    @patch("modules.auth.api_keys.router.users_integration.get_user")
     def test_create_user_api_key_wrong_password_returns_401(
         self,
         mock_get_user,
@@ -306,7 +306,7 @@ class TestCreateUserApiKey:
 
     @patch("modules.auth.api_keys.router.auth_api_keys_crud.create_api_key")
     @patch("modules.auth.api_keys.router.step_up_service.verify_step_up_credentials")
-    @patch("modules.auth.api_keys.router.users_crud.get_user_by_id")
+    @patch("modules.auth.api_keys.router.users_integration.get_user")
     def test_create_user_api_key_mfa_missing_code_returns_401(
         self,
         mock_get_user,
@@ -347,7 +347,7 @@ class TestCreateUserApiKey:
 
     @patch("modules.auth.api_keys.router.auth_api_keys_crud.create_api_key")
     @patch("modules.auth.api_keys.router.step_up_service.verify_step_up_credentials")
-    @patch("modules.auth.api_keys.router.users_crud.get_user_by_id")
+    @patch("modules.auth.api_keys.router.users_integration.get_user")
     def test_create_user_api_key_mfa_invalid_code_returns_401(
         self,
         mock_get_user,
@@ -389,7 +389,7 @@ class TestCreateUserApiKey:
 
     @patch("modules.auth.api_keys.router.auth_api_keys_crud.create_api_key")
     @patch("modules.auth.api_keys.router.step_up_service.verify_step_up_credentials")
-    @patch("modules.auth.api_keys.router.users_crud.get_user_by_id")
+    @patch("modules.auth.api_keys.router.users_integration.get_user")
     def test_step_up_failure_does_not_call_create_api_key(
         self,
         mock_get_user,
@@ -427,7 +427,7 @@ class TestCreateUserApiKey:
         mock_create.assert_not_called()
 
     @patch("modules.auth.api_keys.router.step_up_service.verify_step_up_credentials")
-    @patch("modules.auth.api_keys.router.users_crud.get_user_by_id")
+    @patch("modules.auth.api_keys.router.users_integration.get_user")
     def test_create_passes_password_and_mfa_code_to_step_up(
         self,
         mock_get_user,
@@ -528,7 +528,7 @@ class TestApiKeyResponseSafety:
     @patch("modules.auth.api_keys.router.auth_api_keys_crud.create_api_key")
     @patch("modules.auth.api_keys.router.api_keys_utils.validate_api_key_scopes")
     @patch("modules.auth.api_keys.router.step_up_service.verify_step_up_credentials")
-    @patch("modules.auth.api_keys.router.users_crud.get_user_by_id")
+    @patch("modules.auth.api_keys.router.users_integration.get_user")
     def test_created_response_includes_raw_key_once(
         self,
         mock_get_user,
@@ -588,7 +588,7 @@ class TestApiKeyResponseSafety:
     @patch("modules.auth.api_keys.router.auth_api_keys_crud.create_api_key")
     @patch("modules.auth.api_keys.router.api_keys_utils.validate_api_key_scopes")
     @patch("modules.auth.api_keys.router.step_up_service.verify_step_up_credentials")
-    @patch("modules.auth.api_keys.router.users_crud.get_user_by_id")
+    @patch("modules.auth.api_keys.router.users_integration.get_user")
     def test_created_response_excludes_key_hash(
         self,
         mock_get_user,

@@ -40,9 +40,9 @@ import modules.health.health_targets.integration_service as health_targets_integ
 import modules.health.health_targets.schema as health_targets_schema
 import modules.health.health_weight.integration_service as health_weight_integration
 import modules.health.health_weight.schema as health_weight_schema
-import modules.users.users.crud as users_crud
+import modules.users.users.constants as users_constants
+import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
-import modules.users.users.signing as users_signing
 import modules.users.users_default_gear.integration_service as users_default_gear_integration
 import modules.users.users_default_gear.schema as user_default_gear_schema
 import modules.users.users_goals.integration_service as users_goals_integration
@@ -538,10 +538,10 @@ class ImportService:
             # ``pending_admin_approval``, those fields are dropped here
             # before reaching the database.
             sanitized = {
-                key: value for key, value in user_profile.items() if key in users_crud.PROFILE_SELF_SERVICE_FIELDS
+                key: value for key, value in user_profile.items() if key in users_constants.PROFILE_SELF_SERVICE_FIELDS
             }
             profile_payload = users_schema.ProfileUpdate.model_validate(sanitized)
-            await users_crud.edit_profile_user(self.user_id, profile_payload, self.db)
+            users_integration.edit_profile(self.user_id, profile_payload, self.db)
             self.counts["user"] += 1
         else:
             logger.info("No user data to import, but continuing with sub-settings")
@@ -1159,7 +1159,7 @@ class ImportService:
                     logger.warning(f"Profile import dropped invalid user image {new_file_name}: {err.detail}")
                     continue
                 platform_runtime.get_active_platform().storage.save(
-                    users_signing.USER_IMAGE_STORAGE_AREA,
+                    users_constants.USER_IMAGE_STORAGE_AREA,
                     new_file_name,
                     file_bytes,
                 )

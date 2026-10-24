@@ -21,6 +21,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
 import core.dependencies as core_dependencies
@@ -35,9 +36,8 @@ import modules.auth.mfa.backup_codes.schema as mfa_backup_codes_schema
 import modules.auth.mfa.schema as mfa_schema
 import modules.auth.mfa.setup_store as auth_mfa_setup_store
 import modules.auth.sessions.schema as auth_sessions_schema
-import modules.users.users.crud as users_crud
+import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
-import modules.users.users.utils as users_utils
 import modules.users.users_integrations.integration_service as user_integrations_integration
 import modules.users.users_privacy_settings.integration_service as users_privacy_settings_integration
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
@@ -94,7 +94,7 @@ async def read_users_me(
         HTTPException: If user or settings not found.
     """
     # Get the user from the database
-    user: users_schema.UsersRead | None = users_crud.get_user_by_id(token_user_id, db)
+    user: users_schema.UsersRead | None = users_integration.get_user(token_user_id, db)
 
     # If the user does not exist raise the exception
     if user is None:
@@ -255,6 +255,7 @@ async def generate_link_token(
 async def upload_profile_image(
     file: UploadFile,
     token_user_id: auth_dependencies.CurrentUserId,
+    storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
 ) -> str:
     """
@@ -263,6 +264,7 @@ async def upload_profile_image(
     Args:
         file: Image file to upload.
         token_user_id: User ID from access token.
+        storage: The platform storage provider.
         db: Database session.
 
     Returns:
@@ -271,7 +273,7 @@ async def upload_profile_image(
     Raises:
         HTTPException: If validation or save fails.
     """
-    return await users_utils.save_user_image_file(token_user_id, file, db)
+    return await users_integration.upload_user_photo(token_user_id, file, storage, db)
 
 
 @router.put("", status_code=status.HTTP_200_OK, response_model=dict)
@@ -297,7 +299,8 @@ async def edit_user(
     Returns:
         Success message with user ID.
     """
-    await users_crud.edit_profile_user(token_user_id, user_attributtes, db)
+    await run_in_threadpool(users_integration.edit_profile, token_user_id, user_attributtes, db)
+    db.commit()
 
     return {"message": f"User ID {token_user_id} updated successfully"}
 
@@ -390,8 +393,9 @@ async def edit_profile_password(
 
 
 @router.put("/photo", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
-async def delete_profile_photo(
+def delete_profile_photo(
     token_user_id: auth_dependencies.CurrentUserId,
+    storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
 ) -> None:
     """
@@ -399,13 +403,13 @@ async def delete_profile_photo(
 
     Args:
         token_user_id: User ID from access token.
+        storage: The platform storage provider.
         db: Database session.
 
     Returns:
         Success message.
     """
-    # Update the user photo_path in the database
-    await users_crud.update_user_photo(token_user_id, db)
+    users_integration.delete_user_photo(token_user_id, storage, db)
 
 
 @router.delete(
@@ -493,7 +497,7 @@ async def export_profile_data(
         HTTPException: If user not found or export fails.
     """
     # Get the user from the database
-    user = users_crud.get_user_by_id(token_user_id, db)
+    user = users_integration.get_user(token_user_id, db)
 
     # If the user does not exist raise the exception
     if user is None:

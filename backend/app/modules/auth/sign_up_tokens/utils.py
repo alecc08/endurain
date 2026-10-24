@@ -20,8 +20,7 @@ import modules.auth.sign_up_tokens.event_publishers as sign_up_tokens_event_publ
 import modules.auth.sign_up_tokens.schema as sign_up_tokens_schema
 import modules.auth.token_hashing as token_hashing
 import modules.server_settings.integration_service as server_settings_integration
-import modules.users.users.crud as users_crud
-import modules.users.users.utils as users_utils
+import modules.users.users.integration_service as users_integration
 from core.database import SessionLocal
 
 logger = core_logger.get_logger(__name__)
@@ -103,7 +102,7 @@ def request_sign_up_admin_approval_emails(user_id: int, db: Session) -> None:
         HTTPException: 503 if the email service is not configured.
     """
     _require_mail_configured(db)
-    for admin in users_utils.get_admin_users_or_404(db):
+    for admin in users_integration.require_admin_users(db):
         sign_up_tokens_event_publishers.publish_sign_up_approval_requested(user_id, admin.id, db)
 
 
@@ -139,7 +138,7 @@ def send_sign_up_verification_email_to_user(user_id: int, mail: platform_provide
     Raises:
         MailError: On a transient delivery failure.
     """
-    user = users_crud.get_user_by_id(user_id, db)
+    user = users_integration.get_user(user_id, db)
     if not user:
         logger.debug("Skipped sign-up verification email: user missing", extra=core_logger.context(user_id=user_id))
         return False
@@ -173,8 +172,8 @@ def send_sign_up_approval_request_email_to_admin(
     Raises:
         MailError: On a transient delivery failure.
     """
-    user = users_crud.get_user_by_id(user_id, db)
-    admin = users_crud.get_user_by_id(admin_user_id, db)
+    user = users_integration.get_user(user_id, db)
+    admin = users_integration.get_user(admin_user_id, db)
     if not user or not admin:
         logger.debug(
             "Skipped sign-up approval request email: user or admin missing",
@@ -205,7 +204,7 @@ def send_sign_up_approved_email_to_user(user_id: int, mail: platform_providers.M
     Raises:
         MailError: On a transient delivery failure.
     """
-    user = users_crud.get_user_by_id(user_id, db)
+    user = users_integration.get_user(user_id, db)
     if not user:
         logger.debug("Skipped sign-up approved email: user missing", extra=core_logger.context(user_id=user_id))
         return False
