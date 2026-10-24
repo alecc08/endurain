@@ -946,7 +946,6 @@
       "invalidType": "Vennligst velg et .zip-arkiv.",
       "exportSuccess": "Eksport klar, nedlastingen din bør starte snart",
       "exportError": "Kunne ikke eksportere dataene dine. Vennligst prøv igjen.",
-      "importSuccess": "Data importert",
       "importError": "Kunne ikke importere arkivet. Vennligst sjekk filen og prøv igjen."
     }
   }

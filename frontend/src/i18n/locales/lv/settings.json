@@ -946,7 +946,6 @@
       "invalidType": "Lūdzu, izvēlieties .zip arhīvu.",
       "exportSuccess": "Eksports gatavs, jūsu lejupielāde drīz sāksies",
       "exportError": "Neizdevās eksportēt jūsu datus. Lūdzu, mēģiniet vēlreiz.",
-      "importSuccess": "Dati importēti",
       "importError": "Neizdevās importēt arhīvu. Lūdzu, pārbaudiet failu un mēģiniet vēlreiz."
     }
   }

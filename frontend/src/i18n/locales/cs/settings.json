@@ -946,7 +946,6 @@
       "invalidType": "Vyberte prosím archiv .zip.",
       "exportSuccess": "Export připraven, vaše stahování by mělo brzy začít",
       "exportError": "Nepodařilo se exportovat vaše data. Zkuste to prosím znovu.",
-      "importSuccess": "Data importována",
       "importError": "Nepodařilo se importovat archiv. Zkontrolujte prosím soubor a zkuste to znovu."
     }
   }

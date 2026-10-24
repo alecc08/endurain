@@ -1055,8 +1055,24 @@
       "invalidType": "Please choose a .zip archive.",
       "exportSuccess": "Export ready. Your download should begin shortly",
       "exportError": "Couldn't export your data. Please try again.",
-      "importSuccess": "Data imported",
-      "importError": "Couldn't import the archive. Please check the file and try again."
+      "importQueued": "Import started. You can leave this page.",
+      "importError": "Couldn't start the import. Please check the file and try again.",
+      "importInProgress": "An import is already in progress.",
+      "status": {
+        "queued": "Waiting for the import to start…",
+        "running": "Importing your data…",
+        "writing_files": "Saving your files…",
+        "completed": "Import finished: {activities} activities and {gears} gears imported.",
+        "failed": "The import didn't complete: {reason}"
+      },
+      "failure": {
+        "invalid_file": "the archive isn't a valid Endurain export. Nothing was imported.",
+        "too_large": "the archive is too large. Nothing was imported.",
+        "too_many_activities": "the archive has too many activities. Nothing was imported.",
+        "timed_out": "it took too long. Nothing was imported, so you can try again.",
+        "files_incomplete": "your data was imported but some files are missing. Don't import it again; it would duplicate your data.",
+        "processing_failed": "something went wrong. Nothing was imported, so you can try again."
+      }
     }
   }
 }

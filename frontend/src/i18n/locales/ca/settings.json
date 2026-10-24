@@ -946,7 +946,6 @@
       "invalidType": "Tria un arxiu .zip.",
       "exportSuccess": "Exportació llesta, la descàrrega hauria de començar aviat",
       "exportError": "No s'han pogut exportar les teves dades. Torna-ho a intentar.",
-      "importSuccess": "Dades importades",
       "importError": "No s'ha pogut importar l'arxiu. Comprova el fitxer i torna-ho a intentar."
     }
   }

@@ -946,7 +946,6 @@
       "invalidType": "Valitse .zip-arkisto.",
       "exportSuccess": "Vienti valmis, latauksesi pitäisi alkaa pian",
       "exportError": "Tietojasi ei voitu viedä. Yritä uudelleen.",
-      "importSuccess": "Tiedot tuotu",
       "importError": "Arkistoa ei voitu tuoda. Tarkista tiedosto ja yritä uudelleen."
     }
   }

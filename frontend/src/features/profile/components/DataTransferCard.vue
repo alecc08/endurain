@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Download, LoaderCircle, Upload } from '@lucide/vue'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useToasts } from '@/composables/useToasts'
+import { HttpError } from '@/services/http'
 import { downloadBlob } from '@/lib/download'
+import { isTerminalProfileImport } from '@/features/profile/types'
 import {
   useExportProfileMutation,
   useImportProfileMutation,
+  useProfileImportQuery,
 } from '@/features/profile/composables/useDataTransfer'
 
 const props = defineProps<{
@@ -21,6 +24,31 @@ const { t } = useI18n()
 const toasts = useToasts()
 const exportMutation = useExportProfileMutation()
 const importMutation = useImportProfileMutation()
+const importQuery = useProfileImportQuery()
+
+const importStatus = computed(() => importQuery.data.value ?? null)
+/** Whether an import is queued or running, so a second one cannot start. */
+const isImportActive = computed(
+  () => importStatus.value !== null && !isTerminalProfileImport(importStatus.value),
+)
+
+/** The one-line progress or outcome of the latest import. */
+const importMessage = computed<string | null>(() => {
+  const status = importStatus.value
+  if (!status) {
+    return null
+  }
+  if (status.status === 'failed') {
+    const reason = t(
+      `settings.profile.dataTransfer.failure.${status.failure ?? 'processing_failed'}`,
+    )
+    return t('settings.profile.dataTransfer.status.failed', { reason })
+  }
+  return t(`settings.profile.dataTransfer.status.${status.status}`, {
+    activities: status.imported?.activities ?? 0,
+    gears: status.imported?.gears ?? 0,
+  })
+})
 
 const fileInput = ref<HTMLInputElement | null>(null)
 
@@ -63,8 +91,13 @@ function onArchiveChange(event: Event): void {
     return
   }
   importMutation.mutate(file, {
-    onSuccess: () => toasts.success(t('settings.profile.dataTransfer.importSuccess')),
-    onError: () => toasts.error(t('settings.profile.dataTransfer.importError')),
+    onSuccess: () => toasts.success(t('settings.profile.dataTransfer.importQueued')),
+    onError: (error) =>
+      toasts.error(
+        error instanceof HttpError && error.status === 409
+          ? t('settings.profile.dataTransfer.importInProgress')
+          : t('settings.profile.dataTransfer.importError'),
+      ),
   })
 }
 </script>
@@ -102,11 +135,11 @@ function onArchiveChange(event: Event): void {
       <Button
         variant="outline"
         class="w-full sm:w-auto"
-        :disabled="importMutation.isPending.value"
+        :disabled="importMutation.isPending.value || isImportActive"
         @click="pickArchive"
       >
         <LoaderCircle
-          v-if="importMutation.isPending.value"
+          v-if="importMutation.isPending.value || isImportActive"
           class="size-4 animate-spin"
           aria-hidden="true"
         />
@@ -114,6 +147,10 @@ function onArchiveChange(event: Event): void {
         {{ t('settings.profile.dataTransfer.import') }}
       </Button>
     </div>
+
+    <p v-if="importMessage" class="text-hint" role="status" aria-live="polite">
+      {{ importMessage }}
+    </p>
 
     <p class="text-hint">{{ t('settings.profile.dataTransfer.note') }}</p>
   </Card>

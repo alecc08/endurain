@@ -946,7 +946,6 @@
       "invalidType": "Lütfen bir .zip arşivi seçin.",
       "exportSuccess": "Dışa aktarım hazır, indirme işleminiz kısa süre içinde başlamalı",
       "exportError": "Verileriniz dışa aktarılamadı. Lütfen tekrar deneyin.",
-      "importSuccess": "Veriler içe aktarıldı",
       "importError": "Arşiv içe aktarılamadı. Lütfen dosyayı kontrol edip tekrar deneyin."
     }
   }

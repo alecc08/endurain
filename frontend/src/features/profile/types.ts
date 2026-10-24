@@ -9,6 +9,25 @@ export type ProfileUpdateDto = Schemas['ProfileUpdate']
 /** Update body for the user's privacy settings. */
 export type PrivacyUpdateDto = Schemas['UsersPrivacySettingsUpdate']
 
+/** Where the user's profile import is, as the backend reports it. */
+export type ProfileImportStatus = Schemas['ProfileImportStatus']
+
+/** Why a profile import failed. */
+export type ProfileImportFailure = NonNullable<ProfileImportStatus['failure']>
+
+/** Import states that will not change again, so polling can stop. */
+export const TERMINAL_IMPORT_STATUSES = ['completed', 'failed'] as const
+
+/**
+ * Whether a profile import has reached a state it will not leave.
+ *
+ * @param status - The import to inspect.
+ * @returns `true` when the import is finished, successfully or not.
+ */
+export function isTerminalProfileImport(status: ProfileImportStatus): boolean {
+  return (TERMINAL_IMPORT_STATUSES as readonly string[]).includes(status.status)
+}
+
 /** Activity visibility level, mirrored from the backend enum. */
 export type ActivityVisibility = Schemas['ActivityVisibility']
 

@@ -3151,21 +3151,36 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Read Profile Import Status
+         * @description Report where the authenticated user's profile import is.
+         *
+         *     Args:
+         *         token_user_id: User ID from access token.
+         *         import_states: Shared store of the import's state.
+         *
+         *     Returns:
+         *         The import's state.
+         */
+        get: operations["read_profile_import_status_api_v1_profile_import_get"];
         put?: never;
         /**
          * Import Profile Data
-         * @description Import profile data from ZIP with security validation.
+         * @description Queue a profile import from a ZIP archive.
+         *
+         *     The archive is validated and staged, and a worker imports it; poll ``GET /profile/import`` for
+         *     the outcome. The database part is all-or-nothing, so a failed import leaves nothing behind.
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         file: ZIP file containing profile data.
          *         token_user_id: User ID from access token.
+         *         import_states: Shared store of the import's state.
          *         storage: The platform storage provider.
          *         db: Database session.
          *
          *     Returns:
-         *         Import results with counts of imported items.
+         *         The queued import's state.
          */
         post: operations["import_profile_data_api_v1_profile_import_post"];
         delete?: never;
@@ -8743,6 +8758,24 @@ export interface components {
             token: string;
         };
         /**
+         * ImportFailure
+         * @description Stable, sanitized reasons an import can fail.
+         *
+         *     A closed set: the underlying exception text can carry file names and parser internals, so the
+         *     client gets a code it can translate.
+         * @enum {string}
+         */
+        ImportFailure: "invalid_file" | "too_large" | "too_many_activities" | "timed_out" | "files_incomplete" | "processing_failed";
+        /**
+         * ImportStatus
+         * @description Where a profile import is.
+         *
+         *     ``RUNNING`` is the database part, which is one transaction, so a worker that dies there has
+         *     imported nothing. ``WRITING_FILES`` starts once those rows are committed.
+         * @enum {string}
+         */
+        ImportStatus: "queued" | "running" | "writing_files" | "completed" | "failed";
+        /**
          * IngestionJobErrorCode
          * @description Stable, sanitized reasons an ingestion job can fail.
          *
@@ -9671,6 +9704,28 @@ export interface components {
             type: string;
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * ProfileImportStatus
+         * @description Where the authenticated user's profile import is.
+         *
+         *     Attributes:
+         *         status: Lifecycle state of the import.
+         *         failure: Why the import failed; set only when it failed.
+         *         imported: How many items of each kind were imported; set only when it completed.
+         */
+        ProfileImportStatus: {
+            /** @description Reason the import failed */
+            failure?: components["schemas"]["ImportFailure"] | null;
+            /**
+             * Imported
+             * @description Items imported per kind, once completed
+             */
+            imported?: {
+                [key: string]: number;
+            } | null;
+            /** @description Lifecycle state of the import */
+            status: components["schemas"]["ImportStatus"];
         };
         /**
          * ProfileUpdate
@@ -17295,6 +17350,35 @@ export interface operations {
             };
         };
     };
+    read_profile_import_status_api_v1_profile_import_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileImportStatus"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     import_profile_data_api_v1_profile_import_post: {
         parameters: {
             query?: never;
@@ -17309,14 +17393,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ProfileImportStatus"];
                 };
             };
             /** @description Validation Error */
