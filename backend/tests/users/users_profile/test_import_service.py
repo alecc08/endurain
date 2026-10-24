@@ -805,8 +805,8 @@ class TestImportServiceActivityComponents:
         load_json.assert_called_once_with(zipf, contributor.archive_path, check_memory=False)
         contributor.restore.assert_called_once_with(records, mock_db)
         assert service.counts["activity_exercise_titles"] == 2
-        # Restore only stages the rows; the importer owns the commit.
-        mock_db.commit.assert_called_once()
+        # Restore only stages the rows; the whole import commits once, later.
+        mock_db.commit.assert_not_called()
 
 
 class TestImportServiceFromZip:
@@ -853,6 +853,87 @@ class TestImportServiceFromZip:
             result = await service.import_from_zip_data(zip_data)
 
         assert "imported" in result
+
+    @staticmethod
+    def _atomic_service():
+        mock_db = MagicMock(spec=Session)
+        service = profile_import_service.ImportService(user_id=1, storage=MagicMock(), db=mock_db)
+        service.performance_config.enable_memory_monitoring = False
+        service.performance_config.max_file_size_mb = 100
+        return service, mock_db
+
+    async def test_the_database_part_commits_once_before_any_file_is_written(self) -> None:
+        service, mock_db = self._atomic_service()
+        order = MagicMock()
+        order.attach_mock(mock_db.commit, "commit")
+        zip_data = _make_zip_with_json({"data/gears.json": [{"id": 1, "nickname": "Bike"}]})
+
+        with (
+            patch.object(service, "collect_and_import_gears_data", new_callable=AsyncMock, return_value={}) as gears,
+            patch.object(
+                service, "collect_and_import_activities_data_batched", new_callable=AsyncMock, return_value={}
+            ),
+            patch.object(service, "add_activity_files_from_zip", new_callable=AsyncMock) as files,
+            patch.object(service, "add_activity_media_from_zip", new_callable=AsyncMock) as media,
+            patch.object(service, "add_user_images_from_zip", new_callable=AsyncMock) as images,
+        ):
+            order.attach_mock(gears, "gears")
+            order.attach_mock(files, "files")
+            order.attach_mock(media, "media")
+            order.attach_mock(images, "images")
+            service.counts["gears"] = 1
+            await service.import_from_zip_data(zip_data)
+
+        names = [call[0] for call in order.mock_calls]
+        assert names.count("commit") == 1
+        assert names.index("commit") < names.index("files") < names.index("media") < names.index("images")
+        mock_db.rollback.assert_not_called()
+
+    @pytest.mark.parametrize("failing", ["collect_and_import_gears_data", "collect_and_import_activities_data_batched"])
+    async def test_a_failure_in_the_database_part_rolls_everything_back(self, failing) -> None:
+        service, mock_db = self._atomic_service()
+        zip_data = _make_zip_with_json({"data/gears.json": []})
+
+        with (
+            patch.object(service, "collect_and_import_gears_data", new_callable=AsyncMock, return_value={}),
+            patch.object(
+                service, "collect_and_import_activities_data_batched", new_callable=AsyncMock, return_value={}
+            ),
+            patch.object(service, failing, new_callable=AsyncMock, side_effect=RuntimeError("boom")),
+            patch.object(service, "add_activity_files_from_zip", new_callable=AsyncMock) as files,
+            pytest.raises(RuntimeError),
+        ):
+            await service.import_from_zip_data(zip_data)
+
+        mock_db.commit.assert_not_called()
+        mock_db.rollback.assert_called_once()
+        files.assert_not_called()
+
+    async def test_a_failure_writing_files_keeps_the_committed_rows(self) -> None:
+        service, mock_db = self._atomic_service()
+        zip_data = _make_zip_with_json({"data/gears.json": []})
+
+        with (
+            patch.object(service, "collect_and_import_gears_data", new_callable=AsyncMock, return_value={}),
+            patch.object(
+                service, "collect_and_import_activities_data_batched", new_callable=AsyncMock, return_value={}
+            ),
+            patch.object(service, "add_activity_files_from_zip", new_callable=AsyncMock, side_effect=OSError("disk")),
+            pytest.raises(FileSystemError),
+        ):
+            await service.import_from_zip_data(zip_data)
+
+        mock_db.commit.assert_called_once()
+        mock_db.rollback.assert_not_called()
+
+    async def test_a_rejected_archive_rolls_back(self) -> None:
+        service, mock_db = self._atomic_service()
+
+        with pytest.raises(FileFormatError):
+            await service.import_from_zip_data(b"not a zip")
+
+        mock_db.commit.assert_not_called()
+        mock_db.rollback.assert_called_once()
 
     async def test_import_from_zip_os_error(self) -> None:
         mock_db = MagicMock(spec=Session)
@@ -1287,9 +1368,8 @@ class TestImportServiceActivitiesDataBatched:
 
         assert mapping == {1: 10}
         assert service.counts["activities"] == 1
-        # The restore functions only stage; the importer commits each activity
-        # together with its components.
-        mock_db.commit.assert_called_once()
+        # The restore functions only stage; the import commits once at the end.
+        mock_db.commit.assert_not_called()
 
     async def test_collect_and_import_activities_batched_no_original_id(self) -> None:
         mock_db = MagicMock(spec=Session)

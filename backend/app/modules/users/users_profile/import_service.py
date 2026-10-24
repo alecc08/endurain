@@ -177,6 +177,10 @@ class ImportService:
     async def import_from_zip_data(self, zip_data: bytes) -> dict[str, Any]:
         """Import profile data from ZIP file bytes.
 
+        The database part is one transaction, committed once before the files are written, so a
+        failure before that point leaves nothing imported and the archive can simply be imported
+        again. A failure while writing files leaves the rows in place with some files missing.
+
         Args:
             zip_data: ZIP file content as bytes.
 
@@ -207,6 +211,7 @@ class ImportService:
             self.performance_config.enable_memory_monitoring,
         )
 
+        committed = False
         try:
             with zipfile.ZipFile(BytesIO(zip_data)) as zipf:
                 file_list = set(zipf.namelist())
@@ -269,7 +274,16 @@ class ImportService:
                 await self.collect_and_import_health_weight(health_weight_data, health_targets_data)
                 del health_weight_data, health_targets_data
 
-                # Import files and media
+                # Everything above only staged rows, so the database part of the import is one unit:
+                # it lands together here or, on any failure, not at all.
+                self.db.commit()
+                committed = True
+                logger.info(
+                    "Profile import committed its database rows", extra=core_logger.context(user_id=self.user_id)
+                )
+
+                # Files, media and the photo come after the commit because they need the new
+                # ids. They are keyed by those ids, so writing them again overwrites in place.
                 profile_utils.check_timeout(timeout_seconds, start_time, ImportTimeoutError, "Import")
                 await self.add_activity_files_from_zip(zipf, file_list, activities_id_mapping)
                 await self.add_activity_media_from_zip(zipf, file_list, activities_id_mapping)
@@ -279,6 +293,12 @@ class ImportService:
             raise FileFormatError(f"Invalid ZIP file format: {e!s}") from e
         except OSError as e:
             raise FileSystemError(f"File system error during import: {e!s}") from e
+        finally:
+            if not committed:
+                self.db.rollback()
+                logger.warning(
+                    "Profile import rolled back; nothing was imported", extra=core_logger.context(user_id=self.user_id)
+                )
 
         # Guard: if nothing was imported, fail visibly instead of
         # returning a misleading "success" with zero counts.
@@ -341,8 +361,6 @@ class ImportService:
             records = self._load_single_json(zipf, contributor.archive_path, check_memory=False)
             restored = contributor.restore(records, self.db)
             self.counts[contributor.count_key] += restored
-        # The restore functions stage; the importer owns the commit.
-        self.db.commit()
         logger.info("Restored the global activity components", extra=core_logger.context(user_id=self.user_id))
 
     def _read_zip_entry(
@@ -422,8 +440,6 @@ class ImportService:
             gears_id_mapping[original_id] = self._import_gear(gear)
             self.counts["gears"] += 1
 
-        # The gear surface stages; the importer owns the commit.
-        self.db.commit()
         logger.info("Imported gears", extra=core_logger.context(count=self.counts["gears"]))
         return gears_id_mapping
 
@@ -491,8 +507,6 @@ class ImportService:
             gear_components_integration.create_gear_component(gear_component, self.user_id, self.db)
             self.counts["gear_components"] += 1
 
-        # The gear component surface stages; the importer owns the commit.
-        self.db.commit()
         logger.info("Imported gear components", extra=core_logger.context(count=self.counts["gear_components"]))
 
     async def collect_and_import_user_data(
@@ -798,9 +812,6 @@ class ImportService:
                         new_activity,
                     )
 
-                # The activity and its components are one unit: the restore
-                # functions stage, and the importer commits them together.
-                self.db.commit()
                 self.counts["activities"] += 1
 
             # Clear batch data from memory
@@ -954,7 +965,6 @@ class ImportService:
 
                 data = health_weight_schema.HealthWeightCreate(**health_weight)
                 health_weight_integration.upsert_health_weight(self.user_id, data, self.db)
-                self.db.commit()
                 self.counts["health_weight"] += 1
             logger.info("Imported health weight records", extra=core_logger.context(count=self.counts["health_weight"]))
         else:
@@ -988,7 +998,6 @@ class ImportService:
 
                 target = health_targets_schema.HealthTargetsUpdate(**target_data)
                 health_targets_integration.edit_health_targets(target, self.user_id, self.db)
-                self.db.commit()
                 self.counts["health_targets"] += 1
             logger.info("Imported health targets", extra=core_logger.context(count=self.counts["health_targets"]))
         else:
