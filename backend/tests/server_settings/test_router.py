@@ -321,8 +321,8 @@ class TestEmail:
 
         response = fast_api_client.post("/server_settings/email/test", headers={"Authorization": "Bearer mock_token"})
 
-        assert response.status_code == 200
-        assert response.json() == {"message": "Test email sent to admin@example.com."}
+        assert response.status_code == 204
+        assert response.content == b""
         mock_send.assert_called_once()
         assert mock_send.call_args.args[:2] == (mock_get_user.return_value, mail)
 

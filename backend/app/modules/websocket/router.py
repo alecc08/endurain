@@ -10,6 +10,7 @@ import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
 import modules.websocket.dependencies as websocket_dependencies
 import modules.websocket.manager as websocket_manager
+import modules.websocket.schema as websocket_schema
 import modules.websocket.service as websocket_service
 import modules.websocket.ticket_store as websocket_ticket_store
 
@@ -18,7 +19,7 @@ router = APIRouter()
 
 @router.post(
     "/ticket",
-    response_model=dict[str, str],
+    response_model=websocket_schema.WsTicketRead,
     status_code=201,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["notifications:read"])],
 )
@@ -30,7 +31,7 @@ def issue_ws_ticket(
         websocket_ticket_store.WsTicketStore,
         Depends(websocket_dependencies.get_ws_ticket_store),
     ],
-) -> dict[str, str]:
+) -> websocket_schema.WsTicketRead:
     """Issue a short-lived WebSocket authentication ticket.
 
     Returns a single-use opaque ticket valid for 30 seconds,
@@ -44,10 +45,9 @@ def issue_ws_ticket(
         ticket_store: WsTicketStore for issuing tickets.
 
     Returns:
-        JSON object with a single "ticket" key.
+        The ticket.
     """
-    ticket = ticket_store.create_ticket(user_id)
-    return {"ticket": ticket}
+    return websocket_schema.WsTicketRead(ticket=ticket_store.create_ticket(user_id))
 
 
 @router.websocket("", dependencies=[Depends(websocket_dependencies.require_allowed_origin)])

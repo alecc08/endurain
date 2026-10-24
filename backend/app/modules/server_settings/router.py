@@ -97,8 +97,8 @@ def edit_server_settings(
 
 @router.post(
     "/login-photo",
-    response_model=dict[str, str],
-    status_code=status.HTTP_201_CREATED,
+    response_model=None,
+    status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.UPLOAD)
@@ -107,7 +107,7 @@ def upload_login_photo(
     file: UploadFile,
     storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
-) -> dict[str, str]:
+) -> None:
     """Upload custom login page photo.
 
     Requires admin authentication with server_settings:write scope.
@@ -242,8 +242,8 @@ def edit_mail_settings(
 
 @router.post(
     "/email/test",
-    response_model=dict[str, str],
-    status_code=status.HTTP_200_OK,
+    response_model=None,
+    status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
@@ -255,7 +255,7 @@ def send_test_email(
         Depends(core_dependencies.get_mail),
     ],
     db: core_dependencies.DbSession,
-) -> dict[str, str]:
+) -> None:
     """Send a test email to the requesting admin.
 
     Requires admin authentication with server_settings:write scope. The recipient
@@ -267,9 +267,6 @@ def send_test_email(
         mail: The platform mail provider.
         db: Database session.
 
-    Returns:
-        A confirmation message naming the recipient address.
-
     Raises:
         ServiceUnavailableError: 503 if email is not configured.
         UpstreamError: 502 if the mail server did not accept the message.
@@ -278,4 +275,3 @@ def send_test_email(
     if admin is None:
         raise core_exceptions.NotFoundError("User not found")
     server_settings_service.send_test_email(admin, mail, db)
-    return {"message": f"Test email sent to {admin.email}."}

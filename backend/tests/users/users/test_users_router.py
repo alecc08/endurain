@@ -178,7 +178,7 @@ class TestUploadUserImage:
         response = client.post("/users/1/image", files={"file": ("avatar.jpg", b"fake-image-data", "image/jpeg")})
 
         assert response.status_code == 201
-        assert response.json() == "/users/1/photo?t=x"
+        assert response.json() == {"photo_path": "/users/1/photo?t=x"}
         mock_upload.assert_called_once()
 
 
@@ -219,8 +219,8 @@ class TestApproveUser:
     def test_approves_with_the_notice_in_the_same_unit_of_work(self, mock_approve, client, identity_service, mock_db):
         response = client.put("/users/1/approve")
 
-        assert response.status_code == 200
-        assert response.json() == {"message": "User ID 1 approved successfully."}
+        assert response.status_code == 204
+        assert response.content == b""
         mock_approve.assert_called_once_with(1, identity_service, mock_db)
 
     @patch(f"{_SERVICE}.approve_user")
@@ -236,8 +236,8 @@ class TestEditUserPassword:
     def test_success(self, client, identity_service):
         response = client.post("/users/1/password/change", json={"password": "newpassword123"})
 
-        assert response.status_code == 200
-        assert response.json() == {"message": "User ID 1 password updated successfully"}
+        assert response.status_code == 204
+        assert response.content == b""
         identity_service.change_managed_user_password.assert_called_once_with(1, "newpassword123")
 
 

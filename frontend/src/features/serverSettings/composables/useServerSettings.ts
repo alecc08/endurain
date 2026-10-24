@@ -144,13 +144,13 @@ export function useEmailStatusQuery() {
 }
 
 /**
- * Sends a test email to the calling admin. Resolves with the confirmation
- * message; rejects with an `HttpError` whose detail carries the failure.
+ * Sends a test email to the calling admin. Rejects with an `HttpError` whose
+ * detail carries the failure.
  *
  * @returns The TanStack Query mutation for the test email.
  */
 export function useSendTestEmailMutation() {
-  return useMutation<string, Error, void>({
+  return useMutation<void, Error, void>({
     mutationFn: () => sendTestEmail(),
   })
 }

@@ -215,7 +215,7 @@ def submit_mfa_code(
     mfa_code: str,
     mfa_codes: garmin_mfa_code_store.GarminMFACodeStore,
     link_states: garmin_link_state_store.GarminLinkStateStore,
-) -> garmin_schema.GarminDetail:
+) -> None:
     """Hand the user's MFA code to the login waiting for it.
 
     Args:
@@ -224,9 +224,6 @@ def submit_mfa_code(
         mfa_codes: Shared store the code lands in.
         link_states: Shared store of the link attempt's state.
 
-    Returns:
-        The acknowledgement.
-
     Raises:
         ConflictError: When no login is waiting for a code.
     """
@@ -234,4 +231,3 @@ def submit_mfa_code(
     if state is None or state.status != garmin_constants.LinkStatus.MFA_REQUIRED:
         raise core_exceptions.ConflictError("No Garmin Connect login is waiting for an MFA code")
     mfa_codes.add_code(user_id, mfa_code)
-    return garmin_schema.GarminDetail(detail="MFA code received successfully")

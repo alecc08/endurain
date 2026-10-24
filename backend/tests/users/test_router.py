@@ -20,7 +20,7 @@ class TestEditUserPassword:
         identity_service = MagicMock()
         user_attributes = users_schema.UsersAdminEditPassword(password=new_password)
 
-        result = users_router.edit_user_password(
+        users_router.edit_user_password(
             request=MagicMock(),
             user_id=user_id,
             user_attributes=user_attributes,
@@ -32,4 +32,3 @@ class TestEditUserPassword:
             user_id,
             new_password,
         )
-        assert result.message == f"User ID {user_id} password updated successfully"

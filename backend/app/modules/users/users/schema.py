@@ -561,14 +561,14 @@ class UsersAdminEditPassword(BaseModel):
     )
 
 
-class MessageResponse(BaseModel):
-    """Acknowledgement of a change.
+class UserPhotoRead(BaseModel):
+    """The photo a user has after an upload.
 
     Attributes:
-        message: What was done, for display.
+        photo_path: Servable URL of the user's photo, or None when none is stored.
     """
 
-    message: str
+    photo_path: StrictStr | None = Field(default=None, description="Servable URL of the user's photo")
 
 
 class StepUpVerification(BaseModel):

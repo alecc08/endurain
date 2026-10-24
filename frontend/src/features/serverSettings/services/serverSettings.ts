@@ -231,15 +231,11 @@ export async function fetchEmailStatus(signal?: AbortSignal): Promise<EmailStatu
  * `server_settings:write`). The send is synchronous, so a failure surfaces the
  * mail server's failure category and SMTP status code in the error detail.
  *
- * @returns The confirmation message naming the recipient.
  * @throws {HttpError} `503` when email is not configured, `502` when the mail
  *   server did not accept the message.
  */
-export async function sendTestEmail(): Promise<string> {
-  const result = await apiFetch<{ message: string }>('/server-settings/email/test', {
-    method: 'POST',
-  })
-  return result.message
+export async function sendTestEmail(): Promise<void> {
+  await apiFetch<void>('/server-settings/email/test', { method: 'POST', responseType: 'void' })
 }
 
 /**

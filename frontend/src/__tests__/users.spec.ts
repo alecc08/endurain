@@ -237,13 +237,14 @@ describe('users service requests', () => {
   })
 
   it('changeUserPassword PUTs the new password', async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ message: 'ok' })
+    vi.mocked(apiFetch).mockResolvedValue(undefined)
 
     await changeUserPassword(7, 'secret123')
 
     expect(apiFetch).toHaveBeenCalledWith('/users/7/password/change', {
       method: 'POST',
       body: JSON.stringify({ password: 'secret123' }),
+      responseType: 'void',
     })
   })
 
@@ -256,7 +257,7 @@ describe('users service requests', () => {
   })
 
   it('uploadUserPhoto posts a multipart body to the image endpoint', async () => {
-    vi.mocked(apiFetch).mockResolvedValue('data/user_images/7.png')
+    vi.mocked(apiFetch).mockResolvedValue({ photo_path: 'data/user_images/7.png' })
     const file = new File(['x'], 'avatar.png', { type: 'image/png' })
 
     const path = await uploadUserPhoto(7, file)
@@ -280,10 +281,13 @@ describe('users service requests', () => {
   })
 
   it('approveUser issues a PUT to the approve endpoint', async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ message: 'ok' })
+    vi.mocked(apiFetch).mockResolvedValue(undefined)
 
     await approveUser(7)
 
-    expect(apiFetch).toHaveBeenCalledWith('/users/7/approve', { method: 'PUT' })
+    expect(apiFetch).toHaveBeenCalledWith('/users/7/approve', {
+      method: 'PUT',
+      responseType: 'void',
+    })
   })
 })

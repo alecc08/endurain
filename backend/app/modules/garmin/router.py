@@ -56,7 +56,8 @@ def garminconnect_link_status(
 
 @router.post(
     "/mfa",
-    response_model=garmin_schema.GarminDetail,
+    response_model=None,
+    status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
@@ -66,9 +67,9 @@ def garminconnect_mfa_code(
     token_user_id: auth_dependencies.CurrentUserId,
     mfa_codes: garmin_dependencies.GarminMFACodeStoreDep,
     link_states: garmin_dependencies.GarminLinkStateStoreDep,
-) -> garmin_schema.GarminDetail:
+) -> None:
     """Hand the MFA code to the Garmin Connect login waiting for it."""
-    return garmin_link_service.submit_mfa_code(token_user_id, mfa_request.mfa_code, mfa_codes, link_states)
+    garmin_link_service.submit_mfa_code(token_user_id, mfa_request.mfa_code, mfa_codes, link_states)
 
 
 @router.post(

@@ -2475,9 +2475,6 @@ export interface paths {
          *         user_attributtes: Allow-listed profile updates.
          *         token_user_id: User ID from access token.
          *         db: Database session.
-         *
-         *     Returns:
-         *         Success message with user ID.
          */
         put: operations["edit_user_api_v1_profile_put"];
         post?: never;
@@ -2713,9 +2710,6 @@ export interface paths {
          *         identity_service: Identity service dependency.
          *         step_up_store: Step-up lockout store.
          *         db: Database session.
-         *
-         *     Returns:
-         *         Success message.
          */
         post: operations["edit_profile_email_api_v1_profile_email_change_post"];
         delete?: never;
@@ -3121,7 +3115,7 @@ export interface paths {
          *         db: Database session.
          *
          *     Returns:
-         *         The storage key of the saved photo.
+         *         The servable URL of the new photo.
          */
         post: operations["upload_profile_image_api_v1_profile_image_post"];
         delete?: never;
@@ -3461,10 +3455,6 @@ export interface paths {
          *         identity_service: Identity service dependency.
          *         step_up_store: Step-up lockout store.
          *
-         *     Returns:
-         *         MessageResponse: A success message indicating the user's password
-         *         was updated.
-         *
          *     Raises:
          *         HTTPException: 401 if step-up verification fails.
          */
@@ -3518,9 +3508,6 @@ export interface paths {
          *         user_privacy_settings: New privacy settings.
          *         token_user_id: User ID from access token.
          *         db: Database session.
-         *
-         *     Returns:
-         *         Success message.
          */
         put: operations["edit_profile_privacy_settings_api_v1_profile_privacy_put"];
         post?: never;
@@ -4192,9 +4179,6 @@ export interface paths {
          *         token_user_id: The requesting admin's user ID, from the access token.
          *         mail: The platform mail provider.
          *         db: Database session.
-         *
-         *     Returns:
-         *         A confirmation message naming the recipient address.
          *
          *     Raises:
          *         ServiceUnavailableError: 503 if email is not configured.
@@ -4885,9 +4869,6 @@ export interface paths {
          *         user_id: ID of user to approve.
          *         db: Database session dependency.
          *         identity_service: Identity service dependency.
-         *
-         *     Returns:
-         *         Success message.
          */
         put: operations["approve_user_api_v1_users__user_id__approve_put"];
         post?: never;
@@ -4974,7 +4955,7 @@ export interface paths {
          *         db: Database session dependency.
          *
          *     Returns:
-         *         Path to uploaded image.
+         *         The servable URL of the new photo.
          */
         post: operations["upload_user_image_api_v1_users__user_id__image_post"];
         delete?: never;
@@ -5002,9 +4983,6 @@ export interface paths {
          *         user_attributes: New password data.
          *         _check_scope: Authorization check.
          *         identity_service: Identity service dependency.
-         *
-         *     Returns:
-         *         Success message.
          */
         post: operations["edit_user_password_api_v1_users__user_id__password_change_post"];
         delete?: never;
@@ -5079,7 +5057,7 @@ export interface paths {
          *         ticket_store: WsTicketStore for issuing tickets.
          *
          *     Returns:
-         *         JSON object with a single "ticket" key.
+         *         The ticket.
          */
         post: operations["issue_ws_ticket_api_v1_ws_ticket_post"];
         delete?: never;
@@ -6044,14 +6022,6 @@ export interface components {
          * @enum {string}
          */
         FollowStatus: "pending" | "accepted";
-        /**
-         * GarminDetail
-         * @description A human-readable outcome of a Garmin Connect request.
-         */
-        GarminDetail: {
-            /** Detail */
-            detail: string;
-        };
         /**
          * GarminLinkStatus
          * @description Where a Garmin Connect link attempt is.
@@ -9064,17 +9034,6 @@ export interface components {
             username: string | null;
         };
         /**
-         * MessageResponse
-         * @description Acknowledgement of a change.
-         *
-         *     Attributes:
-         *         message: What was done, for display.
-         */
-        MessageResponse: {
-            /** Message */
-            message: string;
-        };
-        /**
          * MobileSessionResponse
          * @description Response for mobile password login with PKCE exchange flow.
          *
@@ -10491,6 +10450,20 @@ export interface components {
          * @enum {string}
          */
         UserAccessType: "regular" | "admin";
+        /**
+         * UserPhotoRead
+         * @description The photo a user has after an upload.
+         *
+         *     Attributes:
+         *         photo_path: Servable URL of the user's photo, or None when none is stored.
+         */
+        UserPhotoRead: {
+            /**
+             * Photo Path
+             * @description Servable URL of the user's photo
+             */
+            photo_path?: string | null;
+        };
         /**
          * UserPublicRead
          * @description What any signed-in viewer, or an anonymous one on a shared link, may learn about a user.
@@ -12160,6 +12133,17 @@ export interface components {
              * @description Optional breakdown by activity type
              */
             type_breakdown?: components["schemas"]["TypeBreakdownItem"][] | null;
+        };
+        /**
+         * WsTicketRead
+         * @description A single-use ticket that authenticates a websocket handshake.
+         *
+         *     Attributes:
+         *         ticket: Opaque, URL-safe ticket, valid for a short time and for one connection.
+         */
+        WsTicketRead: {
+            /** Ticket */
+            ticket: string;
         };
         /**
          * YearlyPeriodSummary
@@ -14226,13 +14210,11 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["GarminDetail"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -16546,13 +16528,11 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -16846,13 +16826,11 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -17331,7 +17309,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": string;
+                    "application/json": components["schemas"]["UserPhotoRead"];
                 };
             };
             /** @description Validation Error */
@@ -17700,13 +17678,11 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -17769,13 +17745,11 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -18658,15 +18632,11 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
-                };
+                content?: never;
             };
             /** @description Unexpected error */
             default: {
@@ -18693,15 +18663,11 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -19781,13 +19747,11 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -19909,7 +19873,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": string | null;
+                    "application/json": components["schemas"]["UserPhotoRead"];
                 };
             };
             /** @description Validation Error */
@@ -19948,13 +19912,11 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20073,9 +20035,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["WsTicketRead"];
                 };
             };
             /** @description Unexpected error */

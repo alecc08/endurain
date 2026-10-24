@@ -240,7 +240,7 @@ def create_user(
 @router.post(
     "/{user_id}/image",
     status_code=status.HTTP_201_CREATED,
-    response_model=str | None,
+    response_model=users_schema.UserPhotoRead,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.UPLOAD)
@@ -250,7 +250,7 @@ def upload_user_image(
     file: UploadFile,
     storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
-) -> str | None:
+) -> users_schema.UserPhotoRead:
     """Upload user profile image.
 
     Args:
@@ -261,10 +261,10 @@ def upload_user_image(
         db: Database session dependency.
 
     Returns:
-        Path to uploaded image.
+        The servable URL of the new photo.
     """
     users_photo_service.upload_photo(user_id, file, storage, db)
-    return users_service.require_user(user_id, db).photo_path
+    return users_schema.UserPhotoRead(photo_path=users_service.require_user(user_id, db).photo_path)
 
 
 @router.put(
@@ -305,8 +305,8 @@ def edit_user(
 
 @router.put(
     "/{user_id}/approve",
-    status_code=status.HTTP_200_OK,
-    response_model=users_schema.MessageResponse,
+    response_model=None,
+    status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
@@ -318,7 +318,7 @@ def approve_user(
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
-) -> users_schema.MessageResponse:
+) -> None:
     """Approve pending user account.
 
     Args:
@@ -326,17 +326,11 @@ def approve_user(
         user_id: ID of user to approve.
         db: Database session dependency.
         identity_service: Identity service dependency.
-
-    Returns:
-        Success message.
     """
     users_service.approve_user(user_id, identity_service, db)
 
-    # Return success message
-    return users_schema.MessageResponse(message=f"User ID {user_id} approved successfully.")
 
-
-@router.post("/{user_id}/password/change", status_code=status.HTTP_200_OK, response_model=users_schema.MessageResponse)
+@router.post("/{user_id}/password/change", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def edit_user_password(
     request: Request,
@@ -347,7 +341,7 @@ def edit_user_password(
         auth_identity_service.IdentityService,
         Depends(auth_identity_service.get_identity_service),
     ],
-) -> users_schema.MessageResponse:
+) -> None:
     """Update user password.
 
     Args:
@@ -356,17 +350,11 @@ def edit_user_password(
         user_attributes: New password data.
         _check_scope: Authorization check.
         identity_service: Identity service dependency.
-
-    Returns:
-        Success message.
     """
     identity_service.change_managed_user_password(
         user_id,
         user_attributes.password,
     )
-
-    # Return success message
-    return users_schema.MessageResponse(message=f"User ID {user_id} password updated successfully")
 
 
 @router.delete(

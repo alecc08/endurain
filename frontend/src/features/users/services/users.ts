@@ -202,9 +202,10 @@ export async function fetchUserById(id: number, signal?: AbortSignal): Promise<M
  * @throws {HttpError} When the request fails (e.g. password too short).
  */
 export async function changeUserPassword(userId: number, password: string): Promise<void> {
-  await apiFetch<{ message: string }>(`/users/${userId}/password/change`, {
+  await apiFetch<void>(`/users/${userId}/password/change`, {
     method: 'POST',
     body: JSON.stringify({ password } satisfies Schemas['UsersAdminEditPassword']),
+    responseType: 'void',
   })
 }
 
@@ -223,12 +224,12 @@ export async function uploadUserPhoto(userId: number, file: File): Promise<strin
   // The third arg is the multipart part filename only; the backend sanitizes it
   // and generates its own storage filename, so it never reaches a path/URL.
   formData.append('file', file, file.name)
-  const photoPath = await apiFetch<string | null>(`/users/${userId}/image`, {
+  const photo = await apiFetch<Schemas['UserPhotoRead']>(`/users/${userId}/image`, {
     method: 'POST',
     body: formData,
     timeoutMs: 0,
   })
-  return photoPath ?? null
+  return photo.photo_path ?? null
 }
 
 /**
@@ -259,5 +260,5 @@ export async function deleteUser(id: number): Promise<void> {
  * @throws {HttpError} When the request fails.
  */
 export async function approveUser(id: number): Promise<void> {
-  await apiFetch<{ message: string }>(`/users/${id}/approve`, { method: 'PUT' })
+  await apiFetch<void>(`/users/${id}/approve`, { method: 'PUT', responseType: 'void' })
 }

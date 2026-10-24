@@ -114,7 +114,7 @@ def test_an_mfa_code_is_accepted_while_the_login_waits():
     link_states.begin(1)
     link_states.set_status(1, garmin_constants.LinkStatus.MFA_REQUIRED)
 
-    assert client.post("/garminconnect/mfa", json={"mfa_code": "123456"}).status_code == 200
+    assert client.post("/garminconnect/mfa", json={"mfa_code": "123456"}).status_code == 204
 
 
 def test_oversized_credentials_and_codes_are_rejected():

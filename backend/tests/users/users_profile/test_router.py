@@ -345,10 +345,12 @@ class TestGenerateLinkToken:
 class TestUploadProfileImage:
     """Tests for POST /profile/image — upload_profile_image."""
 
+    @patch("modules.users.users_profile.router.users_integration.require_user")
     @patch("modules.users.users_profile.router.users_integration.upload_user_photo")
-    def test_success(self, mock_save, profile_client):
-        """Happy path: upload profile image."""
+    def test_success(self, mock_save, mock_require, profile_client):
+        """Happy path: the upload answers with the servable photo URL."""
         mock_save.return_value = "photo.jpg"
+        mock_require.return_value = MagicMock(photo_path="/users/1/photo?t=x")
 
         response = profile_client.post(
             PREFIX + "/image",
@@ -356,7 +358,7 @@ class TestUploadProfileImage:
         )
 
         assert response.status_code == 201
-        assert response.json() == "photo.jpg"
+        assert response.json() == {"photo_path": "/users/1/photo?t=x"}
 
 
 # ===================================================================
@@ -375,8 +377,7 @@ class TestEditUser:
             json={"name": "Updated Name"},
         )
 
-        assert response.status_code == 200
-        assert "updated successfully" in response.json()["message"]
+        assert response.status_code == 204
         mock_edit.assert_called_once()
 
 
@@ -395,8 +396,7 @@ class TestEditProfileEmail:
             json={"email": "new@example.com", "current_password": "pw", "mfa_code": None},
         )
 
-        assert response.status_code == 200
-        assert "email updated successfully" in response.json()["message"]
+        assert response.status_code == 204
         mock_identity_service.verify_step_up.assert_called_once()
         mock_identity_service.request_email_reverification.assert_called_once()
 
@@ -435,8 +435,7 @@ class TestEditProfilePrivacySettings:
             json={"default_activity_visibility": "followers"},
         )
 
-        assert response.status_code == 200
-        assert "privacy settings updated" in response.json()["message"]
+        assert response.status_code == 204
 
 
 # ===================================================================
@@ -462,8 +461,7 @@ class TestEditProfilePassword:
             },
         )
 
-        assert response.status_code == 200
-        assert "password updated successfully" in response.json()["message"]
+        assert response.status_code == 204
         mock_identity_service.change_own_password.assert_called_once()
 
     def test_step_up_fails(
