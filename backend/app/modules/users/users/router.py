@@ -120,12 +120,14 @@ def read_users_contain_username(
 def read_users_username(
     username: users_dependencies.Username,
     db: core_dependencies.DbSession,
+    response: Response,
 ) -> users_schema.UsersRead:
     """Get user by exact username.
 
     Args:
         username: Exact username to search for.
         db: Database session dependency.
+        response: The response, which carries the user's ETag.
 
     Returns:
         The user.
@@ -133,7 +135,9 @@ def read_users_username(
     Raises:
         NotFoundError: If there is no such user.
     """
-    return users_service.require_user_by_username(username, db)
+    user = users_service.require_user_by_username(username, db)
+    response.headers["ETag"] = core_etag.format_etag(user.version)
+    return user
 
 
 @router.get(
@@ -145,12 +149,14 @@ def read_users_username(
 def read_users_email(
     email: users_dependencies.Email,
     db: core_dependencies.DbSession,
+    response: Response,
 ) -> users_schema.UsersRead:
     """Get user by email address.
 
     Args:
         email: Email address to search for.
         db: Database session dependency.
+        response: The response, which carries the user's ETag.
 
     Returns:
         The user.
@@ -158,7 +164,9 @@ def read_users_email(
     Raises:
         NotFoundError: If there is no such user.
     """
-    return users_service.require_user_by_email(email, db)
+    user = users_service.require_user_by_email(email, db)
+    response.headers["ETag"] = core_etag.format_etag(user.version)
+    return user
 
 
 @router.get(
@@ -195,12 +203,14 @@ def read_users_id(
 def read_users_full(
     user_id: core_dependencies.PositiveId,
     db: core_dependencies.DbSession,
+    response: Response,
 ) -> users_schema.UsersRead:
     """Get a user's full record by ID (admin operation).
 
     Args:
         user_id: User ID to retrieve.
         db: Database session dependency.
+        response: The response, which carries the user's ETag.
 
     Returns:
         The full record.
@@ -208,7 +218,9 @@ def read_users_full(
     Raises:
         NotFoundError: If the user does not exist.
     """
-    return users_service.require_user(user_id, db)
+    user = users_service.require_user(user_id, db)
+    response.headers["ETag"] = core_etag.format_etag(user.version)
+    return user
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=users_schema.UsersRead)

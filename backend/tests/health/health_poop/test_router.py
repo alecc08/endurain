@@ -117,3 +117,13 @@ class TestDeleteHealthPoop:
 
         assert response.status_code == 204
         assert mock_delete.call_args.args[:2] == (1, 1)
+
+
+class TestReadSendsTheETag:
+    @patch(f"{_SERVICE}.get_health_poop")
+    def test_a_record_read_by_id_carries_its_version(self, mock_get, mock_db):
+        mock_get.return_value = HealthPoopRead(id=1, user_id=1, version=5)
+
+        response = TestClient(_build_app(mock_db)).get("/health_poop/1", headers=_HEADERS)
+
+        assert response.headers["ETag"] == '"5"'

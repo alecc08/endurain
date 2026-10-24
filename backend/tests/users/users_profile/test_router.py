@@ -131,6 +131,23 @@ class TestReadUsersMe:
     @patch("modules.users.users_profile.service.users_privacy_settings_integration.get_privacy_settings")
     @patch("modules.users.users_profile.service.user_integrations_integration.get_user_integrations")
     @patch("modules.users.users_profile.service.users_integration.require_user")
+    def test_the_profile_carries_the_users_version_as_its_etag(
+        self, mock_get_user, mock_get_integrations, mock_get_privacy, profile_client, mock_identity_service
+    ):
+        mock_get_user.return_value = _make_user_mock()
+        mock_get_user.return_value.version = 8
+        mock_get_integrations.return_value = _make_integration_mock()
+        mock_get_privacy.return_value = _make_privacy_mock()
+        mock_identity_service.has_local_password.return_value = True
+        mock_identity_service.get_mfa_status.return_value = mfa_schema.MFAStatusResponse(mfa_enabled=False)
+
+        response = profile_client.get(PREFIX)
+
+        assert response.headers["ETag"] == '"8"'
+
+    @patch("modules.users.users_profile.service.users_privacy_settings_integration.get_privacy_settings")
+    @patch("modules.users.users_profile.service.user_integrations_integration.get_user_integrations")
+    @patch("modules.users.users_profile.service.users_integration.require_user")
     def test_success(
         self,
         mock_get_user,

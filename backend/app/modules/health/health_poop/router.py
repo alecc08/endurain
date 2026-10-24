@@ -83,6 +83,7 @@ def read_health_poop_by_id(
     health_poop_id: core_dependencies.PositiveId,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
 ) -> health_poop_schema.HealthPoopRead:
     """Retrieve a specific poop record by ID.
 
@@ -90,6 +91,7 @@ def read_health_poop_by_id(
         health_poop_id: ID of the poop record.
         token_user_id: User ID from the access token.
         db: Database session dependency.
+        response: The response, which carries the record's ETag.
 
     Returns:
         HealthPoopRead for the specified record.
@@ -97,7 +99,9 @@ def read_health_poop_by_id(
     Raises:
         HTTPException: If record not found.
     """
-    return health_poop_service.get_health_poop(token_user_id, health_poop_id, db)
+    record = health_poop_service.get_health_poop(token_user_id, health_poop_id, db)
+    response.headers["ETag"] = core_etag.format_etag(record.version)
+    return record
 
 
 @router.post(

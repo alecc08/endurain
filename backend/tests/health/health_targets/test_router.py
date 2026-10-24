@@ -271,3 +271,19 @@ class TestUpdateHealthTargets:
         assert data["weight"] == 85.5
         assert data["steps"] == 15000
         assert data["sleep"] == 36000
+
+
+class TestReadSendsTheETag:
+    @patch("modules.health.health_targets.router.health_targets_service.get_health_targets")
+    def test_the_targets_carry_their_version(self, mock_get_targets, fast_api_client):
+        mock_targets = MagicMock(spec=health_targets_models.HealthTargets)
+        mock_targets.id = 1
+        mock_targets.user_id = 1
+        mock_targets.version = 4
+        for field in ("weight", "steps", "sleep", "fasting", "water_ml", "poop_count"):
+            setattr(mock_targets, field, None)
+        mock_get_targets.return_value = mock_targets
+
+        response = fast_api_client.get("/health/targets/", headers={"Authorization": "Bearer mock_token"})
+
+        assert response.headers["ETag"] == '"4"'

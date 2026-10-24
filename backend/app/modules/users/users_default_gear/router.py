@@ -21,17 +21,22 @@ router = APIRouter()
 def read_user_default_gear(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
 ) -> user_default_gear_schema.UsersDefaultGearRead | None:
     """Retrieve default gear settings for authenticated user.
 
     Args:
         token_user_id: User ID from access token.
         db: Database session dependency.
+        response: The response, which carries the settings' ETag.
 
     Returns:
         User default gear settings.
     """
-    return user_default_gear_service.get_default_gear(token_user_id, db)
+    default_gear = user_default_gear_service.get_default_gear(token_user_id, db)
+    if default_gear is not None:
+        response.headers["ETag"] = core_etag.format_etag(default_gear.version)
+    return default_gear
 
 
 @router.patch(

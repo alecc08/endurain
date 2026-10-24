@@ -181,3 +181,27 @@ class TestDeleteHealthFasting:
         mock_delete.side_effect = core_exceptions.NotFoundError("Health fasting not found")
 
         assert _client(mock_db).delete("/health_fasting/9", headers=_HEADERS).status_code == 404
+
+
+class TestReadSendsTheETag:
+    @patch(f"{_SERVICE}.get_health_fasting")
+    def test_a_record_read_by_id_carries_its_version(self, mock_get, mock_db):
+        mock_get.return_value = HealthFastingRead(id=1, user_id=1, version=5)
+
+        response = _client(mock_db).get("/health_fasting/1", headers=_HEADERS)
+
+        assert response.headers["ETag"] == '"5"'
+
+    @patch(f"{_SERVICE}.get_active_fasting")
+    def test_the_active_fast_carries_its_version(self, mock_active, mock_db):
+        mock_active.return_value = HealthFastingRead(id=1, user_id=1, version=3)
+
+        response = _client(mock_db).get("/health_fasting/active", headers=_HEADERS)
+
+        assert response.headers["ETag"] == '"3"'
+
+    @patch(f"{_SERVICE}.get_active_fasting", return_value=None)
+    def test_no_active_fast_has_no_tag(self, _active, mock_db):
+        response = _client(mock_db).get("/health_fasting/active", headers=_HEADERS)
+
+        assert "ETag" not in response.headers

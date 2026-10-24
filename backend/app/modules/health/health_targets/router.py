@@ -22,6 +22,7 @@ router = APIRouter()
 def read_health_targets_all(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
 ) -> health_targets_schema.HealthTargetsRead | None:
     """Retrieve all health targets for the authenticated user.
 
@@ -32,6 +33,7 @@ def read_health_targets_all(
         token_user_id (int): The user ID extracted from the JWT access token, automatically
             injected by the authentication dependency.
         db (Session): SQLAlchemy database session dependency for executing database queries.
+        response: The response, which carries the targets' ETag.
 
     Returns:
         health_targets_schema.HealthTargetsRead | None: The
@@ -42,7 +44,10 @@ def read_health_targets_all(
         HTTPException: May raise 401 Unauthorized if the token is invalid or expired.
         HTTPException: May raise 403 Forbidden if the user lacks the required 'health:read' scope.
     """
-    return health_targets_service.get_health_targets(token_user_id, db)
+    targets = health_targets_service.get_health_targets(token_user_id, db)
+    if targets is not None:
+        response.headers["ETag"] = core_etag.format_etag(targets.version)
+    return targets
 
 
 @router.patch(

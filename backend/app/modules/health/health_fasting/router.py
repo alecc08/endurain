@@ -64,17 +64,22 @@ def read_health_fasting_all_pagination(
 def read_active_fasting(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
 ) -> health_fasting_schema.HealthFastingRead | None:
     """Retrieve the active fasting session for the authenticated user.
 
     Args:
         token_user_id: User ID from the access token.
         db: Database session dependency.
+        response: The response, which carries the session's ETag.
 
     Returns:
         Active HealthFastingRead if exists, None otherwise.
     """
-    return health_fasting_service.get_active_fasting(token_user_id, db)
+    active = health_fasting_service.get_active_fasting(token_user_id, db)
+    if active is not None:
+        response.headers["ETag"] = core_etag.format_etag(active.version)
+    return active
 
 
 @router.get(
@@ -109,6 +114,7 @@ def read_health_fasting_by_id(
     health_fasting_id: core_dependencies.PositiveId,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
 ) -> health_fasting_schema.HealthFastingRead:
     """Retrieve a specific fasting record by ID.
 
@@ -116,6 +122,7 @@ def read_health_fasting_by_id(
         health_fasting_id: ID of the fasting record.
         token_user_id: User ID from the access token.
         db: Database session dependency.
+        response: The response, which carries the record's ETag.
 
     Returns:
         HealthFastingRead for the specified record.
@@ -123,7 +130,9 @@ def read_health_fasting_by_id(
     Raises:
         NotFoundError: If record not found.
     """
-    return health_fasting_service.get_health_fasting(token_user_id, health_fasting_id, db)
+    record = health_fasting_service.get_health_fasting(token_user_id, health_fasting_id, db)
+    response.headers["ETag"] = core_etag.format_etag(record.version)
+    return record
 
 
 @router.post(

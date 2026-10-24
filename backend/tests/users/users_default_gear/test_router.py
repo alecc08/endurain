@@ -58,3 +58,15 @@ class TestEditNeedsIfMatch:
         )
 
         assert response.status_code == 428
+
+
+class TestReadSendsTheETag:
+    @patch("modules.users.users_default_gear.router.user_default_gear_service.get_default_gear")
+    def test_the_settings_carry_their_version(self, mock_get, mock_db):
+        from modules.users.users_default_gear.schema import UsersDefaultGearRead
+
+        mock_get.return_value = UsersDefaultGearRead(id=1, user_id=1, version=6)
+
+        response = TestClient(_build_app(mock_db)).get("/user_default_gear", headers={"Authorization": "Bearer x"})
+
+        assert response.headers["ETag"] == '"6"'

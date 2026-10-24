@@ -369,3 +369,19 @@ class TestReadScopeEnforcement:
 
         assert response.status_code == 200
         assert set(response.json()) == {"id", "name", "username", "city", "photo_path"}
+
+
+class TestReadSendsTheETag:
+    @pytest.mark.parametrize(
+        ("path", "service"),
+        [
+            ("/users/42", "require_user"),
+            ("/users/username/someone", "require_user_by_username"),
+            ("/users/email/someone@example.com", "require_user_by_email"),
+        ],
+    )
+    def test_a_full_record_carries_its_version(self, path, service, client):
+        with patch(f"{_SERVICE}.{service}", return_value=_user(42, version=7)):
+            response = client.get(path)
+
+        assert response.headers["ETag"] == '"7"'

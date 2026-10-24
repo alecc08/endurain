@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 import core.dependencies as core_dependencies
+import core.etag as core_etag
 import core.file_uploads as core_file_uploads
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
@@ -46,18 +47,25 @@ def read_users_me(
         Depends(auth_identity_service.get_identity_service),
     ],
     db: core_dependencies.DbSession,
+    response: Response,
 ) -> users_schema.UsersMe:
     """Retrieve authenticated user profile with integrations.
+
+    The ETag is the user's version, which a later ``PATCH /profile`` echoes in ``If-Match``. The
+    privacy settings have their own version, ``privacy_settings_version``.
 
     Args:
         token_user_id: User ID from access token.
         identity_service: Identity service dependency.
         db: Database session.
+        response: The response, which carries the user's ETag.
 
     Returns:
         User object with integration and privacy settings.
     """
-    return profile_service.get_profile(token_user_id, identity_service, db)
+    profile = profile_service.get_profile(token_user_id, identity_service, db)
+    response.headers["ETag"] = core_etag.format_etag(profile.version)
+    return profile
 
 
 @router.get(
