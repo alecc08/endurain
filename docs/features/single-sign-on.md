@@ -201,7 +201,7 @@ If **Allow local username and password login** is enabled, the auto-redirect is 
 For detailed troubleshooting, check the Endurain backend logs:
 
 ```bash
-docker logs endurain-backend
+docker logs endurain-app
 # and/or
 tail -n 100 logs/app.log
 ```

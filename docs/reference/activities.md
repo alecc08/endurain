@@ -2,7 +2,12 @@
 
 ## Activity streams
 
-::: backend.app.modules.activities.activity_streams
+::: backend.app.modules.activities.activity_streams.router
+    handler: python
+    options:
+      docstring_style: google
+
+::: backend.app.modules.activities.activity_streams.schema
     handler: python
     options:
       docstring_style: google
@@ -16,14 +21,19 @@
 
 ## Activity workout steps
 
-::: backend.app.modules.activities.activity_workout_steps
+::: backend.app.modules.activities.activity_workout_steps.router
+    handler: python
+    options:
+      docstring_style: google
+
+::: backend.app.modules.activities.activity_workout_steps.schema
     handler: python
     options:
       docstring_style: google
 
 ## Activity file import
 
-::: backend.app.modules.activities.activity_file_import
+::: backend.app.modules.activities.activity_file_import.integration_service
     handler: python
     options:
       docstring_style: google

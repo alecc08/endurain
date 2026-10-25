@@ -16,7 +16,7 @@ RunnerUp currently **does not** support login with MFA.
 
 To enable Garmin Connect integration, Endurain will ask for your Garmin Connect credentials. These credentials are not stored, but the authentication tokens (access and refresh tokens) are stored in the DB, similar to the Strava integration. The credentials are sent from the frontend to the backend in plain text, so the use of HTTPS is highly recommended.
 
-Once the integration with Garmin Connect is configured, on startup, every one and four hours the backend will check if there is new unimported activities and new body composition entries respectively. If yes, the new data is automatically imported.
+Once the integration with Garmin Connect is configured, the backend checks for new activities on startup and every hour, and pulls the last day of health data (body composition, daily steps and sleep) on startup and every four hours. New data is imported automatically.
 
 For Garmin Connect integration [python-garminconnect](https://github.com/cyberjunky/python-garminconnect) Python module is used.
 
