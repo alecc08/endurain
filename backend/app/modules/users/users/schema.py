@@ -692,7 +692,7 @@ class ProfileUpdate(BaseModel):
 
     @field_validator("birthdate", mode="before")
     @classmethod
-    def validate_birthdate(cls, value):
+    def validate_birthdate(cls, value: datetime_date | str | None) -> str | None:
         """Normalize a birthdate to an ISO string.
 
         Args:
