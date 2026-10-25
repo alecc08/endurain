@@ -89,6 +89,27 @@ def fail_unstarted_export(
     states.set_status(payload.user_id, _Status.FAILED, failure=_Failure.PROCESSING_FAILED)
 
 
+def close_dead_lettered_export(
+    payload: profile_events.ProfileExportRequestedPayload,
+    states: profile_export_state_store.ProfileExportStateStore,
+) -> None:
+    """Close an export the runner gave up on, so the user can request another.
+
+    Runs however the last attempt ended, including a lease that expired or a worker that died, where
+    :func:`run_export` never got to record it. An export that already finished, or whose state has
+    expired, is left as it is.
+
+    Args:
+        payload: Whose profile was to be exported.
+        states: Shared store of the export's state.
+    """
+    state = states.get(payload.user_id)
+    if state is None or state.status not in (_Status.QUEUED, _Status.RUNNING):
+        return
+    states.set_status(payload.user_id, _Status.FAILED, failure=_Failure.PROCESSING_FAILED)
+    logger.error("A profile export was dead-lettered", extra=core_logger.context(user_id=payload.user_id))
+
+
 def get_export_status(
     user_id: int, states: profile_export_state_store.ProfileExportStateStore
 ) -> profile_export_state_store.ProfileExportState:

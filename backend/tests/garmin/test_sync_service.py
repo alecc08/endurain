@@ -5,6 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from jasil.backends.state_memory import MemoryState
+from jasil.events import Event
+from jasil.jobs.registry import JobHandlerRegistry
 
 import core.exceptions as core_exceptions
 import modules.garmin.constants as garmin_constants
@@ -339,32 +341,68 @@ class TestRecentHealth:
         assert publish.call_args.kwargs["source"] == garmin_constants.SYNC_SOURCE_API
 
 
-@pytest.mark.parametrize(("retry_count", "will_retry"), [(1, True), (3, False)])
+def _sync_event(retry_count: int = 1, max_attempts: int | None = 3) -> Event:
+    return Event(
+        event_id="evt-1",
+        event_type=garmin_events.GARMIN_SYNC_REQUESTED,
+        source="test",
+        timestamp="2026-10-31T00:00:00+00:00",
+        payload={"user_id": 1, "kind": "gear"},
+        retry_count=retry_count,
+        max_attempts=max_attempts,
+    )
+
+
+@pytest.mark.parametrize(("retry_count", "will_retry"), [(1, True), (2, True), (3, False)])
 def test_the_durable_handler_asks_for_a_retry_only_while_attempts_remain(states, retry_count, will_retry):
-    event = MagicMock(retry_count=retry_count)
     payload = garmin_events.SyncRequestedPayload(user_id=1, kind=Kind.GEAR)
     with (
-        patch.object(garmin_subscribers.platform_event_versioning, "parse_payload", return_value=payload),
         patch.object(garmin_subscribers.garmin_sync_state_store, "GarminSyncStateStore", return_value=states),
         patch.object(garmin_subscribers.platform_runtime, "get_state"),
-        patch.object(garmin_subscribers.core_config, "settings", MagicMock(JOBS_MAX_ATTEMPTS=3)),
         patch.object(garmin_subscribers.garmin_sync_service, "run_sync") as run,
     ):
-        garmin_subscribers.process_sync_requested_for_event(event)
+        garmin_subscribers.process_sync_requested_for_event(_sync_event(retry_count))
 
     run.assert_called_once_with(payload, states, will_retry=will_retry)
 
 
-def test_the_durable_handler_runs_the_event_payload(states):
-    event = MagicMock(retry_count=0)
-    payload = garmin_events.SyncRequestedPayload(user_id=1, kind=Kind.GEAR)
-    with (
-        patch.object(garmin_subscribers.platform_event_versioning, "parse_payload", return_value=payload),
-        patch.object(garmin_subscribers.garmin_sync_state_store, "GarminSyncStateStore", return_value=states),
-        patch.object(garmin_subscribers.platform_runtime, "get_state"),
-        patch.object(garmin_subscribers.core_config, "settings", MagicMock(JOBS_MAX_ATTEMPTS=3)),
-        patch.object(garmin_subscribers.garmin_sync_service, "run_sync") as run,
-    ):
-        garmin_subscribers.process_sync_requested_for_event(event)
+class TestDeadLetter:
+    """A sync the runner gave up on ends as failed, however its last attempt ended."""
 
-    run.assert_called_once_with(payload, states, will_retry=True)
+    @pytest.fixture
+    def stores(self, states):
+        with (
+            patch.object(garmin_subscribers.garmin_sync_state_store, "GarminSyncStateStore", return_value=states),
+            patch.object(garmin_subscribers.platform_runtime, "get_state"),
+        ):
+            yield states
+
+    @pytest.mark.parametrize("status", [Status.QUEUED, Status.RUNNING])
+    def test_a_pending_sync_is_failed_and_its_claim_released(self, stores, status):
+        stores.begin(1, Kind.GEAR)
+        stores.set_status(1, Kind.GEAR, status)
+
+        garmin_subscribers.on_sync_requested_dead_letter(_sync_event(3), "lease expired")
+
+        assert stores.get(1, Kind.GEAR).status == Status.FAILED
+        assert stores.begin(1, Kind.GEAR) is True
+
+    def test_a_sync_that_already_finished_is_left_alone(self, stores):
+        stores.begin(1, Kind.GEAR)
+        stores.set_status(1, Kind.GEAR, Status.COMPLETED)
+
+        garmin_subscribers.on_sync_requested_dead_letter(_sync_event(3), None)
+
+        assert stores.get(1, Kind.GEAR).status == Status.COMPLETED
+
+    def test_an_expired_state_is_not_resurrected(self, stores):
+        garmin_subscribers.on_sync_requested_dead_letter(_sync_event(3), None)
+
+        assert stores.get(1, Kind.GEAR) is None
+
+    def test_the_handler_is_registered_with_the_callback(self):
+        registry = JobHandlerRegistry()
+
+        garmin_subscribers.register_durable_handlers(registry)
+
+        assert registry.dead_letter_subscriber_ids() == {garmin_subscribers.SYNC_REQUESTED_SUBSCRIBER_ID}

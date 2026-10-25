@@ -235,3 +235,29 @@ class TestDiscardStagedExport:
         storage.delete.side_effect = OSError("down")
 
         job_service.discard_staged_export(7, storage)
+
+
+class TestCloseDeadLetteredExport:
+    @pytest.mark.parametrize("status", [_Status.QUEUED, _Status.RUNNING])
+    def test_a_pending_export_is_failed_and_its_claim_released(self, states, status):
+        states.begin(1)
+        states.set_status(1, status)
+
+        job_service.close_dead_lettered_export(_payload(1), states)
+
+        assert states.get(1).status == _Status.FAILED
+        assert states.get(1).failure == _Failure.PROCESSING_FAILED
+        assert states.begin(1) is True
+
+    def test_an_export_that_already_finished_keeps_its_outcome(self, states):
+        states.begin(1)
+        states.set_status(1, _Status.COMPLETED)
+
+        job_service.close_dead_lettered_export(_payload(1), states)
+
+        assert states.get(1).status == _Status.COMPLETED
+
+    def test_an_expired_state_is_not_resurrected(self, states):
+        job_service.close_dead_lettered_export(_payload(1), states)
+
+        assert states.get(1) is None

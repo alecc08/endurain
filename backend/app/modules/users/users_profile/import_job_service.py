@@ -115,6 +115,34 @@ def fail_unstarted_import(
     _discard_staged(payload.staged_key, storage)
 
 
+def close_dead_lettered_import(
+    payload: profile_events.ProfileImportRequestedPayload,
+    states: profile_import_state_store.ProfileImportStateStore,
+    storage: platform_providers.StorageProvider,
+) -> None:
+    """Close an import the runner gave up on, so the user can start another.
+
+    Runs however the last attempt ended, including a lease that expired or a worker that died, where
+    :func:`run_import` never got to record it. A pending import fails with the reason its state
+    implies: one that died while writing files left some of them behind. An import that already
+    finished keeps its outcome, and the staged archive is removed either way.
+
+    Args:
+        payload: Which archive was to be imported and for whom.
+        states: Shared store of the import's state.
+        storage: The platform storage provider.
+    """
+    state = states.get(payload.user_id)
+    if state is not None and state.status in (_Status.QUEUED, _Status.RUNNING, _Status.WRITING_FILES):
+        failure = _Failure.FILES_INCOMPLETE if state.status == _Status.WRITING_FILES else _Failure.PROCESSING_FAILED
+        states.set_status(payload.user_id, _Status.FAILED, failure=failure)
+        logger.error(
+            "A profile import was dead-lettered",
+            extra=core_logger.context(user_id=payload.user_id, failure=failure),
+        )
+    _discard_staged(payload.staged_key, storage)
+
+
 def get_import_status(
     user_id: int, states: profile_import_state_store.ProfileImportStateStore
 ) -> profile_import_state_store.ProfileImportState:

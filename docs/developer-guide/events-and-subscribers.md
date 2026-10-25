@@ -57,6 +57,33 @@ Rules for the handler:
 - **Parse the payload with `parse_payload`.** A payload from another build is upgraded or refused loudly.
 - Never assume the work finished before the response was sent.
 
+## Close what a dead-lettered job leaves open
+
+A subscriber that drives state a user is waiting on (an import, a sync, an ingestion job) must leave
+it in a terminal state when the runner gives up, or the user sees "processing" until a TTL expires.
+Two things jasil provides make that exact:
+
+- `event.is_last_attempt` says whether a failure now dead-letters the job. A handler that chooses
+  between "stay queued for the retry" and "fail" reads it; it never compares `retry_count` with a
+  setting. It is `False` outside a durable delivery, so the in-process path passes `will_retry=False`
+  itself.
+- `registry.register(..., on_dead_letter=callback)` runs `callback(event, error)` once the job has
+  become `dead_letter`, whether its last attempt raised, its lease expired or its worker died. The
+  handler's own `except` never sees the last two. The callback is at-least-once, so it must be
+  idempotent: close the state only if it is still pending, and leave a finished or newer one alone.
+
+```python
+registry.register(
+    garmin_events.GARMIN_SYNC_REQUESTED,
+    SYNC_REQUESTED_SUBSCRIBER_ID,
+    process_sync_requested_for_event,
+    on_dead_letter=on_sync_requested_dead_letter,
+)
+```
+
+A subscriber with nothing a user waits on (a thumbnail, a notification) needs neither: its
+reconciliation net repairs what was lost.
+
 ## Register it
 
 In `subscriber_registry.py`, register the bus subscriber and, for durable mode, a handler keyed by a stable subscriber id:

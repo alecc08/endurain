@@ -12,7 +12,6 @@ from jasil.jobs.registry import JobHandlerRegistry
 from jasil.providers import EventBusProvider
 from jasil.subscribers import best_effort
 
-import core.config as core_config
 import core.local_pool as core_local_pool
 import core.logger as core_logger
 import modules.users.users_profile.events as profile_events
@@ -55,7 +54,7 @@ def process_import_requested_for_event(event: Event) -> None:
     Args:
         event: The ``users.profile_import_requested`` event.
     """
-    user_id = _import(event, will_retry=event.retry_count < core_config.settings.JOBS_MAX_ATTEMPTS)
+    user_id = _import(event, will_retry=not event.is_last_attempt)
     logger.debug("Profile import job finished", extra=core_logger.context(user_id=user_id))
 
 
@@ -108,7 +107,7 @@ def process_export_requested_for_event(event: Event) -> None:
     Args:
         event: The ``users.profile_export_requested`` event.
     """
-    user_id = _export(event, will_retry=event.retry_count < core_config.settings.JOBS_MAX_ATTEMPTS)
+    user_id = _export(event, will_retry=not event.is_last_attempt)
     logger.debug("Profile export job finished", extra=core_logger.context(user_id=user_id))
 
 
@@ -133,6 +132,34 @@ def run_export_requested_on_bus(event: Event) -> None:
 on_export_requested = best_effort(run_export_requested_on_bus)
 
 
+def on_import_requested_dead_letter(event: Event, error: str | None) -> None:
+    """Close an import the runner gave up on.
+
+    Args:
+        event: The ``users.profile_import_requested`` event.
+        error: What the runner recorded, which the import's own log line already carries.
+    """
+    payload = platform_event_versioning.parse_payload(profile_events.ProfileImportRequestedPayload, event)
+    platform = platform_runtime.get_active_platform()
+    profile_import_job_service.close_dead_lettered_import(
+        payload, profile_import_state_store.ProfileImportStateStore(platform.state), platform.storage
+    )
+
+
+def on_export_requested_dead_letter(event: Event, error: str | None) -> None:
+    """Close an export the runner gave up on.
+
+    Args:
+        event: The ``users.profile_export_requested`` event.
+        error: What the runner recorded, which the export's own log line already carries.
+    """
+    payload = platform_event_versioning.parse_payload(profile_events.ProfileExportRequestedPayload, event)
+    platform = platform_runtime.get_active_platform()
+    profile_export_job_service.close_dead_lettered_export(
+        payload, profile_export_state_store.ProfileExportStateStore(platform.state)
+    )
+
+
 def register_bus_subscribers(events: EventBusProvider) -> None:
     """Register the import and export consumers on the running bus.
 
@@ -153,9 +180,11 @@ def register_durable_handlers(registry: JobHandlerRegistry) -> None:
         profile_events.USERS_PROFILE_IMPORT_REQUESTED,
         IMPORT_REQUESTED_SUBSCRIBER_ID,
         process_import_requested_for_event,
+        on_dead_letter=on_import_requested_dead_letter,
     )
     registry.register(
         profile_events.USERS_PROFILE_EXPORT_REQUESTED,
         EXPORT_REQUESTED_SUBSCRIBER_ID,
         process_export_requested_for_event,
+        on_dead_letter=on_export_requested_dead_letter,
     )

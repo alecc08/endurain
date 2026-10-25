@@ -338,3 +338,36 @@ class TestDiscardStagedImports:
         storage.list_keys.side_effect = OSError("down")
 
         job_service.discard_staged_imports(7, storage)
+
+
+class TestCloseDeadLetteredImport:
+    @pytest.mark.parametrize(
+        ("status", "failure"),
+        [
+            (_Status.QUEUED, _Failure.PROCESSING_FAILED),
+            (_Status.RUNNING, _Failure.PROCESSING_FAILED),
+            (_Status.WRITING_FILES, _Failure.FILES_INCOMPLETE),
+        ],
+    )
+    def test_a_pending_import_is_failed_with_the_reason_its_state_implies(self, states, storage, status, failure):
+        states.begin(1)
+        states.set_status(1, status)
+
+        job_service.close_dead_lettered_import(_payload(1), states, storage)
+
+        assert states.get(1).status == _Status.FAILED
+        assert states.get(1).failure == failure
+        assert states.begin(1) is True
+
+    def test_the_staged_archive_is_always_removed(self, states, storage):
+        job_service.close_dead_lettered_import(_payload(1), states, storage)
+
+        storage.delete.assert_called_once_with(_AREA, "1/abc.zip")
+
+    def test_an_import_that_already_finished_keeps_its_outcome(self, states, storage):
+        states.begin(1)
+        states.set_status(1, _Status.COMPLETED)
+
+        job_service.close_dead_lettered_import(_payload(1), states, storage)
+
+        assert states.get(1).status == _Status.COMPLETED

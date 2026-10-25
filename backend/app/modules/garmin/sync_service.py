@@ -116,6 +116,29 @@ def run_sync(
     states.set_status(payload.user_id, payload.kind, outcome)
 
 
+def close_dead_lettered_sync(
+    payload: garmin_events.SyncRequestedPayload, states: garmin_sync_state_store.GarminSyncStateStore
+) -> None:
+    """Close a sync the runner gave up on, so the user can queue another.
+
+    Runs however the last attempt ended, including a lease that expired or a worker that died, where
+    :func:`run_sync` never got to record it. A sync that already finished, or whose state has expired,
+    is left as it is, and so is a newer sync that took its claim.
+
+    Args:
+        payload: What was to be synced.
+        states: Shared store of the sync's state.
+    """
+    state = states.get(payload.user_id, payload.kind)
+    if state is None or state.status not in (garmin_constants.SyncStatus.QUEUED, garmin_constants.SyncStatus.RUNNING):
+        return
+    states.set_status(payload.user_id, payload.kind, garmin_constants.SyncStatus.FAILED)
+    logger.error(
+        "A Garmin Connect sync was dead-lettered",
+        extra=core_logger.context(user_id=payload.user_id, kind=payload.kind),
+    )
+
+
 def _queue(
     user_id: int,
     kind: garmin_constants.SyncKind,
