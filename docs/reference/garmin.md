@@ -9,30 +9,23 @@ Garmin Connect linking and sync. See [Integrations](../features/integrations.md)
     options:
       docstring_style: google
 
-## Activity sync
+## Account linking
 
-::: backend.app.modules.garmin.activity_utils
+::: backend.app.modules.garmin.link_service
     handler: python
     options:
       docstring_style: google
 
-## Gear sync
+## Sync
 
-::: backend.app.modules.garmin.gear_utils
+::: backend.app.modules.garmin.sync_service
     handler: python
     options:
       docstring_style: google
 
-## Health sync
+## Session and account
 
-::: backend.app.modules.garmin.health_utils
-    handler: python
-    options:
-      docstring_style: google
-
-## Utilities
-
-::: backend.app.modules.garmin.utils
+::: backend.app.modules.garmin.service
     handler: python
     options:
       docstring_style: google

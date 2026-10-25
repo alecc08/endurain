@@ -682,6 +682,8 @@ one pattern. Recorded here so a review does not reopen them.
   activities, gears, gear components, server and mail settings, every health table, and the users, privacy
   settings, default gear and goals tables. A full-record write is a `PUT` and a partial one a `PATCH`; a
   singleton the caller owns (`/health/targets`, `/profile`, `/profile/privacy`, `/profile/default_gear`) names no id.
+  How each layer takes part, and the checklist for a new resource, is in
+  [Versioned writes](optimistic-concurrency.md).
 - **Request parameters.** A path or query parameter's constraint is part of its type
   (`core.dependencies.PositiveId`, an enum for a closed set, `AfterValidator` for a
   vocabulary lookup), so FastAPI validates it, answers with the validation problem
