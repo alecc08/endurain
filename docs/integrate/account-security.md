@@ -171,6 +171,9 @@ X-Client-Type: web|mobile
 ```
 
 ### Error Handling
+
+The bodies below show only the `detail` member. Every error is an RFC 9457 problem document with more members (`type`, `title`, `status`, `request_id`); see [Errors, concurrency and rate limits](errors-and-limits.md).
+
 - **No pending MFA login**: HTTP 400 Bad Request
 
 ```json

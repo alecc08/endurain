@@ -19,7 +19,7 @@ Endurain supports integration with other apps through a comprehensive OAuth 2.1 
 - The backend generates an `access_token` valid for 15 minutes (default) and a `refresh_token` valid for 7 days (default).
 - The `access_token` is used for authorization; the `refresh_token` is used to obtain new access tokens.
 - A `csrf_token` is generated for CSRF protection on state-changing requests.
-- Token expiration times can be customized via environment variables (see Configuration section below).
+- Token expiration times are set by an administrator in Settings > Server > Sessions (see [Configuration, scopes and best practices](auth-reference.md#configuration) for the deprecated environment variables).
 
 ### OAuth 2.1 Token Storage Model (Hybrid Approach)
 
