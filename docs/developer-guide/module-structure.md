@@ -820,8 +820,8 @@ limitations rather than half-done:
   still imports another module's `utils`/`manager` directly.
 - **Profile import runs its own event loop.** `users_profile.import_job_service` calls `asyncio.run` on the
   worker's thread, because `ImportService` awaits file validation. The importer shares no loop-bound
-  resource, so this is safe, but the importer should become synchronous once the validation helpers have
-  synchronous forms.
+  resource, so this is safe, but the importer should become synchronous now that `core.file_uploads` has
+  synchronous forms of the validation helpers.
 - **Legacy model scan.** Converted modules declare their ORM module in
   `model_registry.py` and use scalar foreign keys with database `ON DELETE`
   behaviour. `app/model_registry.py` keeps a filesystem scan only for modules not
