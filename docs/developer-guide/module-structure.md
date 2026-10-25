@@ -819,9 +819,10 @@ limitations rather than half-done:
   `followers.events` (`TestLayerRules`). `strava`
   still imports another module's `utils`/`manager` directly.
 - **Profile import runs its own event loop.** `users_profile.import_job_service` calls `asyncio.run` on the
-  worker's thread, because `ImportService` awaits file validation. The importer shares no loop-bound
-  resource, so this is safe, but the importer should become synchronous now that `core.file_uploads` has
-  synchronous forms of the validation helpers.
+  worker's thread, because `ImportService` awaits `core.file_uploads.validate_bytes` for each activity file,
+  media file and user image (storage writes already run through `asyncio.to_thread`). The importer shares no
+  loop-bound resource, so this is safe, but the importer should become synchronous once `core.file_uploads`
+  has a synchronous form of `validate_bytes`; the other validators already have one.
 - **Legacy model scan.** Converted modules declare their ORM module in
   `model_registry.py` and use scalar foreign keys with database `ON DELETE`
   behaviour. `app/model_registry.py` keeps a filesystem scan only for modules not
