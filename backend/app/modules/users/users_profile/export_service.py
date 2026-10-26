@@ -16,7 +16,7 @@ import os
 import tempfile
 import time
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import IO, Any
 
 import jasil.providers as platform_providers
@@ -161,14 +161,18 @@ class ExportService:
             ),
         )
 
-    def collect_user_activities_data(self, zipf: zipfile.ZipFile) -> list[Any]:
-        """Collect and write user activities to ZIP.
+    def collect_user_activities_data(self, zipf: zipfile.ZipFile) -> list[int]:
+        """Stream the user's activities into the ZIP and write their components.
+
+        The activities are read a page at a time and written as they arrive, so no more than one page
+        is held, however many the user has. A page that cannot be read fails the export: skipping it
+        would leave activities out of an archive that still reports itself complete.
 
         Args:
             zipf: ZipFile instance to write to.
 
         Returns:
-            List of collected activity objects.
+            The ids of the exported activities, which the later steps read their files and media by.
 
         Raises:
             DatabaseConnectionError: If database error occurs.
@@ -181,71 +185,21 @@ class ExportService:
                 self.performance_config.max_memory_mb,
                 self.performance_config.enable_memory_monitoring,
             )
+            logger.debug(
+                "Starting batched activity collection",
+                extra=core_logger.context(batch_size=self.performance_config.batch_size),
+            )
 
-            # Get activities in batches using pagination
-            all_activities = []
-            offset = 0
-            batch_size = self.performance_config.batch_size
-
-            logger.debug("Starting batched activity collection", extra=core_logger.context(batch_size=batch_size))
-
-            while True:
-                # Get a batch of activities
-                try:
-                    batch_activities = self._get_activities_batch(offset, batch_size)
-                except (SQLAlchemyError, MemoryAllocationError):
-                    # Persistent failures must propagate so the outer handlers can
-                    # return an explicit error rather than silently skipping pages.
-                    raise
-                except Exception as err:
-                    logger.warning(
-                        "Failed to get an activities batch, skipping",
-                        exc_info=err,
-                        extra=core_logger.context(offset=offset),
-                    )
-                    offset += batch_size
-                    continue
-
-                if not batch_activities:
-                    break
-
-                all_activities.extend(batch_activities)
-                offset += batch_size
-
-                # Check memory usage after each batch
-                users_profile_utils.check_memory_usage(
-                    f"activity batch {offset // batch_size}",
-                    self.performance_config.max_memory_mb,
-                    self.performance_config.enable_memory_monitoring,
-                )
-
-                logger.debug(
-                    "Collected a batch of activities",
-                    extra=core_logger.context(batch_count=len(batch_activities), total_count=len(all_activities)),
-                )
-
-            if not all_activities:
-                logger.debug("No activities found for the user", extra=core_logger.context(user_id=self.user_id))
-                # Write empty activities file
-                users_profile_utils.write_json_to_zip(zipf, "data/activities.json", [], self.counts)
-                self._collect_and_write_global_activity_components(zipf)
-                return []
-
-            # Write activities to ZIP immediately
-            activities_dicts = [users_profile_utils.sqlalchemy_obj_to_dict(a) for a in all_activities]
-            users_profile_utils.write_json_to_zip(zipf, "data/activities.json", activities_dicts, self.counts)
-
-            logger.debug("Written activities to ZIP", extra=core_logger.context(count=len(activities_dicts)))
-
-            # Filter out activities with None IDs and collect valid IDs
-            activity_ids = [activity.id for activity in all_activities if activity.id is not None]
+            activity_ids: list[int] = []
+            users_profile_utils.write_json_array_to_zip(
+                zipf, "data/activities.json", self._iter_activity_dicts(activity_ids), self.counts
+            )
+            logger.debug("Written activities to ZIP", extra=core_logger.context(count=len(activity_ids)))
 
             if not activity_ids:
-                logger.warning(
-                    "No valid activity IDs found for the user", extra=core_logger.context(user_id=self.user_id)
-                )
+                logger.debug("No activities found for the user", extra=core_logger.context(user_id=self.user_id))
             else:
-                self._collect_and_write_activity_components(zipf, activity_ids, all_activities)
+                self._collect_and_write_activity_components(zipf, activity_ids)
 
             self._collect_and_write_global_activity_components(zipf)
 
@@ -258,7 +212,32 @@ class ExportService:
         except Exception as err:
             raise DataCollectionError(f"Failed to collect activity data: {err}") from err
 
-        return all_activities
+        return activity_ids
+
+    def _iter_activity_dicts(self, activity_ids: list[int]) -> Iterator[list[dict[str, Any]]]:
+        """Yield the user's activities a page at a time as dicts, recording each activity's id.
+
+        Args:
+            activity_ids: Receives the id of every activity read, so the caller keeps ids and not rows.
+
+        Yields:
+            One page of serialized activities.
+        """
+        batch_size = self.performance_config.batch_size
+        offset = 0
+        while batch := self._get_activities_batch(offset, batch_size):
+            offset += batch_size
+            activity_ids.extend(activity.id for activity in batch if activity.id is not None)
+            users_profile_utils.check_memory_usage(
+                f"activity batch {offset // batch_size}",
+                self.performance_config.max_memory_mb,
+                self.performance_config.enable_memory_monitoring,
+            )
+            logger.debug(
+                "Collected a batch of activities",
+                extra=core_logger.context(batch_count=len(batch), total_count=len(activity_ids)),
+            )
+            yield [users_profile_utils.sqlalchemy_obj_to_dict(activity) for activity in batch]
 
     def _collect_and_write_global_activity_components(self, zipf: zipfile.ZipFile) -> None:
         """Collect and write file-global activity package records once."""
@@ -295,17 +274,15 @@ class ExportService:
         self,
         zipf: zipfile.ZipFile,
         activity_ids: list[int],
-        user_activities: list[Any],
     ) -> None:
         """Collect and write activity components to ZIP.
 
         Args:
             zipf: ZipFile instance to write to.
             activity_ids: List of activity IDs to process.
-            user_activities: List of activity objects.
         """
-        if not activity_ids or not user_activities:
-            logger.warning("No activity IDs or activities provided for component collection")
+        if not activity_ids:
+            logger.warning("No activity IDs provided for component collection")
             return
         # Process activity IDs in smaller batches to reduce memory usage
         batch_size = self.performance_config.batch_size // 2  # Smaller batches for components
@@ -319,7 +296,6 @@ class ExportService:
                     contributor.archive_path,
                     contributor.export,
                     activity_ids,
-                    user_activities,
                     batch_size,
                 )
             else:
@@ -330,7 +306,6 @@ class ExportService:
                     contributor.archive_path,
                     contributor.export,
                     activity_ids,
-                    user_activities,
                     batch_size,
                 )
 
@@ -341,7 +316,6 @@ class ExportService:
         base_filename: str,
         crud_func,
         activity_ids: list[int],
-        user_activities: list[Any],
         batch_size: int,
     ) -> None:
         """Collect and write large components in chunks.
@@ -352,7 +326,6 @@ class ExportService:
             base_filename: Base name for output files.
             crud_func: CRUD function to fetch data.
             activity_ids: List of activity IDs.
-            user_activities: List of activity objects.
             batch_size: Number of items per batch.
         """
         chunk_buffer = []
@@ -452,7 +425,6 @@ class ExportService:
         base_filename: str,
         crud_func,
         activity_ids: list[int],
-        user_activities: list[Any],
         batch_size: int,
     ) -> None:
         """Collect and write small components in single file.
@@ -463,7 +435,6 @@ class ExportService:
             base_filename: Name for output file.
             crud_func: CRUD function to fetch data.
             activity_ids: List of activity IDs.
-            user_activities: List of activity objects.
             batch_size: Number of items per batch.
         """
         all_component_data = []
@@ -699,7 +670,7 @@ class ExportService:
         except SQLAlchemyError as err:
             raise DatabaseConnectionError(f"Failed to collect user settings: {err}") from err
 
-    def add_activity_files_to_zip(self, zipf: zipfile.ZipFile, user_activities: list[Any]):
+    def add_activity_files_to_zip(self, zipf: zipfile.ZipFile, activity_ids: list[int]):
         """Add activity files to ZIP archive.
 
         Reads each activity's retained source file through the platform
@@ -708,15 +679,15 @@ class ExportService:
 
         Args:
             zipf: ZipFile instance to write to.
-            user_activities: List of activity objects.
+            activity_ids: IDs of the exported activities.
         """
-        if not user_activities:
+        if not activity_ids:
             return
 
         storage = self.storage
-        for activity in user_activities:
+        for activity_id in activity_ids:
             try:
-                stored = activity_file_storage_integration.get_activity_file(activity.id, storage)
+                stored = activity_file_storage_integration.get_activity_file(activity_id, storage)
                 if stored is None:
                     continue
                 key, data = stored
@@ -726,18 +697,18 @@ class ExportService:
                 raise
             except OSError as err:
                 logger.warning(
-                    "Failed to add activity file", exc_info=err, extra=core_logger.context(activity_id=activity.id)
+                    "Failed to add activity file", exc_info=err, extra=core_logger.context(activity_id=activity_id)
                 )
                 continue
             except Exception as err:
                 logger.warning(
                     "Unexpected error adding activity file",
                     exc_info=err,
-                    extra=core_logger.context(activity_id=activity.id),
+                    extra=core_logger.context(activity_id=activity_id),
                 )
                 continue
 
-    def add_activity_media_to_zip(self, zipf: zipfile.ZipFile, user_activities: list[Any]):
+    def add_activity_media_to_zip(self, zipf: zipfile.ZipFile, activity_ids: list[int]):
         """Add activity media files to ZIP archive.
 
         Read through the platform ``StorageProvider`` rather than by walking a
@@ -748,21 +719,21 @@ class ExportService:
 
         Args:
             zipf: ZipFile instance to write to.
-            user_activities: List of activity objects.
+            activity_ids: IDs of the exported activities.
         """
-        if not user_activities:
+        if not activity_ids:
             return
 
         storage = self.storage
 
-        for activity in user_activities:
+        for activity_id in activity_ids:
             try:
-                blobs = activity_media_integration.list_media_blobs(activity.id, storage)
+                blobs = activity_media_integration.list_media_blobs(activity_id, storage)
             except Exception as err:
                 logger.warning(
                     "Failed to list media for activity",
                     exc_info=err,
-                    extra=core_logger.context(activity_id=activity.id),
+                    extra=core_logger.context(activity_id=activity_id),
                 )
                 continue
 
@@ -889,7 +860,7 @@ class ExportService:
 
                 # Database phase first: activities, gear, health and settings.
                 users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                user_activities = self.collect_user_activities_data(zipf)
+                activity_ids = self.collect_user_activities_data(zipf)
 
                 users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
                 self.collect_gear_data(zipf)
@@ -911,10 +882,10 @@ class ExportService:
                 self.db.commit()
 
                 users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                self.add_activity_files_to_zip(zipf, user_activities)
+                self.add_activity_files_to_zip(zipf, activity_ids)
 
                 users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
-                self.add_activity_media_to_zip(zipf, user_activities)
+                self.add_activity_media_to_zip(zipf, activity_ids)
 
                 users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
                 self.add_user_images_to_zip(zipf)

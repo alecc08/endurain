@@ -107,51 +107,98 @@ class TestExportServiceInit:
         assert service.performance_config.batch_size == 10
 
 
-class TestExportServiceCollectUserActivities:
-    def test_no_activities_writes_empty(self) -> None:
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
-            mock_db = MagicMock(spec=Session)
-            service = profile_export_service.ExportService(user_id=1, storage=MagicMock(), db=mock_db)
-            service.performance_config.batch_size = 10
-            service.performance_config.enable_memory_monitoring = False
+def _service(batch_size: int = 10) -> profile_export_service.ExportService:
+    service = profile_export_service.ExportService(user_id=1, storage=MagicMock(), db=MagicMock(spec=Session))
+    service.performance_config.batch_size = batch_size
+    service.performance_config.enable_memory_monitoring = False
+    return service
 
-            with (
-                patch.object(service, "_get_activities_batch", return_value=[]),
-                patch.object(profile_utils, "write_json_to_zip") as mock_write,
-                patch.object(service, "_collect_and_write_global_activity_components") as collect_global,
-            ):
-                result = service.collect_user_activities_data(z)
+
+def _read_json(buf: io.BytesIO, name: str):
+    buf.seek(0)
+    with zipfile.ZipFile(buf) as archive:
+        return json.loads(archive.read(name))
+
+
+class TestExportServiceCollectUserActivities:
+    def test_no_activities_writes_an_empty_array(self) -> None:
+        buf = io.BytesIO()
+        service = _service()
+        with (
+            zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z,
+            patch.object(service, "_get_activities_batch", return_value=[]),
+            patch.object(service, "_collect_and_write_global_activity_components") as collect_global,
+        ):
+            result = service.collect_user_activities_data(z)
 
         assert result == []
-        mock_write.assert_called_once()
+        assert _read_json(buf, "data/activities.json") == []
+        assert service.counts["activities"] == 0
         collect_global.assert_called_once_with(z)
 
-    def test_collects_activities_in_batches(self) -> None:
+    def test_activities_are_streamed_in_batches_and_only_their_ids_are_kept(self) -> None:
         buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
-            mock_db = MagicMock(spec=Session)
-            service = profile_export_service.ExportService(user_id=1, storage=MagicMock(), db=mock_db)
-            service.performance_config.batch_size = 2
-            service.performance_config.enable_memory_monitoring = False
+        service = _service(batch_size=2)
+        batches = [[_make_activity_mock(1), _make_activity_mock(2)], [_make_activity_mock(3)], []]
 
-            batch1 = [_make_activity_mock(1), _make_activity_mock(2)]
-            batch2 = [_make_activity_mock(3)]
+        with (
+            zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z,
+            patch.object(service, "_get_activities_batch", side_effect=batches),
+            patch.object(profile_utils, "sqlalchemy_obj_to_dict", side_effect=lambda a: {"id": a.id}),
+            patch.object(service, "_collect_and_write_activity_components") as components,
+            patch.object(service, "_collect_and_write_global_activity_components"),
+        ):
+            result = service.collect_user_activities_data(z)
 
-            with (
-                patch.object(
-                    service,
-                    "_get_activities_batch",
-                    side_effect=[batch1, batch2, []],
-                ),
-                patch.object(profile_utils, "write_json_to_zip"),
-                patch.object(service, "_collect_and_write_activity_components"),
-            ):
-                result = service.collect_user_activities_data(z)
+        assert result == [1, 2, 3]
+        assert _read_json(buf, "data/activities.json") == [{"id": 1}, {"id": 2}, {"id": 3}]
+        assert service.counts["activities"] == 3
+        components.assert_called_once_with(z, [1, 2, 3])
 
-        assert len(result) == 3
-        assert result[0].id == 1
-        assert result[2].id == 3
+    def test_the_archive_entry_keeps_the_format_an_in_memory_dump_wrote(self) -> None:
+        buf = io.BytesIO()
+        service = _service(batch_size=2)
+        rows = [{"id": 1, "name": "Corrida ☀"}, {"id": 2, "name": "x"}, {"id": 3, "name": "y"}]
+        batches = [[_make_activity_mock(1), _make_activity_mock(2)], [_make_activity_mock(3)], []]
+
+        with (
+            zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z,
+            patch.object(service, "_get_activities_batch", side_effect=batches),
+            patch.object(profile_utils, "sqlalchemy_obj_to_dict", side_effect=lambda a: rows[a.id - 1]),
+            patch.object(service, "_collect_and_write_activity_components"),
+            patch.object(service, "_collect_and_write_global_activity_components"),
+        ):
+            service.collect_user_activities_data(z)
+
+        buf.seek(0)
+        with zipfile.ZipFile(buf) as archive:
+            raw = archive.read("data/activities.json").decode()
+        assert raw == json.dumps(rows, default=str, ensure_ascii=False)
+
+    def test_a_batch_is_written_before_the_next_one_is_read(self) -> None:
+        """Activities are never all held at once: each batch is converted as it arrives."""
+        buf = io.BytesIO()
+        service = _service(batch_size=1)
+        order: list[str] = []
+
+        def fetch(offset, limit):
+            order.append(f"fetch{offset}")
+            return [_make_activity_mock(offset + 1)] if offset < 2 else []
+
+        def convert(activity):
+            order.append(f"convert{activity.id}")
+            return {"id": activity.id}
+
+        with (
+            zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z,
+            patch.object(service, "_get_activities_batch", side_effect=fetch),
+            patch.object(profile_utils, "sqlalchemy_obj_to_dict", side_effect=convert),
+            patch.object(service, "_collect_and_write_activity_components"),
+            patch.object(service, "_collect_and_write_global_activity_components"),
+        ):
+            service.collect_user_activities_data(z)
+
+        assert order == ["fetch0", "convert1", "fetch1", "convert2", "fetch2"]
 
     def test_get_activities_batch_calls_crud_and_returns_activities(self) -> None:
         mock_db = MagicMock(spec=Session)
@@ -180,38 +227,24 @@ class TestExportServiceCollectUserActivities:
         ):
             service._get_activities_batch(0, 10)
 
-    def test_get_activities_batch_loop_continues_on_failure(self) -> None:
+    def test_a_failing_batch_fails_the_export_instead_of_dropping_its_activities(self) -> None:
         buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
-            mock_db = MagicMock(spec=Session)
-            service = profile_export_service.ExportService(user_id=1, storage=MagicMock(), db=mock_db)
-            service.performance_config.batch_size = 2
-            service.performance_config.enable_memory_monitoring = False
+        service = _service(batch_size=2)
 
-            batch1 = [_make_activity_mock(1), _make_activity_mock(2)]
-            # First call returns batch1, second raises, third returns batch2
-            batch2 = [_make_activity_mock(3)]
-            calls = [batch1, Exception("transient error"), batch2, []]
+        with (
+            zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z,
+            patch.object(
+                service,
+                "_get_activities_batch",
+                side_effect=[[_make_activity_mock(1), _make_activity_mock(2)], ValueError("bad page")],
+            ),
+            patch.object(profile_utils, "sqlalchemy_obj_to_dict", side_effect=lambda a: {"id": a.id}),
+            patch.object(service, "_collect_and_write_activity_components") as components,
+            pytest.raises(DataCollectionError, match="bad page"),
+        ):
+            service.collect_user_activities_data(z)
 
-            call_results = []
-
-            def side_effect(*args, **kwargs):
-                val = calls.pop(0)
-                if isinstance(val, Exception):
-                    raise val
-                call_results.append(val)
-                return val
-
-            with (
-                patch.object(service, "_get_activities_batch", side_effect=side_effect),
-                patch.object(profile_utils, "write_json_to_zip"),
-                patch.object(service, "_collect_and_write_activity_components"),
-            ):
-                result = service.collect_user_activities_data(z)
-
-        assert len(result) == 3
-        assert result[0].id == 1
-        assert result[2].id == 3
+        components.assert_not_called()
 
     def test_activities_batch_sqlalchemy_error_propagates(self) -> None:
         """SQLAlchemyError from a batch propagates as DatabaseConnectionError."""
@@ -228,7 +261,6 @@ class TestExportServiceCollectUserActivities:
                     "_get_activities_batch",
                     side_effect=SQLAlchemyError("db down"),
                 ),
-                patch.object(profile_utils, "write_json_to_zip"),
                 patch.object(service, "_collect_and_write_activity_components"),
                 pytest.raises(DatabaseConnectionError),
             ):
@@ -249,7 +281,6 @@ class TestExportServiceCollectUserActivities:
                     "_get_activities_batch",
                     side_effect=MemoryAllocationError("oom"),
                 ),
-                patch.object(profile_utils, "write_json_to_zip"),
                 patch.object(service, "_collect_and_write_activity_components"),
                 pytest.raises(MemoryAllocationError),
             ):
@@ -268,7 +299,7 @@ class TestExportServiceCollectUserActivities:
 
             with (
                 patch.object(service, "_get_activities_batch", side_effect=[[activity], []]),
-                patch.object(profile_utils, "write_json_to_zip"),
+                patch.object(profile_utils, "sqlalchemy_obj_to_dict", return_value={"id": 1}),
                 patch.object(
                     service,
                     "_collect_and_write_activity_components",
@@ -605,7 +636,7 @@ class TestExportServiceActivityFiles:
                 "modules.users.users_profile.export_service.activity_file_storage_integration.get_activity_file",
                 return_value=None,
             ):
-                service.add_activity_files_to_zip(z, [_make_activity_mock(1)])
+                service.add_activity_files_to_zip(z, [1])
 
         assert service.counts.get("activity_files", 0) == 0
 
@@ -628,7 +659,7 @@ class TestExportServiceActivityFiles:
                 "modules.users.users_profile.export_service.activity_file_storage_integration.get_activity_file",
                 return_value=("1.gpx", b"<gpx></gpx>"),
             ):
-                service.add_activity_files_to_zip(z, [_make_activity_mock(1)])
+                service.add_activity_files_to_zip(z, [1])
 
         assert service.counts["activity_files"] == 1
         buf.seek(0)
@@ -645,7 +676,7 @@ class TestExportServiceActivityMedia:
 
             with _storage_of(service) as runtime:
                 runtime.get_active_platform.return_value.storage.list_keys.return_value = []
-                service.add_activity_media_to_zip(z, [_make_activity_mock(1)])
+                service.add_activity_media_to_zip(z, [1])
 
         assert service.counts["media"] == 0
 
@@ -668,7 +699,7 @@ class TestExportServiceActivityMedia:
                 storage = runtime.get_active_platform.return_value.storage
                 storage.list_keys.return_value = ["1_image.jpg"]
                 storage.get.return_value = b"image-bytes"
-                service.add_activity_media_to_zip(z, [_make_activity_mock(1)])
+                service.add_activity_media_to_zip(z, [1])
 
         assert service.counts["media"] == 1
         with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as written:
@@ -684,7 +715,7 @@ class TestExportServiceActivityMedia:
                 storage = runtime.get_active_platform.return_value.storage
                 storage.list_keys.return_value = ["1_image.jpg"]
                 storage.get.return_value = None
-                service.add_activity_media_to_zip(z, [_make_activity_mock(1)])
+                service.add_activity_media_to_zip(z, [1])
 
         assert service.counts["media"] == 0
 
@@ -847,12 +878,15 @@ class TestExportServiceCollectUserActivitiesEdgeCases:
 
             with (
                 patch.object(service, "_get_activities_batch", side_effect=[[activity], []]),
-                patch.object(profile_utils, "write_json_to_zip"),
-                patch.object(service, "_collect_and_write_activity_components"),
+                patch.object(profile_utils, "sqlalchemy_obj_to_dict", return_value={"id": None}),
+                patch.object(service, "_collect_and_write_activity_components") as components,
             ):
                 result = service.collect_user_activities_data(z)
 
-        assert len(result) == 1
+        # The row is still exported; with no usable id there is nothing to attach components or files to.
+        assert result == []
+        assert service.counts["activities"] == 1
+        components.assert_not_called()
 
     def test_exercise_titles_collected_successfully(self) -> None:
         """Exercise titles collected and written (lines 228-234)."""
@@ -930,14 +964,13 @@ class TestExportServiceCollectActivityComponents:
             service.performance_config.enable_memory_monitoring = False
 
             activity_ids = [1]
-            user_activities = [_make_activity_mock(1)]
 
             with (
                 patch.object(service, "_collect_and_write_component_chunked") as mock_chunked,
                 patch.object(service, "_collect_and_write_component_simple") as mock_simple,
                 patch.object(profile_utils, "write_json_to_zip"),
             ):
-                service._collect_and_write_activity_components(z, activity_ids, user_activities)
+                service._collect_and_write_activity_components(z, activity_ids)
 
             assert mock_chunked.call_count == 3
             assert mock_simple.call_count == 2
@@ -969,7 +1002,6 @@ class TestExportServiceCollectComponentChunkedDetailed:
                     "data/activity_laps.json",
                     lambda ids, db: [MagicMock()] * len(ids) if ids else [],
                     [1, 2],
-                    [_make_activity_mock(1), _make_activity_mock(2)],
                     5,
                 )
 
@@ -993,7 +1025,6 @@ class TestExportServiceCollectComponentChunkedDetailed:
                     "data/activity_laps.json",
                     lambda ids, db: [MagicMock()] * (len(ids) + 1) if ids else [],
                     [1, 2],
-                    [_make_activity_mock(1), _make_activity_mock(2)],
                     2,
                 )
 
@@ -1015,7 +1046,6 @@ class TestExportServiceCollectComponentChunkedDetailed:
                     "data/activity_laps.json",
                     lambda ids, db: [MagicMock()] * len(ids) if ids else [],
                     [1, 2, 3],
-                    [_make_activity_mock(1), _make_activity_mock(2), _make_activity_mock(3)],
                     2,
                 )
 
@@ -1036,7 +1066,6 @@ class TestExportServiceCollectComponentChunkedDetailed:
                     "data/activity_laps.json",
                     lambda ids, db: [],
                     [1, 2],
-                    [_make_activity_mock(1), _make_activity_mock(2)],
                     5,
                 )
 
@@ -1062,7 +1091,6 @@ class TestExportServiceCollectComponentChunkedDetailed:
                     "data/activity_laps.json",
                     lambda ids, db: (_ for _ in ()).throw(Exception("fail")),
                     [1, 2, 3],
-                    [_make_activity_mock(1), _make_activity_mock(2), _make_activity_mock(3)],
                     2,
                 )
 
@@ -1086,7 +1114,6 @@ class TestExportServiceCollectComponentChunkedDetailed:
                     "data/activity_laps.json",
                     lambda ids, db: [],
                     [1, 2],
-                    [_make_activity_mock(1), _make_activity_mock(2)],
                     5,
                 )
 
@@ -1119,7 +1146,6 @@ class TestExportServiceCollectComponentSimpleDetailed:
                     "data/activity_workout_steps.json",
                     mock_crud,
                     [1],
-                    [_make_activity_mock(1)],
                     5,
                 )
 
@@ -1147,7 +1173,6 @@ class TestExportServiceCollectComponentSimpleDetailed:
                     "data/activity_workout_steps.json",
                     lambda ids, db: (_ for _ in ()).throw(Exception("fail")),
                     [1, 2, 3],
-                    [_make_activity_mock(1), _make_activity_mock(2), _make_activity_mock(3)],
                     2,
                 )
 
@@ -1174,7 +1199,6 @@ class TestExportServiceCollectComponentSimpleDetailed:
                     "data/activity_workout_steps.json",
                     lambda ids, db: [],
                     [1],
-                    [_make_activity_mock(1)],
                     5,
                 )
 
@@ -1196,7 +1220,6 @@ class TestExportServiceCollectComponentSimpleDetailed:
                     "data/activity_workout_steps.json",
                     lambda ids, db: [],
                     [1],
-                    [_make_activity_mock(1)],
                     5,
                 )
 
@@ -1298,7 +1321,7 @@ class TestExportServiceActivityFilesEdgeCases:
                 "modules.users.users_profile.export_service.activity_file_storage_integration.get_activity_file",
                 return_value=None,
             ):
-                service.add_activity_files_to_zip(z, [_make_activity_mock(1)])
+                service.add_activity_files_to_zip(z, [1])
 
         assert service.counts.get("activity_files", 0) == 0
 
@@ -1313,7 +1336,7 @@ class TestExportServiceActivityFilesEdgeCases:
                 "modules.users.users_profile.export_service.activity_file_storage_integration.get_activity_file",
                 side_effect=[OSError("read failed"), ("2.gpx", b"<gpx></gpx>")],
             ):
-                service.add_activity_files_to_zip(z, [_make_activity_mock(1), _make_activity_mock(2)])
+                service.add_activity_files_to_zip(z, [1, 2])
 
         # The first activity errored and was skipped; the second still exported.
         assert service.counts["activity_files"] == 1
@@ -1335,7 +1358,7 @@ class TestExportServiceActivityMediaEdgeCases:
                 storage = runtime.get_active_platform.return_value.storage
                 storage.list_keys.return_value = ["1_bad.jpg", "1_good.jpg"]
                 storage.get.side_effect = [OSError("backend down"), b"good-bytes"]
-                service.add_activity_media_to_zip(z, [_make_activity_mock(1)])
+                service.add_activity_media_to_zip(z, [1])
 
         assert service.counts.get("media", 0) == 1
 
@@ -1349,7 +1372,7 @@ class TestExportServiceActivityMediaEdgeCases:
             with _storage_of(service) as runtime:
                 storage = runtime.get_active_platform.return_value.storage
                 storage.list_keys.side_effect = OSError("permission denied")
-                service.add_activity_media_to_zip(z, [_make_activity_mock(1)])
+                service.add_activity_media_to_zip(z, [1])
 
         assert service.counts.get("media", 0) == 0
 

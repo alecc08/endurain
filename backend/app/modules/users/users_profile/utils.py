@@ -10,6 +10,7 @@ This module provides helper functions for:
 import json
 import time
 import zipfile
+from collections.abc import Iterable, Sequence
 from typing import Any, TypeVar
 
 import psutil
@@ -126,6 +127,40 @@ def write_json_to_zip(
         filename,
         json.dumps(data, default=str, ensure_ascii=ensure_ascii),
     )
+
+
+def write_json_array_to_zip(
+    zipf: zipfile.ZipFile,
+    filename: str,
+    batches: Iterable[Sequence[Any]],
+    counts: dict[str, int],
+    ensure_ascii: bool = False,
+) -> None:
+    """Stream a JSON array into a ZIP entry one batch at a time and update counts.
+
+    The entry is byte-for-byte what :func:`write_json_to_zip` writes for the same items, but only one
+    batch is held at a time. Nothing else may be written to the archive while ``batches`` is consumed,
+    since the entry is open until it is exhausted.
+
+    Args:
+        zipf: ZipFile instance to write to.
+        filename: Name of file in ZIP.
+        batches: Batches of JSON-serializable items, read lazily.
+        counts: Dictionary to update with the item count.
+        ensure_ascii: Whether to ensure ASCII encoding.
+    """
+    total = 0
+    # Its size is unknown until it is written, so zip64 is allowed up front.
+    with zipf.open(filename, "w", force_zip64=True) as entry:
+        entry.write(b"[")
+        for batch in batches:
+            for item in batch:
+                if total:
+                    entry.write(b", ")
+                entry.write(json.dumps(item, default=str, ensure_ascii=ensure_ascii).encode("utf-8"))
+                total += 1
+        entry.write(b"]")
+    counts[filename.split("/")[-1].replace(".json", "")] = total
 
 
 def check_timeout(
