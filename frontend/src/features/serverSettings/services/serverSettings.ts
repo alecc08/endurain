@@ -16,6 +16,7 @@ import type {
 } from '@/features/serverSettings/types'
 
 import { apiFetch } from '@/services/http'
+import { ifMatchHeaders } from '@/services/ifMatch'
 
 /**
  * Maps a raw `ServerSettingsAdminRead` payload to the clean {@link ServerSettings}
@@ -177,7 +178,7 @@ export async function updateServerSettings(
 ): Promise<ServerSettings> {
   const dto = await apiFetch<ServerSettingsDto>('/server-settings', {
     method: 'PUT',
-    headers: { 'If-Match': `"${settings.version}"` },
+    headers: ifMatchHeaders(settings.version),
     body: JSON.stringify(toServerSettingsWire(settings)),
   })
   return mapServerSettings(dto)
@@ -231,15 +232,11 @@ export async function fetchEmailStatus(signal?: AbortSignal): Promise<EmailStatu
  * `server_settings:write`). The send is synchronous, so a failure surfaces the
  * mail server's failure category and SMTP status code in the error detail.
  *
- * @returns The confirmation message naming the recipient.
  * @throws {HttpError} `503` when email is not configured, `502` when the mail
  *   server did not accept the message.
  */
-export async function sendTestEmail(): Promise<string> {
-  const result = await apiFetch<{ message: string }>('/server-settings/email/test', {
-    method: 'POST',
-  })
-  return result.message
+export async function sendTestEmail(): Promise<void> {
+  await apiFetch<void>('/server-settings/email/test', { method: 'POST', responseType: 'void' })
 }
 
 /**
@@ -307,7 +304,7 @@ export async function fetchMailSettings(signal?: AbortSignal): Promise<MailSetti
 export async function updateMailSettings(settings: MailSettingsUpdate): Promise<MailSettings> {
   const dto = await apiFetch<MailSettingsDto>('/server-settings/email/settings', {
     method: 'PUT',
-    headers: { 'If-Match': `"${settings.version}"` },
+    headers: ifMatchHeaders(settings.version),
     body: JSON.stringify(toMailSettingsWire(settings)),
   })
   return mapMailSettings(dto)

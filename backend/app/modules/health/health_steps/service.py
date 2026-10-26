@@ -9,10 +9,9 @@ from datetime import date as date_type
 
 from sqlalchemy.orm import Session
 
-import core.config as core_config
-import core.exceptions as core_exceptions
+import core.etag as core_etag
 import core.logger as core_logger
-import core.timezone as core_timezone
+import core.pagination as core_pagination
 import modules.health.computation as health_computation
 import modules.health.constants as health_constants
 import modules.health.health_steps.crud as health_steps_crud
@@ -41,11 +40,12 @@ def _since(user_id: int, interval: health_constants.Interval | None, db: Session
 def list_health_steps(
     user_id: int,
     db: Session,
-    page_number: int | None = None,
-    num_records: int | None = None,
+    *,
+    page_number: int = 1,
+    num_records: int = core_pagination.DEFAULT_NUM_RECORDS,
     interval: health_constants.Interval | None = None,
-) -> health_steps_schema.HealthStepsListResponse:
-    """List a user's steps records with their total.
+) -> core_pagination.Page[health_steps_schema.HealthStepsRead]:
+    """List one page of a user's steps records with their total.
 
     Args:
         user_id: The records' owner.
@@ -55,38 +55,39 @@ def list_health_steps(
         interval: Return only records within this interval.
 
     Returns:
-        The page of records and the total.
+        The page of records; ``total`` counts every record within the interval.
     """
     since = _since(user_id, interval, db)
-    return health_steps_schema.HealthStepsListResponse(
-        total=health_steps_crud.get_health_steps_number_by_user_id(user_id, db, since),
-        num_records=num_records,
-        page_number=page_number,
-        records=health_steps_crud.get_health_steps_by_user_id(user_id, db, page_number, num_records, since),
-    )
+    total = health_steps_crud.get_health_steps_number_by_user_id(user_id, db, since)
+    records = health_steps_crud.get_health_steps_by_user_id(user_id, db, page_number, num_records, since)
+    return core_pagination.Page.build(records, total, page_number, num_records)
 
 
 def stage_edit_health_steps(
-    user_id: int, health_steps: health_steps_schema.HealthStepsUpdate, db: Session
+    user_id: int,
+    health_steps_id: int,
+    health_steps: health_steps_schema.HealthStepsUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_steps_schema.HealthStepsRead:
-    """Stage an update to a steps record after checking it names the caller.
+    """Stage an update to a steps record.
 
     Args:
         user_id: The record's owner.
-        health_steps: The record with its changes.
+        health_steps_id: The record to change.
+        health_steps: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    if health_steps.user_id != user_id:
-        logger.warning("Refused to edit a steps record of another user", extra=core_logger.context(user_id=user_id))
-        raise core_exceptions.PermissionDeniedError("Cannot edit health steps for another user.")
-    return health_steps_crud.edit_health_steps(user_id, health_steps, db)
+    return health_steps_crud.edit_health_steps(user_id, health_steps_id, health_steps, db, if_match=if_match)
 
 
 def stage_upsert_health_steps(
@@ -109,69 +110,76 @@ def stage_upsert_health_steps(
         ConflictError: If the date's record cannot be created or found.
     """
     if health_steps.date is None:
-        # The request carries no timezone, so the fallback is the server's configured zone.
-        health_steps.date = core_timezone.today_in(core_config.settings.TZ)
+        # The request carries no timezone, so the day is the athlete's own.
+        health_steps.date = users_integration.local_today(user_id, db)
 
-    existing = health_steps_crud.get_health_steps_by_date_and_user_id(user_id, health_steps.date.isoformat(), db)
-    if existing is None:
-        try:
-            with db.begin_nested():
-                return health_steps_crud.create_health_steps(user_id, health_steps, db)
-        except core_exceptions.ConflictError:
-            existing = health_steps_crud.get_health_steps_by_date_and_user_id(
-                user_id, health_steps.date.isoformat(), db
-            )
-            if existing is None:
-                raise
-    return stage_edit_health_steps(
-        user_id,
-        health_steps_schema.HealthStepsUpdate(id=existing.id, user_id=user_id, **health_steps.model_dump()),
-        db,
+    day = health_steps.date.isoformat()
+    update = health_steps_schema.HealthStepsUpdate(**health_steps.model_dump())
+    return health_computation.upsert_for_day(
+        find=lambda: health_steps_crud.get_health_steps_by_date_and_user_id(user_id, day, db),
+        create=lambda: health_steps_crud.create_health_steps(user_id, health_steps, db),
+        edit=lambda record_id: stage_edit_health_steps(user_id, record_id, update, db, if_match="*"),
+        db=db,
     )
 
 
 def create_health_steps(
     user_id: int, health_steps: health_steps_schema.HealthStepsCreate, db: Session
 ) -> health_steps_schema.HealthStepsRead:
-    """Create a steps record, or update the user's record for the same date, and commit.
+    """Create a steps record for the user's day, and commit.
 
     Args:
         user_id: The record's owner.
-        health_steps: The record to store.
+        health_steps: The record to create; a missing date is the user's local today.
         db: Database session.
 
     Returns:
-        The stored record.
+        The created record.
 
     Raises:
-        ConflictError: If the date's record cannot be created or found.
+        ConflictError: If the user already has a record for that date.
     """
-    stored = stage_upsert_health_steps(user_id, health_steps, db)
+    if health_steps.date is None:
+        health_steps.date = users_integration.local_today(user_id, db)
+    created = health_steps_crud.create_health_steps(user_id, health_steps, db)
     db.commit()
-    logger.info("Stored a steps record", extra=core_logger.context(user_id=user_id))
-    return stored
+    logger.debug("Stored a steps record", extra=core_logger.context(user_id=user_id))
+    return created
 
 
 def edit_health_steps(
-    user_id: int, health_steps: health_steps_schema.HealthStepsUpdate, db: Session
+    user_id: int,
+    health_steps_id: int,
+    health_steps: health_steps_schema.HealthStepsUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_steps_schema.HealthStepsRead:
     """Update a steps record and commit.
 
     Args:
         user_id: The record's owner.
-        health_steps: The record with its changes.
+        health_steps_id: The record to change.
+        health_steps: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    updated = stage_edit_health_steps(user_id, health_steps, db)
-    db.commit()
-    logger.info("Edited a steps record", extra=core_logger.context(user_id=user_id))
+    with core_etag.refuse_stale_write(
+        db,
+        "steps record",
+        lambda: health_steps_crud.health_steps_exists(health_steps_id, user_id, db),
+        "Steps record not found",
+    ):
+        updated = stage_edit_health_steps(user_id, health_steps_id, health_steps, db, if_match=if_match)
+        db.commit()
+    logger.debug("Edited a steps record", extra=core_logger.context(user_id=user_id))
     return updated
 
 
@@ -188,4 +196,4 @@ def delete_health_steps(user_id: int, health_steps_id: int, db: Session) -> None
     """
     health_steps_crud.delete_health_steps(user_id, health_steps_id, db)
     db.commit()
-    logger.info("Deleted a steps record", extra=core_logger.context(user_id=user_id, health_steps_id=health_steps_id))
+    logger.debug("Deleted a steps record", extra=core_logger.context(user_id=user_id, health_steps_id=health_steps_id))

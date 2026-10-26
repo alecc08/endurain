@@ -80,15 +80,14 @@ def matches_if_none_match(header: str | None, version: int) -> bool:
     return _WILDCARD in tags or str(version) in tags
 
 
-def require_if_match(header: str | None, current_version: int | None, resource: str) -> None:
+def require_if_match(header: str, current_version: int | None, resource: str) -> None:
     """Enforce an ``If-Match`` precondition against the stored version.
 
-    A missing header is allowed: requiring it would break every existing client
-    at once. Sending a *stale* one is the case worth rejecting, because that is a
-    client that believes it is editing something it is not.
+    The header is required by the route (see ``core.dependencies.IfMatch``), so a stale one is
+    the case left to reject: a client that believes it is editing something it is not.
 
     Args:
-        header: The request's ``If-Match`` value, if any.
+        header: The request's ``If-Match`` value.
         current_version: The stored row's version.
         resource: What the row is, named in the refusal message.
 
@@ -99,8 +98,6 @@ def require_if_match(header: str | None, current_version: int | None, resource: 
         PreconditionFailedError: When the header names a version that is not the
             current one.
     """
-    if header is None:
-        return
     accepted = parse_if_match(header)
     if _WILDCARD in accepted:
         return

@@ -37,9 +37,8 @@ import modules.auth.oauth_state.crud as oauth_state_crud
 import modules.auth.oauth_state.models as oauth_state_models
 import modules.server_settings.integration_service as server_settings_integration
 import modules.server_settings.schema as server_settings_schema
-import modules.users.users.crud as users_crud
+import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
-import modules.users.users.utils as users_utils
 
 logger = core_logger.get_logger(__name__)
 
@@ -1069,7 +1068,7 @@ class IdentityProviderService:
                 # LINK MODE: Associate IdP with existing authenticated user
 
                 # Verify user exists
-                user = users_crud.get_user_by_id(link_user_id, db)
+                user = users_integration.get_user(link_user_id, db)
                 if not user:
                     raise HTTPException(
                         status_code=status.HTTP_404_NOT_FOUND,
@@ -1455,7 +1454,7 @@ class IdentityProviderService:
             # Fetch the linked user through the CRUD layer so we work with
             # the UsersRead schema rather than reaching into the ORM
             # relationship (link.users) and crossing the module boundary.
-            user = users_crud.get_user_by_id(link.user_id, db)
+            user = users_integration.get_user(link.user_id, db)
             if user is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -1483,7 +1482,7 @@ class IdentityProviderService:
         email = mapped_data.get("email")
 
         if email:
-            user = users_crud.get_user_by_email(email, db)
+            user = users_integration.get_user_by_email(email, db)
             if user:
                 if not self._is_email_verified(userinfo):
                     logger.warning(
@@ -1560,7 +1559,7 @@ class IdentityProviderService:
         # Ensure username is unique
         base_username = mapped_data.get("username", f"user_{subject[:8]}")
         username = base_username
-        while users_crud.get_user_by_username(username, db):
+        while users_integration.get_user_by_username(username, db):
             # secrets.randbelow is a CSPRNG; generate a 6-digit suffix
             username = f"{base_username}_{secrets_module.randbelow(900000) + 100000}"
 
@@ -1592,16 +1591,13 @@ class IdentityProviderService:
             password_hasher=password_hasher,
         )
 
-        created_user = users_crud.create_signup_user(
+        created_user = users_integration.create_signup_user(
             user_signup,
             server_settings,
             identity_service,
             db,
             persist_credential=False,
         )
-
-        # Create default data for the user
-        users_utils.create_user_default_data(created_user.id, identity_service, db)
 
         # Create the IdP link
         auth_identity_links_crud.create_user_identity_provider(created_user.id, idp.id, subject, db)
@@ -1644,7 +1640,7 @@ class IdentityProviderService:
 
         # Check email - verify not already in use
         if "email" in mapped_data and mapped_data["email"] != user.email:
-            existing_user = users_crud.get_user_by_email(mapped_data["email"], db)
+            existing_user = users_integration.get_user_by_email(mapped_data["email"], db)
             if existing_user and existing_user.id != user.id:
                 logger.warning(
                     f"Cannot sync email from IdP {idp.name}: {mapped_data['email']} already in use by another user"
@@ -1667,7 +1663,10 @@ class IdentityProviderService:
         if updates:
             logger.info(f"Applying updates to user {user.username}: {updates}", extra=core_logger.context(console=True))
             updated_user = user.model_copy(update=updates)
-            user = await users_crud.edit_user(user.id, updated_user, db)
+            user = users_integration.edit_user(
+                user.id, users_schema.UsersEdit.from_read(updated_user), db, if_match="*"
+            )
+            db.commit()
 
         return user
 

@@ -946,7 +946,6 @@
       "invalidType": "Scegli un archivio .zip.",
       "exportSuccess": "Esportazione pronta, il download dovrebbe iniziare a breve",
       "exportError": "Impossibile esportare i tuoi dati. Riprova.",
-      "importSuccess": "Dati importati",
       "importError": "Impossibile importare l'archivio. Controlla il file e riprova."
     }
   }

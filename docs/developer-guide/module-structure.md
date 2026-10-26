@@ -486,6 +486,12 @@ process and across replicas alike. Tests do not enforce them yet, so review does
   on a small background pool (`app/module_registry.py`); on Redis, on the consumer thread. Either
   way a subscriber opens its own session, assumes it may run twice or not at all, and relies on
   its reconciliation net. Nothing may assume a subscriber finished before the response.
+- **In-process work is bounded.** Without a durable worker, background work runs on a `core.local_pool.BoundedPool`,
+  which counts running and queued jobs and refuses one past its bound. A request that would start background work
+  (`users_profile` import and export, `activity_ingestion`, Garmin Connect link and sync) refuses up front with 503,
+  before it stages anything or creates a job row, and closes the job as failed if the pool fills after that. A
+  best-effort subscriber past the bound is dropped and left to its reconciliation net. Long jobs get a pool of
+  their own, never the subscriber pool.
 - **Threads inherit context.** Work handed to a pool runs under `contextvars.copy_context()`, so
   the request id reaches its logs and events.
 - **Every storage area has an owner, a lifecycle and an erasure path.** The domain that writes an
@@ -593,10 +599,17 @@ one pattern. Recorded here so a review does not reopen them.
 
 **Settled (follow these in a new module):**
 
-- **Event publishers.** `publish_<fact>(<ids>, db, *, commit, <extras>)`: `db` and
-  `commit` are required and `commit` is keyword-only. A publisher with an optional
-  `commit` has a best-effort path that lets a caller publish outside the
-  transaction, which is what `publish_committing` exists to prevent.
+- **Event publishers.** Two shapes, chosen by who owns the commit at the call:
+  - `publish_<fact>(<ids>, db, *, commit, <extras>)` wraps `jasil.publisher.publish_committing`, for a
+    service that arranges the write and ends the transaction itself. `db` and `commit` are required and
+    `commit` is keyword-only, so there is no path that publishes outside the transaction.
+  - `publish_<fact>(<ids>, db, <extras>)` wraps `publish_on_commit`, for a write that is staged and committed
+    by someone else: the activity ingestion pipeline, and the surface writes that stage and leave the commit to
+    their caller (`clear_activities_gear`, `delete_all_activities_for_user`). It takes no `commit`, and the event
+    follows whichever commit ends the transaction.
+
+  A publisher takes `source` as a parameter when more than one route raises the same fact
+  (`publish_activity_created`, `publish_follower_request_removed`) and states it as a constant otherwise.
 - **Import aliases.** An alias is the *containing package* plus the role, so the
   name says whose file it is and which side of the visibility rule a call site is
   on. A peer's surface is `<package>_integration` (`activity_laps_integration`,
@@ -630,6 +643,12 @@ one pattern. Recorded here so a review does not reopen them.
   (what a file "used to" do, a ratio of removed duplication, a refactor's
   motivation) belongs in the commit message or PR, where it can be dated and
   corrected, not in the source, where it goes stale.
+- **Log levels.** ERROR is a failure nobody asked for, with its traceback. WARNING is a refusal or a
+  degraded path the operator may need to see (a denied caller, a dropped subscriber, a provider that
+  refused); an expected user mistake such as a wrong password carries no traceback. INFO is a state
+  change someone would audit: an account created, approved, deleted or linked, settings changed, a
+  background job queued or finished. DEBUG is everything routine: a record stored, edited or deleted,
+  a follow, a re-sync that skips what it already holds, and the progress inside a job.
 - **Logging.** A service function that refuses a caller (`PermissionDeniedError`)
   or ends a transaction logs in the same function; a service that only delegates
   has no such function and logs nothing. A file with no role logs only when it is
@@ -655,6 +674,16 @@ one pattern. Recorded here so a review does not reopen them.
 - **Access decisions are service.** A helper that decides what a caller may see and
   logs the refusal (`activity/child_collection_service.py`) is named
   `<thing>_service.py`, even when other services consume it.
+- **Versioned writes.** A resource that two clients can edit carries a `version` column
+  (`version_id_col`), returned as the `ETag` of its reads and writes. Its `PATCH`/`PUT` takes
+  `core.dependencies.IfMatch`, so a request without the header is refused with 428 and a stale one with 412
+  (`core.etag.require_if_match`). `If-Match: *` is the explicit "overwrite whatever is there", used by data
+  migrations and by a surface that is a system writer (the profile importer, the Garmin sync). Today that covers
+  activities, gears, gear components, server and mail settings, every health table, and the users, privacy
+  settings, default gear and goals tables. A full-record write is a `PUT` and a partial one a `PATCH`; a
+  singleton the caller owns (`/health/targets`, `/profile`, `/profile/privacy`, `/profile/default_gear`) names no id.
+  How each layer takes part, and the checklist for a new resource, is in
+  [Versioned writes](optimistic-concurrency.md).
 - **Request parameters.** A path or query parameter's constraint is part of its type
   (`core.dependencies.PositiveId`, an enum for a closed set, `AfterValidator` for a
   vocabulary lookup), so FastAPI validates it, answers with the validation problem
@@ -738,22 +767,22 @@ the conformance test's allowlist.
 
 ### Pilot status and what the next conversion owns
 
-`activities`, `followers`, `garmin`, `gears`, `health`, `notifications`, `server_settings` and `websocket` are the only modules converted so far. The
+`activities`, `followers`, `garmin`, `gears`, `health`, `notifications`, `server_settings`, `users` and `websocket` are the only modules converted so far. The
 remaining modules are listed in `UNCONVERTED_MODULES` so that
 `TestModuleInventory` keeps them visible rather than silently exempt, and are
 converted one at a time with the `convert-module` skill. The items below need
 changes outside the converted modules, so they are recorded here as accepted
 limitations rather than half-done:
 
-- **Top-level cycles.** `users` ⇄ `activities`: profile export/import consumes
-  activities, and activities consumes `users.integration_service`. The planned fix is the
-  contributor pattern the activity children already use: `users_profile`
-  export/import asks each module for its section instead of importing them.
-  `gears` no longer closes a cycle: it sits below activities (`_MUST_NOT_IMPORT`), states the
-  required usage questions in `gears/contributors.py`, and `module_registry.configure_gear_contributors`
-  installs the activities answers. A `layers` contract (core, identity, followers/gears/health,
-  activities, providers) can then state the module-level direction once. The remaining edge that
-  closes a cycle lives in `users`.
+- **Top-level cycles.** `users` ⇄ `activities`: goal progress reads activities, and profile export/import
+  consumes them (the contributor registry is listed in `_LAYER_EXCEPTIONS`), while activities consumes
+  `users.integration_service`. Account deletion no longer closes it: `users` asks for the activities'
+  erasure through `users/contributors.py`, and `module_registry.configure_user_contributors` installs the
+  answer, so the erasure runs in the deletion's own transaction. `gears` no longer closes a cycle either:
+  it sits below activities (`_MUST_NOT_IMPORT`), states the required usage questions in
+  `gears/contributors.py`, and `module_registry.configure_gear_contributors` installs the activities
+  answers. A `layers` contract (core, identity, followers/gears/health, activities, providers) can then
+  state the module-level direction once. The remaining edges that close a cycle live in `users`.
 - **Layer rules for unconverted modules.** `TestLayerRules` covers converted
   modules only. An unconverted module is outside it until converted, and the
   `auth-boundary` contract is the one generic rule over every module:
@@ -765,40 +794,35 @@ limitations rather than half-done:
   separate composition surfaces on purpose: they have different consumers
   (the HTTP app and Alembic), and the legacy model scan keeps the model seam
   distinct until the unconverted modules are gone.
-- **Namespace-level code in `health`.** `health` publishes `constants.py` (the shared `Interval`),
-  `computation.py` (pure date and SQL helpers) and `schema.py` (the shared `HealthListResponse` base),
-  and nothing else. `schema.py` stays because replacing it with `core.pagination.Page` would change
-  the list response every client reads. `health_fasting.crud` and `health_poop.crud` import
+- **Namespace-level code in `health`.** `health` publishes `constants.py` (the shared `Interval`) and
+  `computation.py` (pure date and SQL helpers and `upsert_for_day`, the same-day upsert the weight, steps and sleep services share), and nothing else. `health_fasting.crud` and `health_poop.crud` import
   `computation.local_date_expression` through `_LAYER_EXCEPTIONS`, because day bucketing must be
   written once.
 - **`users` ⇄ `health`.** `health` services read the user's height, timezone and "today" through
   `users.integration_service`, and `users` creates default targets, recalculates BMI and exports and
   imports health records through the `health_targets` and `health_weight` surfaces. Only the
   contributor pattern described under *Top-level cycles* removes the second half.
-- **Missing dates default in `service`.** A health record created without a date is filed under today
-  in the server's configured timezone (`settings.TZ`), because the request carries none. The
-  athlete's own timezone would be correct near local midnight, but changing it is a behaviour change,
-  so it was not made during the conversion.
 - **`auth` naming.** `identity_service.py` and `_internal/` instead of
   `integration_service.py` and the filename vocabulary, as described above.
   The generic boundary rule needs a special case until it is aligned.
 
 - **Persistence layers calling other modules.** Converted modules ask nothing of
   another bounded context below `service` (`TestLayerRules`). The unconverted ones still do,
-  for example `users` and `strava`.
+  for example `strava`.
 - **Persistence ending transactions.** Converted modules stage with `flush()` and
   let `service` (or the job, importer or `migration_service` that owns the unit of
-  work) commit. Unconverted modules (`auth`, `users`, …) are outside
+  work) commit. Unconverted modules (`auth`, `strava`) are outside
   `test_crud_does_not_end_transactions`; `_CRUD_TRANSACTION_DEBT` is empty and is
   where a module being converted lists its files.
 - **Subscribers reaching past a surface.** Followers holds no subscribers; its
   notification handlers live in `modules/notifications` and subscribe to
-  `followers.events` (`TestLayerRules`). `strava` and
-  `users.users_profile` still import another module's `utils`/`manager` directly.
-- **Forwarding surfaces on unconverted peers.** `garmin` reaches `users_integrations` and `users.users`
-  through small `integration_service.py` files that only forward to their `crud`. Those `crud` functions
-  still commit and raise `HTTPException`; the surfaces get their real shape when the owning modules are
-  converted. The `health_*` surfaces already have it: they stage, and `garmin` commits.
+  `followers.events` (`TestLayerRules`). `strava`
+  still imports another module's `utils`/`manager` directly.
+- **Profile import runs its own event loop.** `users_profile.import_job_service` calls `asyncio.run` on the
+  worker's thread, because `ImportService` awaits `core.file_uploads.validate_bytes` for each activity file,
+  media file and user image (storage writes already run through `asyncio.to_thread`). The importer shares no
+  loop-bound resource, so this is safe, but the importer should become synchronous once `core.file_uploads`
+  has a synchronous form of `validate_bytes`; the other validators already have one.
 - **Legacy model scan.** Converted modules declare their ORM module in
   `model_registry.py` and use scalar foreign keys with database `ON DELETE`
   behaviour. `app/model_registry.py` keeps a filesystem scan only for modules not

@@ -1,8 +1,9 @@
 """FastAPI router for health targets endpoints."""
 
-from fastapi import APIRouter, Request, Security, status
+from fastapi import APIRouter, Request, Response, Security, status
 
 import core.dependencies as core_dependencies
+import core.etag as core_etag
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
 import modules.health.health_targets.schema as health_targets_schema
@@ -21,6 +22,7 @@ router = APIRouter()
 def read_health_targets_all(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
 ) -> health_targets_schema.HealthTargetsRead | None:
     """Retrieve all health targets for the authenticated user.
 
@@ -31,20 +33,20 @@ def read_health_targets_all(
         token_user_id (int): The user ID extracted from the JWT access token, automatically
             injected by the authentication dependency.
         db (Session): SQLAlchemy database session dependency for executing database queries.
+        response: The response, which carries the targets' ETag.
 
     Returns:
         health_targets_schema.HealthTargetsRead | None: The
             health targets object containing all targets for
             the user, or None if no targets are found.
-
-    Raises:
-        HTTPException: May raise 401 Unauthorized if the token is invalid or expired.
-        HTTPException: May raise 403 Forbidden if the user lacks the required 'health:read' scope.
     """
-    return health_targets_service.get_health_targets(token_user_id, db)
+    targets = health_targets_service.get_health_targets(token_user_id, db)
+    if targets is not None:
+        response.headers["ETag"] = core_etag.format_etag(targets.version)
+    return targets
 
 
-@router.put(
+@router.patch(
     "",
     response_model=health_targets_schema.HealthTargetsRead,
     status_code=status.HTTP_200_OK,
@@ -56,6 +58,8 @@ def update_health_targets(
     health_targets: health_targets_schema.HealthTargetsUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
+    if_match: core_dependencies.IfMatch,
 ) -> health_targets_schema.HealthTargetsRead:
     """Update health targets for the authenticated user.
 
@@ -70,6 +74,8 @@ def update_health_targets(
             extracted from the access token.
         db (Session): Database session dependency for database
             operations.
+        response: The response, which carries the new ETag.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         health_targets_schema.HealthTargetsRead: The updated
@@ -77,8 +83,9 @@ def update_health_targets(
             in the database.
 
     Raises:
-        HTTPException: May raise authentication or authorization errors if the user
-            lacks proper permissions or if the token is invalid.
-        HTTPException: May raise database-related errors if the update operation fails.
+        NotFoundError: If the user has no targets.
+        PreconditionFailedError: If the targets changed since the client read them.
     """
-    return health_targets_service.update_health_targets(health_targets, token_user_id, db)
+    updated = health_targets_service.update_health_targets(health_targets, token_user_id, db, if_match=if_match)
+    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    return updated

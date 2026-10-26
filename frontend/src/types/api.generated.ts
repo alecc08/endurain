@@ -1312,46 +1312,20 @@ export interface paths {
          * Read Health Fasting All Pagination
          * @description Retrieve health fasting records for the authenticated user.
          *
-         *     This endpoint fetches health fasting data with optional pagination and
-         *     filtering. Access is restricted to users with the 'health:read' scope.
+         *     One page of records, newest first, optionally limited to an interval. Access is
+         *     restricted to users with the 'health:read' scope.
          *
          *     Args:
-         *         _validate_pagination_values_on_query: Dependency that validates
-         *             pagination parameters.
-         *         token_user_id: The ID of the authenticated user extracted from the
-         *             access token.
+         *         token_user_id: The ID of the authenticated user extracted from the access token.
          *         db: Database session for executing queries.
-         *         page_number: Optional pagination page number to retrieve specific page
-         *             of results.
-         *         num_records: Optional number of records per page for pagination.
-         *         interval: Optional filter to retrieve records within a specific goal
-         *             interval.
+         *         page: The requested page and page size.
+         *         interval: Optional filter to retrieve records within a specific goal interval.
          *
          *     Returns:
-         *         HealthFastingListResponse: A response object containing:
-         *             - total: Total count of records matching the filter criteria
-         *             - num_records: Number of records returned per page
-         *             - page_number: Current page number
-         *             - records: List of paginated HealthFastingRead objects
-         *     Raises:
-         *         HTTPException: If the user lacks required 'health:read' scope or if
-         *             pagination values are invalid.
+         *         The page of records with the total matching the interval.
          */
         get: operations["read_health_fasting_all_pagination_api_v1_health_fasting_get"];
-        /**
-         * Edit Health Fasting
-         * @description Edit an existing fasting record.
-         *
-         *     Args:
-         *         request: The incoming request, read by the rate limiter.
-         *         health_fasting: Fasting data to update.
-         *         token_user_id: User ID from the access token.
-         *         db: Database session dependency.
-         *
-         *     Returns:
-         *         Updated HealthFastingRead record.
-         */
-        put: operations["edit_health_fasting_api_v1_health_fasting_put"];
+        put?: never;
         /**
          * Create Health Fasting
          * @description Create a new fasting session.
@@ -1366,7 +1340,7 @@ export interface paths {
          *         Created HealthFastingRead record.
          *
          *     Raises:
-         *         InvalidInputError: If user already has an active fast.
+         *         ConflictError: If user already has an active fast.
          */
         post: operations["create_health_fasting_api_v1_health_fasting_post"];
         delete?: never;
@@ -1389,6 +1363,7 @@ export interface paths {
          *     Args:
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
+         *         response: The response, which carries the session's ETag.
          *
          *     Returns:
          *         Active HealthFastingRead if exists, None otherwise.
@@ -1444,6 +1419,7 @@ export interface paths {
          *         health_fasting_id: ID of the fasting record.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
+         *         response: The response, which carries the record's ETag.
          *
          *     Returns:
          *         HealthFastingRead for the specified record.
@@ -1467,7 +1443,23 @@ export interface paths {
         delete: operations["delete_health_fasting_api_v1_health_fasting__health_fasting_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit Health Fasting
+         * @description Edit an existing fasting record.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         health_fasting_id: ID of the record to change.
+         *         health_fasting: Fasting data to update.
+         *         token_user_id: User ID from the access token.
+         *         db: Database session dependency.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
+         *
+         *     Returns:
+         *         Updated HealthFastingRead record.
+         */
+        patch: operations["edit_health_fasting_api_v1_health_fasting__health_fasting_id__patch"];
         trace?: never;
     };
     "/api/v1/health/fasting/{health_fasting_id}/complete": {
@@ -1511,42 +1503,20 @@ export interface paths {
          * Read Health Poop All Pagination
          * @description Retrieve paginated poop records for the user.
          *
+         *     One page of records, newest first, optionally limited to an interval. Access is
+         *     restricted to users with the 'health:read' scope.
+         *
          *     Args:
-         *         _validate_pagination_values_on_query: Dependency that
-         *             validates pagination parameters.
-         *         token_user_id: The ID of the authenticated user
-         *             extracted from the access token.
+         *         token_user_id: The ID of the authenticated user extracted from the access token.
          *         db: Database session for executing queries.
-         *         page_number: Optional pagination page number.
-         *         num_records: Optional number of records per page.
-         *         interval: Optional filter by goal interval.
+         *         page: The requested page and page size.
+         *         interval: Optional filter to retrieve records within a specific goal interval.
          *
          *     Returns:
-         *         HealthPoopListResponse containing total count,
-         *             pagination info, and poop records.
-         *
-         *     Raises:
-         *         HTTPException: If the user lacks required scope or
-         *             pagination values are invalid.
+         *         The page of records with the total matching the interval.
          */
         get: operations["read_health_poop_all_pagination_api_v1_health_poop_get"];
-        /**
-         * Edit Health Poop
-         * @description Edit an existing poop record.
-         *
-         *     Args:
-         *         request: The incoming request, read by the rate limiter.
-         *         health_poop: Poop data to update.
-         *         token_user_id: User ID from the access token.
-         *         db: Database session dependency.
-         *
-         *     Returns:
-         *         Updated HealthPoopRead record.
-         *
-         *     Raises:
-         *         HTTPException: If record not found or unauthorized.
-         */
-        put: operations["edit_health_poop_api_v1_health_poop_put"];
+        put?: never;
         /**
          * Create Health Poop
          * @description Create a new poop record for the user.
@@ -1585,12 +1555,13 @@ export interface paths {
          *         health_poop_id: ID of the poop record.
          *         token_user_id: User ID from the access token.
          *         db: Database session dependency.
+         *         response: The response, which carries the record's ETag.
          *
          *     Returns:
          *         HealthPoopRead for the specified record.
          *
          *     Raises:
-         *         HTTPException: If record not found.
+         *         NotFoundError: If the user has no such record.
          */
         get: operations["read_health_poop_by_id_api_v1_health_poop__health_poop_id__get"];
         put?: never;
@@ -1606,12 +1577,32 @@ export interface paths {
          *         db: Database session dependency.
          *
          *     Raises:
-         *         HTTPException: If record not found or unauthorized.
+         *         NotFoundError: If the user has no such record.
          */
         delete: operations["delete_health_poop_api_v1_health_poop__health_poop_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit Health Poop
+         * @description Edit an existing poop record.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         health_poop_id: ID of the record to change.
+         *         health_poop: Poop data to update.
+         *         token_user_id: User ID from the access token.
+         *         db: Database session dependency.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
+         *
+         *     Returns:
+         *         Updated HealthPoopRead record.
+         *
+         *     Raises:
+         *         NotFoundError: If the user has no such record.
+         *         PreconditionFailedError: If the record changed since the client read it.
+         */
+        patch: operations["edit_health_poop_api_v1_health_poop__health_poop_id__patch"];
         trace?: never;
     };
     "/api/v1/health/sleep": {
@@ -1625,74 +1616,36 @@ export interface paths {
          * Read Health Sleep All Pagination
          * @description Retrieve health sleep records for the authenticated user.
          *
-         *     This endpoint fetches health sleep data with optional pagination and
-         *     filtering. Access is restricted to users with the 'health:read' scope.
+         *     One page of records, newest first, optionally limited to an interval. Access is
+         *     restricted to users with the 'health:read' scope.
          *
          *     Args:
-         *         _validate_pagination_values_on_query: Dependency that validates
-         *             pagination parameters.
-         *         token_user_id: The ID of the authenticated user extracted from the
-         *             access token.
+         *         token_user_id: The ID of the authenticated user extracted from the access token.
          *         db: Database session for executing queries.
-         *         page_number: Optional pagination page number to retrieve specific page
-         *             of results.
-         *         num_records: Optional number of records per page for pagination.
-         *         interval: Optional filter to retrieve records within a specific goal
-         *             interval.
+         *         page: The requested page and page size.
+         *         interval: Optional filter to retrieve records within a specific goal interval.
          *
          *     Returns:
-         *         HealthSleepListResponse: A response object containing:
-         *             - total: Total count of records matching the filter criteria
-         *             - num_records: Number of records returned per page
-         *             - page_number: Current page number
-         *             - records: List of paginated HealthSleepRead objects
-         *     Raises:
-         *         HTTPException: If the user lacks required 'health:read' scope or if
-         *             pagination values are invalid.
+         *         The page of records with the total matching the interval.
          */
         get: operations["read_health_sleep_all_pagination_api_v1_health_sleep_get"];
-        /**
-         * Edit Health Sleep
-         * @description Edit health sleep data for a user.
-         *
-         *     This endpoint updates existing health sleep records in the database for the authenticated user.
-         *     Requires 'health:write' scope for authorization.
-         *
-         *     Args:
-         *         request: The incoming request, read by the rate limiter.
-         *         health_sleep (health_sleep_schema.HealthSleepUpdate): The health sleep data to be updated,
-         *             containing the new values for the health sleep record.
-         *         token_user_id (int): The user ID extracted from the JWT access token, used to identify
-         *             the user making the request.
-         *         db (Session): Database session dependency for performing database operations.
-         *
-         *     Returns:
-         *         health_sleep_schema.HealthSleepRead: The updated health sleep record with the new values
-         *             as stored in the database.
-         *
-         *     Raises:
-         *         HTTPException: May raise various HTTP exceptions if authorization fails, user is not
-         *             found, or database operations fail.
-         */
-        put: operations["edit_health_sleep_api_v1_health_sleep_put"];
+        put?: never;
         /**
          * Create Health Sleep
-         * @description Create or update health sleep data for a user.
+         * @description Create health sleep data for a user.
          *
-         *     This endpoint creates new health sleep data or updates existing data if an entry
-         *     for the specified date already exists. The operation is determined automatically
-         *     based on whether sleep data exists for the given date.
+         *     A date that already has a record is answered with a 409; change it with ``PATCH /{id}``.
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
-         *         health_sleep (health_sleep_schema.HealthSleepCreate): The health sleep data to create
-         *             or update, including the date and sleep duration.
+         *         health_sleep (health_sleep_schema.HealthSleepCreate): The health sleep data to create,
+         *             including the date and sleep duration.
          *         token_user_id (int): The ID of the authenticated user extracted from the
          *             access token.
          *         db (Session): Database session dependency for database operations.
          *
          *     Returns:
-         *         health_sleep_schema.HealthSleepRead: The created or updated health sleep data.
+         *         health_sleep_schema.HealthSleepRead: The created health sleep data.
          */
         post: operations["create_health_sleep_api_v1_health_sleep_post"];
         delete?: never;
@@ -1728,15 +1681,38 @@ export interface paths {
          *         None: This function does not return a value.
          *
          *     Raises:
-         *         HTTPException: May be raised by dependencies if:
-         *             - The access token is invalid or expired
-         *             - The user lacks required 'health:write' scope
-         *             - The health sleep record doesn't exist or doesn't belong to the user
+         *         NotFoundError: If the user has no such record.
          */
         delete: operations["delete_health_sleep_api_v1_health_sleep__health_sleep_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit Health Sleep
+         * @description Edit health sleep data for a user.
+         *
+         *     This endpoint updates existing health sleep records in the database for the authenticated user.
+         *     Requires 'health:write' scope for authorization.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         health_sleep_id: ID of the record to change.
+         *         health_sleep (health_sleep_schema.HealthSleepUpdate): The health sleep data to be updated,
+         *             containing the new values for the health sleep record.
+         *         token_user_id (int): The user ID extracted from the JWT access token, used to identify
+         *             the user making the request.
+         *         db (Session): Database session dependency for performing database operations.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
+         *
+         *     Returns:
+         *         health_sleep_schema.HealthSleepRead: The updated health sleep record with the new values
+         *             as stored in the database.
+         *
+         *     Raises:
+         *         NotFoundError: If the user has no such record.
+         *         PreconditionFailedError: If the record changed since the client read it.
+         */
+        patch: operations["edit_health_sleep_api_v1_health_sleep__health_sleep_id__patch"];
         trace?: never;
     };
     "/api/v1/health/stats/daily": {
@@ -1763,9 +1739,6 @@ export interface paths {
          *             - fasting: Active or most recent fasting session
          *             - water: Today's water intake in milliliters
          *             - poop: Today's bowel movement count
-         *
-         *     Raises:
-         *         HTTPException: If the user lacks required 'health:read' scope.
          */
         get: operations["read_health_daily_stats_api_v1_health_stats_daily_get"];
         put?: never;
@@ -1787,74 +1760,36 @@ export interface paths {
          * Read Health Steps All Pagination
          * @description Retrieve paginated health steps records for the authenticated user.
          *
-         *     This endpoint fetches health steps data with optional pagination and
-         *     filtering. Access is restricted to users with the 'health:read' scope.
+         *     One page of records, newest first, optionally limited to an interval. Access is
+         *     restricted to users with the 'health:read' scope.
          *
          *     Args:
-         *         _validate_pagination_values_on_query: Dependency that validates
-         *             pagination parameters.
-         *         token_user_id: The ID of the authenticated user extracted from the
-         *             access token.
+         *         token_user_id: The ID of the authenticated user extracted from the access token.
          *         db: Database session for executing queries.
-         *         page_number: Optional pagination page number to retrieve specific page
-         *             of results.
-         *         num_records: Optional number of records per page for pagination.
-         *         interval: Optional filter to retrieve records within a specific goal
-         *             interval.
+         *         page: The requested page and page size.
+         *         interval: Optional filter to retrieve records within a specific goal interval.
          *
          *     Returns:
-         *         HealthStepsListResponse: A response object containing:
-         *             - total: Total count of records matching the filter criteria
-         *             - num_records: Number of records returned per page
-         *             - page_number: Current page number
-         *             - records: List of paginated HealthStepsRead objects
-         *     Raises:
-         *         HTTPException: If the user lacks required 'health:read' scope or if
-         *             pagination values are invalid.
+         *         The page of records with the total matching the interval.
          */
         get: operations["read_health_steps_all_pagination_api_v1_health_steps_get"];
-        /**
-         * Edit Health Steps
-         * @description Edit health steps data for a user.
-         *
-         *     This endpoint updates existing health steps records in the database for the authenticated user.
-         *     Requires 'health:write' scope for authorization.
-         *
-         *     Args:
-         *         request: The incoming request, read by the rate limiter.
-         *         health_steps (health_steps_schema.HealthSteps): The health steps data to be updated,
-         *             containing the new values for the health steps record.
-         *         token_user_id (int): The user ID extracted from the JWT access token, used to identify
-         *             the user making the request.
-         *         db (Session): Database session dependency for performing database operations.
-         *
-         *     Returns:
-         *         health_steps_schema.HealthSteps: The updated health steps record with the new values
-         *             as stored in the database.
-         *
-         *     Raises:
-         *         HTTPException: May raise various HTTP exceptions if authorization fails, user is not
-         *             found, or database operations fail.
-         */
-        put: operations["edit_health_steps_api_v1_health_steps_put"];
+        put?: never;
         /**
          * Create Health Steps
-         * @description Create or update health steps data for a user.
+         * @description Create health steps data for a user.
          *
-         *     This endpoint creates new health steps data or updates existing data if an entry
-         *     for the specified date already exists. The operation is determined automatically
-         *     based on whether steps data exists for the given date.
+         *     A date that already has a record is answered with a 409; change it with ``PATCH /{id}``.
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
-         *         health_steps (health_steps_schema.HealthSteps): The health steps data to create
-         *             or update, including the date and step count.
+         *         health_steps (health_steps_schema.HealthSteps): The health steps data to create,
+         *             including the date and step count.
          *         token_user_id (int): The ID of the authenticated user extracted from the
          *             access token.
          *         db (Session): Database session dependency for database operations.
          *
          *     Returns:
-         *         health_steps_schema.HealthSteps: The created or updated health steps data.
+         *         health_steps_schema.HealthSteps: The created health steps data.
          */
         post: operations["create_health_steps_api_v1_health_steps_post"];
         delete?: never;
@@ -1890,15 +1825,38 @@ export interface paths {
          *         None: This function does not return a value.
          *
          *     Raises:
-         *         HTTPException: May be raised by dependencies if:
-         *             - The access token is invalid or expired
-         *             - The user lacks required 'health:write' scope
-         *             - The health steps record doesn't exist or doesn't belong to the user
+         *         NotFoundError: If the user has no such record.
          */
         delete: operations["delete_health_steps_api_v1_health_steps__health_steps_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit Health Steps
+         * @description Edit health steps data for a user.
+         *
+         *     This endpoint updates existing health steps records in the database for the authenticated user.
+         *     Requires 'health:write' scope for authorization.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         health_steps_id: ID of the record to change.
+         *         health_steps (health_steps_schema.HealthSteps): The health steps data to be updated,
+         *             containing the new values for the health steps record.
+         *         token_user_id (int): The user ID extracted from the JWT access token, used to identify
+         *             the user making the request.
+         *         db (Session): Database session dependency for performing database operations.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
+         *
+         *     Returns:
+         *         health_steps_schema.HealthSteps: The updated health steps record with the new values
+         *             as stored in the database.
+         *
+         *     Raises:
+         *         NotFoundError: If the user has no such record.
+         *         PreconditionFailedError: If the record changed since the client read it.
+         */
+        patch: operations["edit_health_steps_api_v1_health_steps__health_steps_id__patch"];
         trace?: never;
     };
     "/api/v1/health/targets": {
@@ -1919,17 +1877,19 @@ export interface paths {
          *         token_user_id (int): The user ID extracted from the JWT access token, automatically
          *             injected by the authentication dependency.
          *         db (Session): SQLAlchemy database session dependency for executing database queries.
+         *         response: The response, which carries the targets' ETag.
          *
          *     Returns:
          *         health_targets_schema.HealthTargetsRead | None: The
          *             health targets object containing all targets for
          *             the user, or None if no targets are found.
-         *
-         *     Raises:
-         *         HTTPException: May raise 401 Unauthorized if the token is invalid or expired.
-         *         HTTPException: May raise 403 Forbidden if the user lacks the required 'health:read' scope.
          */
         get: operations["read_health_targets_all_api_v1_health_targets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         /**
          * Update Health Targets
          * @description Update health targets for the authenticated user.
@@ -1945,6 +1905,8 @@ export interface paths {
          *             extracted from the access token.
          *         db (Session): Database session dependency for database
          *             operations.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         health_targets_schema.HealthTargetsRead: The updated
@@ -1952,16 +1914,10 @@ export interface paths {
          *             in the database.
          *
          *     Raises:
-         *         HTTPException: May raise authentication or authorization errors if the user
-         *             lacks proper permissions or if the token is invalid.
-         *         HTTPException: May raise database-related errors if the update operation fails.
+         *         NotFoundError: If the user has no targets.
+         *         PreconditionFailedError: If the targets changed since the client read them.
          */
-        put: operations["update_health_targets_api_v1_health_targets_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
+        patch: operations["update_health_targets_api_v1_health_targets_patch"];
         trace?: never;
     };
     "/api/v1/health/water": {
@@ -1975,48 +1931,25 @@ export interface paths {
          * Read Health Water All Pagination
          * @description Retrieve paginated water intake records for the user.
          *
+         *     One page of records, newest first, optionally limited to an interval. Access is
+         *     restricted to users with the 'health:read' scope.
+         *
          *     Args:
-         *         _validate_pagination_values_on_query: Dependency that
-         *             validates pagination parameters.
-         *         token_user_id: The ID of the authenticated user
-         *             extracted from the access token.
+         *         token_user_id: The ID of the authenticated user extracted from the access token.
          *         db: Database session for executing queries.
-         *         page_number: Optional pagination page number.
-         *         num_records: Optional number of records per page.
-         *         interval: Optional filter by goal interval.
+         *         page: The requested page and page size.
+         *         interval: Optional filter to retrieve records within a specific goal interval.
          *
          *     Returns:
-         *         HealthWaterListResponse containing total count,
-         *             pagination info, and water intake records.
-         *
-         *     Raises:
-         *         HTTPException: If the user lacks required scope or
-         *             pagination values are invalid.
+         *         The page of records with the total matching the interval.
          */
         get: operations["read_health_water_all_pagination_api_v1_health_water_get"];
-        /**
-         * Edit Health Water
-         * @description Edit an existing water intake record.
-         *
-         *     Args:
-         *         request: The incoming request, read by the rate limiter.
-         *         health_water: Water intake data to update.
-         *         token_user_id: User ID from the access token.
-         *         db: Database session dependency.
-         *
-         *     Returns:
-         *         Updated HealthWaterRead record.
-         *
-         *     Raises:
-         *         HTTPException: If record not found or unauthorized.
-         */
-        put: operations["edit_health_water_api_v1_health_water_put"];
+        put?: never;
         /**
          * Create Health Water
-         * @description Create or update a water intake record for the user.
+         * @description Record a water intake for the user's day.
          *
-         *     If a record already exists for the given date, it will be
-         *     updated instead of creating a duplicate.
+         *     The intake is added to the day's total, so several intakes in one day are all counted.
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
@@ -2025,7 +1958,7 @@ export interface paths {
          *         db: Database session dependency.
          *
          *     Returns:
-         *         Created or updated HealthWaterRead record.
+         *         The day's HealthWaterRead record, with the intake added.
          */
         post: operations["create_health_water_api_v1_health_water_post"];
         delete?: never;
@@ -2055,12 +1988,32 @@ export interface paths {
          *         db: Database session dependency.
          *
          *     Raises:
-         *         HTTPException: If record not found or unauthorized.
+         *         NotFoundError: If the user has no such record.
          */
         delete: operations["delete_health_water_api_v1_health_water__health_water_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit Health Water
+         * @description Edit an existing water intake record.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         health_water_id: ID of the record to change.
+         *         health_water: Water intake data to update.
+         *         token_user_id: User ID from the access token.
+         *         db: Database session dependency.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
+         *
+         *     Returns:
+         *         Updated HealthWaterRead record.
+         *
+         *     Raises:
+         *         NotFoundError: If the user has no such record.
+         *         PreconditionFailedError: If the record changed since the client read it.
+         */
+        patch: operations["edit_health_water_api_v1_health_water__health_water_id__patch"];
         trace?: never;
     };
     "/api/v1/health/weight": {
@@ -2074,72 +2027,35 @@ export interface paths {
          * Read Health Weight All Pagination
          * @description Retrieve paginated health weight records for the authenticated user.
          *
-         *     This endpoint fetches health weight data with optional pagination and
-         *     filtering. Access is restricted to users with the 'health:read' scope.
+         *     One page of records, newest first, optionally limited to an interval. Access is
+         *     restricted to users with the 'health:read' scope.
          *
          *     Args:
-         *         _validate_pagination_values_on_query: Dependency that validates
-         *             pagination parameters.
-         *         token_user_id: The ID of the authenticated user extracted from the
-         *             access token.
+         *         token_user_id: The ID of the authenticated user extracted from the access token.
          *         db: Database session for executing queries.
-         *         page_number: Optional pagination page number to retrieve specific page
-         *             of results.
-         *         num_records: Optional number of records per page for pagination.
-         *         interval: Optional filter to retrieve records within a specific goal
-         *             interval.
+         *         page: The requested page and page size.
+         *         interval: Optional filter to retrieve records within a specific goal interval.
          *
          *     Returns:
-         *         HealthWeightListResponse: A response object containing:
-         *             - total: Total count of records matching the filter criteria
-         *             - num_records: Number of records returned per page
-         *             - page_number: Current page number
-         *             - records: List of paginated HealthWeightRead objects
-         *
-         *     Raises:
-         *         HTTPException: If the user lacks required 'health:read' scope or if
-         *             pagination values are invalid.
+         *         The page of records with the total matching the interval.
          */
         get: operations["read_health_weight_all_pagination_api_v1_health_weight_get"];
-        /**
-         * Edit Health Weight
-         * @description Edit a health weight entry for the authenticated user.
-         *
-         *     This endpoint allows users with 'health:write' scope to update an existing
-         *     health weight record in the database.
-         *
-         *     Args:
-         *         request: The incoming request, read by the rate limiter.
-         *         health_weight (health_weight_schema.HealthWeight): The health weight data
-         *             to be updated, containing the weight information and associated metadata.
-         *         token_user_id (int): The ID of the authenticated user extracted from the
-         *             access token.
-         *         db (Session): Database session dependency for executing database operations.
-         *
-         *     Returns:
-         *         The updated health weight record from the database.
-         *
-         *     Raises:
-         *         PermissionDeniedError: If the record names another user.
-         *         NotFoundError: If the entry doesn't exist.
-         */
-        put: operations["edit_health_weight_api_v1_health_weight_put"];
+        put?: never;
         /**
          * Create Health Weight
-         * @description Create or update a health weight record for the authenticated user.
+         * @description Create a health weight record for the authenticated user.
          *
-         *     This endpoint creates a new health weight record if one doesn't exist for the given date,
-         *     or updates an existing record if one is already present for that date.
+         *     A date that already has a record is answered with a 409; change it with ``PATCH /{id}``.
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
-         *         health_weight (health_weight_schema.HealthWeightCreate): The health weight data to create or update.
+         *         health_weight (health_weight_schema.HealthWeightCreate): The health weight data to create.
          *             Must include a date field.
          *         token_user_id (int): The ID of the authenticated user extracted from the access token.
          *         db (Session): Database session dependency for performing database operations.
          *
          *     Returns:
-         *         health_weight_schema.HealthWeightRead: The created or updated health weight record.
+         *         health_weight_schema.HealthWeightRead: The created health weight record.
          */
         post: operations["create_health_weight_api_v1_health_weight_post"];
         delete?: never;
@@ -2181,7 +2097,32 @@ export interface paths {
         delete: operations["delete_health_weight_api_v1_health_weight__health_weight_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit Health Weight
+         * @description Edit a health weight entry for the authenticated user.
+         *
+         *     This endpoint allows users with 'health:write' scope to update an existing
+         *     health weight record in the database.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         health_weight_id: ID of the record to change.
+         *         health_weight (health_weight_schema.HealthWeight): The health weight data
+         *             to be updated, containing the weight information and associated metadata.
+         *         token_user_id (int): The ID of the authenticated user extracted from the
+         *             access token.
+         *         db (Session): Database session dependency for executing database operations.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
+         *
+         *     Returns:
+         *         The updated health weight record from the database.
+         *
+         *     Raises:
+         *         PermissionDeniedError: If the record names another user.
+         *         NotFoundError: If the entry doesn't exist.
+         */
+        patch: operations["edit_health_weight_api_v1_health_weight__health_weight_id__patch"];
         trace?: never;
     };
     "/api/v1/idp": {
@@ -2510,17 +2451,24 @@ export interface paths {
          * Read Users Me
          * @description Retrieve authenticated user profile with integrations.
          *
+         *     The ETag is the user's version, which a later ``PATCH /profile`` echoes in ``If-Match``. The
+         *     privacy settings have their own version, ``privacy_settings_version``.
+         *
          *     Args:
          *         token_user_id: User ID from access token.
+         *         identity_service: Identity service dependency.
          *         db: Database session.
+         *         response: The response, which carries the user's ETag.
          *
          *     Returns:
          *         User object with integration and privacy settings.
-         *
-         *     Raises:
-         *         HTTPException: If user or settings not found.
          */
         get: operations["read_users_me_api_v1_profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         /**
          * Edit User
          * @description Edit self-service profile fields for the authenticated user.
@@ -2532,19 +2480,13 @@ export interface paths {
          *     endpoint, even if a malicious client submits them.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_attributtes: Allow-listed profile updates.
          *         token_user_id: User ID from access token.
          *         db: Database session.
-         *
-         *     Returns:
-         *         Success message with user ID.
+         *         if_match: The ``If-Match`` precondition, the ``version`` the client read.
          */
-        put: operations["edit_user_api_v1_profile_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
+        patch: operations["edit_user_api_v1_profile_patch"];
         trace?: never;
     };
     "/api/v1/profile/api_keys": {
@@ -2687,25 +2629,97 @@ export interface paths {
          *     Args:
          *         token_user_id: User ID from access token.
          *         db: Database session dependency.
+         *         response: The response, which carries the settings' ETag.
          *
          *     Returns:
          *         User default gear settings.
          */
         get: operations["read_user_default_gear_api_v1_profile_default_gear_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         /**
          * Edit User Default Gear
          * @description Update default gear settings for authenticated user.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_default_gear: Updated gear settings.
          *         token_user_id: User ID from access token.
          *         db: Database session dependency.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         Updated user default gear settings.
          */
-        put: operations["edit_user_default_gear_api_v1_profile_default_gear_put"];
-        post?: never;
+        patch: operations["edit_user_default_gear_api_v1_profile_default_gear_patch"];
+        trace?: never;
+    };
+    "/api/v1/profile/delete-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete My Account
+         * @description Delete the authenticated user's account and all of their data.
+         *
+         *     Requires step-up verification: the current password, and an MFA code when MFA is enabled. The
+         *     deletion is permanent and cannot be undone. Export the profile first to keep a copy. The browser's
+         *     refresh-token cookie is cleared on the response.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         response: The response, which receives the cookie-deletion headers.
+         *         step_up: Step-up verification payload.
+         *         token_user_id: User ID from access token.
+         *         identity_service: Identity service dependency.
+         *         step_up_store: Step-up lockout store.
+         *         storage: The platform storage provider.
+         *         db: Database session.
+         */
+        post: operations["delete_my_account_api_v1_profile_delete_account_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/profile/email/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Edit Profile Email
+         * @description Change the authenticated user's email after step-up verification.
+         *
+         *     The address is where password resets go, so the caller must re-prove identity with the
+         *     current password (and an MFA code when MFA is enabled). The new address starts unverified and
+         *     a verification link is emailed to it.
+         *     The user's other sessions are revoked when the request asks for it.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         email_change: The new address with the step-up credentials.
+         *         token_user_id: User ID from access token.
+         *         token_session_id: Session ID of the caller, preserved when other sessions are revoked.
+         *         identity_service: Identity service dependency.
+         *         step_up_store: Step-up lockout store.
+         *         db: Database session.
+         */
+        post: operations["edit_profile_email_api_v1_profile_email_change_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2720,20 +2734,62 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export Profile Data
-         * @description Export all profile data as ZIP archive.
+         * Read Profile Export Status
+         * @description Report where the authenticated user's profile export is.
          *
          *     Args:
          *         token_user_id: User ID from access token.
+         *         export_states: Shared store of the export's state.
+         *
+         *     Returns:
+         *         The export's state.
+         */
+        get: operations["read_profile_export_status_api_v1_profile_export_get"];
+        put?: never;
+        /**
+         * Export Profile Data
+         * @description Queue an export of all profile data as a ZIP archive.
+         *
+         *     A worker builds the archive; poll ``GET /profile/export`` for the outcome and fetch it from
+         *     ``GET /profile/export/download``.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         token_user_id: User ID from access token.
+         *         export_states: Shared store of the export's state.
          *         db: Database session.
          *
          *     Returns:
-         *         Streaming response with ZIP archive.
-         *
-         *     Raises:
-         *         HTTPException: If user not found or export fails.
+         *         The queued export's state.
          */
-        get: operations["export_profile_data_api_v1_profile_export_get"];
+        post: operations["export_profile_data_api_v1_profile_export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/profile/export/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Profile Export
+         * @description Download the authenticated user's finished profile export.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         token_user_id: User ID from access token.
+         *         export_states: Shared store of the export's state.
+         *         storage: The platform storage provider.
+         *
+         *     Returns:
+         *         Streaming response with the ZIP archive.
+         */
+        get: operations["download_profile_export_api_v1_profile_export_download_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2764,24 +2820,13 @@ export interface paths {
          *         List of user goal objects matching the filters.
          */
         get: operations["get_user_goals_api_v1_profile_goals_get"];
-        /**
-         * Update User Goal
-         * @description Update an existing goal for the authenticated user.
-         *
-         *     Args:
-         *         user_goal: Updated goal data.
-         *         token_user_id: User ID from access token.
-         *         db: Database session dependency.
-         *
-         *     Returns:
-         *         The updated goal object.
-         */
-        put: operations["update_user_goal_api_v1_profile_goals_put"];
+        put?: never;
         /**
          * Create User Goal
          * @description Create a new goal for the authenticated user.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_goal: Goal data to create.
          *         token_user_id: User ID from access token.
          *         db: Database session dependency.
@@ -2812,7 +2857,7 @@ export interface paths {
          *         db: Database session dependency.
          *
          *     Returns:
-         *         List of goal progress objects, or None if no goals.
+         *         List of goal progress objects, empty if no goals.
          */
         get: operations["get_user_goals_results_api_v1_profile_goals_results_get"];
         put?: never;
@@ -2831,13 +2876,30 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /**
+         * Update User Goal
+         * @description Replace an existing goal for the authenticated user.
+         *
+         *     Args:
+         *         request: The incoming request, read by the rate limiter.
+         *         goal_id: ID of the goal to replace.
+         *         user_goal: The goal's new values.
+         *         token_user_id: User ID from access token.
+         *         db: Database session dependency.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
+         *
+         *     Returns:
+         *         The updated goal object.
+         */
+        put: operations["update_user_goal_api_v1_profile_goals__goal_id__put"];
         post?: never;
         /**
          * Delete User Goal
          * @description Delete a goal for the authenticated user.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         goal_id: ID of the goal to delete.
          *         token_user_id: User ID from access token.
          *         db: Database session dependency.
@@ -2858,14 +2920,16 @@ export interface paths {
         /**
          * Get My Identity Providers
          * @description Retrieve all identity provider links for the authenticated user.
+         *
          *     This endpoint fetches all external identity provider (IdP) connections associated
          *     with the current user's account. Each link includes connection metadata and enriched
          *     details about the identity provider (name, slug, icon, and provider type).
+         *
          *     Args:
          *         token_user_id (int): The authenticated user's ID extracted from the JWT access token.
          *             Injected automatically via dependency injection.
-         *         db (Session): Database session for executing queries.
-         *             Injected automatically via dependency injection.
+         *         identity_service: Identity service dependency.
+         *
          *     Returns:
          *         list[dict]: A list of dictionaries representing the user's IdP links. Each dictionary contains:
          *             - id (int): Unique identifier for the user-IdP link
@@ -2880,6 +2944,7 @@ export interface paths {
          *             - idp_slug (str): URL-safe identifier for the IdP (if available)
          *             - idp_icon (str): Icon/logo URL for the IdP (if available)
          *             - idp_provider_type (str): Type of provider (e.g., "oauth2", "oidc") (if available)
+         *
          *     Raises:
          *         HTTPException: May raise authentication/authorization errors via the dependency injection.
          */
@@ -2916,18 +2981,12 @@ export interface paths {
          *         idp_id (int): The ID of the identity provider to link.
          *         link_token (str): One-time link token from query parameter.
          *         request (Request): The FastAPI request object containing request context.
-         *         db (Session): The database session for performing CRUD operations.
+         *         identity_service: Identity service dependency.
+         *         redirect: Optional frontend return path after linking.
          *
          *     Returns:
          *         RedirectResponse: A redirect to the identity provider's authorization URL
          *             with HTTP 307 status code.
-         *
-         *     Raises:
-         *         HTTPException:
-         *             - 401 UNAUTHORIZED: If the link token is invalid, expired, or already used.
-         *             - 404 NOT_FOUND: If the identity provider doesn't exist or is disabled.
-         *             - 409 CONFLICT: If the identity provider is already linked to the user's account.
-         *             - 500 INTERNAL_SERVER_ERROR: If an unexpected error occurs during the linking process.
          */
         get: operations["link_identity_provider_api_v1_profile_idp__idp_id__link_get"];
         put?: never;
@@ -2973,6 +3032,7 @@ export interface paths {
          *         request (Request): The FastAPI request object.
          *         token_user_id (int): The authenticated user's ID extracted from the access token.
          *         identity_service: Identity service dependency.
+         *         step_up_store: Step-up lockout store.
          *
          *     Returns:
          *         IdpLinkTokenResponse: Contains the one-time token and expiration time.
@@ -3017,6 +3077,7 @@ export interface paths {
          *         request (Request): The FastAPI request object.
          *         token_user_id (int): User ID extracted from the access token.
          *         identity_service: Identity service dependency.
+         *         step_up_store: Step-up lockout store.
          *
          *     Returns:
          *         None: Returns 204 No Content on successful deletion.
@@ -3058,15 +3119,14 @@ export interface paths {
          * @description Upload user profile image with security validation.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         file: Image file to upload.
          *         token_user_id: User ID from access token.
+         *         storage: The platform storage provider.
          *         db: Database session.
          *
          *     Returns:
-         *         Result of save operation.
-         *
-         *     Raises:
-         *         HTTPException: If validation or save fails.
+         *         The servable URL of the new photo.
          */
         post: operations["upload_profile_image_api_v1_profile_image_post"];
         delete?: never;
@@ -3082,22 +3142,36 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Read Profile Import Status
+         * @description Report where the authenticated user's profile import is.
+         *
+         *     Args:
+         *         token_user_id: User ID from access token.
+         *         import_states: Shared store of the import's state.
+         *
+         *     Returns:
+         *         The import's state.
+         */
+        get: operations["read_profile_import_status_api_v1_profile_import_get"];
         put?: never;
         /**
          * Import Profile Data
-         * @description Import profile data from ZIP with security validation.
+         * @description Queue a profile import from a ZIP archive.
+         *
+         *     The archive is validated and staged, and a worker imports it; poll ``GET /profile/import`` for
+         *     the outcome. The database part is all-or-nothing, so a failed import leaves nothing behind.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         file: ZIP file containing profile data.
          *         token_user_id: User ID from access token.
+         *         import_states: Shared store of the import's state.
+         *         storage: The platform storage provider.
          *         db: Database session.
          *
          *     Returns:
-         *         Import results with counts of imported items.
-         *
-         *     Raises:
-         *         HTTPException: If validation or import fails.
+         *         The queued import's state.
          */
         post: operations["import_profile_data_api_v1_profile_import_post"];
         delete?: never;
@@ -3131,6 +3205,7 @@ export interface paths {
          *         step_up: Step-up verification payload.
          *         token_user_id: User ID from access token.
          *         identity_service: Identity service for code generation.
+         *         step_up_store: Step-up lockout store.
          *
          *     Returns:
          *         Response with generated backup codes and timestamp.
@@ -3195,10 +3270,12 @@ export interface paths {
          *     :func:`modules.auth.mfa.service.disable_user_mfa` only clears state.
          *
          *     Args:
-         *         request: MFA disable request with current password and
+         *         request: The incoming request, read by the rate limiter.
+         *         mfa_request: MFA disable request with current password and
          *             MFA code.
          *         token_user_id: User ID from access token.
          *         identity_service: Identity service dependency.
+         *         step_up_store: Step-up lockout store.
          *
          *     Returns:
          *         Success message.
@@ -3241,12 +3318,14 @@ export interface paths {
          *     :func:`modules.auth._internal.services.step_up_service.verify_step_up_credentials`).
          *
          *     Args:
-         *         request: MFA setup request with TOTP code and (when the
+         *         request: The incoming request, read by the rate limiter.
+         *         mfa_request: MFA setup request with TOTP code and (when the
          *             account has a local password) current password.
          *         token_user_id: User ID from access token.
          *         identity_service: Identity service instance for backup code
          *             generation and step-up verification.
          *         mfa_secret_store: Temporary secret storage.
+         *         step_up_store: Step-up lockout store.
          *
          *     Returns:
          *         Success message and the freshly issued backup codes.
@@ -3277,6 +3356,7 @@ export interface paths {
          * @description Initiate MFA setup for authenticated user.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         token_user_id: User ID from access token.
          *         identity_service: Identity service dependency.
          *         mfa_secret_store: Temporary secret storage.
@@ -3332,7 +3412,8 @@ export interface paths {
          * @description Verify MFA code for authenticated user.
          *
          *     Args:
-         *         request: MFA request with code to verify.
+         *         request: The incoming request, read by the rate limiter.
+         *         mfa_request: MFA request with code to verify.
          *         token_user_id: User ID from access token.
          *         identity_service: Identity service instance for backup code verification.
          *
@@ -3349,7 +3430,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/profile/password": {
+    "/api/v1/profile/password/change": {
         parameters: {
             query?: never;
             header?: never;
@@ -3357,6 +3438,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
         /**
          * Edit Profile Password
          * @description Update user password after step-up verification.
@@ -3373,6 +3455,7 @@ export interface paths {
          *     evict a suspected attacker without logging the caller out.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_attributtes: Schema with current password, new
          *             password, optional MFA code, and the optional
          *             ``revoke_other_sessions`` flag.
@@ -3383,15 +3466,10 @@ export interface paths {
          *         identity_service: Identity service dependency.
          *         step_up_store: Step-up lockout store.
          *
-         *     Returns:
-         *         dict: A success message indicating the user's password
-         *         was updated.
-         *
          *     Raises:
          *         HTTPException: 401 if step-up verification fails.
          */
-        put: operations["edit_profile_password_api_v1_profile_password_put"];
-        post?: never;
+        post: operations["edit_profile_password_api_v1_profile_password_change_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3406,20 +3484,19 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
+        post?: never;
         /**
          * Delete Profile Photo
          * @description Delete authenticated user's profile photo.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         token_user_id: User ID from access token.
+         *         storage: The platform storage provider.
          *         db: Database session.
-         *
-         *     Returns:
-         *         Success message.
          */
-        put: operations["delete_profile_photo_api_v1_profile_photo_put"];
-        post?: never;
-        delete?: never;
+        delete: operations["delete_profile_photo_api_v1_profile_photo_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3433,24 +3510,23 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         /**
          * Edit Profile Privacy Settings
          * @description Edit privacy settings for authenticated user.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_privacy_settings: New privacy settings.
          *         token_user_id: User ID from access token.
          *         db: Database session.
-         *
-         *     Returns:
-         *         Success message.
+         *         if_match: The ``If-Match`` precondition, the ``privacy_settings_version`` the client read.
          */
-        put: operations["edit_profile_privacy_settings_api_v1_profile_privacy_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
+        patch: operations["edit_profile_privacy_settings_api_v1_profile_privacy_patch"];
         trace?: never;
     };
     "/api/v1/profile/sessions": {
@@ -3485,6 +3561,7 @@ export interface paths {
          *     ``revoke_other_sessions`` option.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         token_user_id: User ID from access token.
          *         token_session_id: The caller's current session, preserved.
          *         identity_service: Identity service dependency.
@@ -3513,6 +3590,7 @@ export interface paths {
          * @description Delete user session from database.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         session_id: Session identifier to delete.
          *         token_user_id: User ID from access token.
          *         identity_service: Identity service dependency.
@@ -3944,11 +4022,13 @@ export interface paths {
          *
          *     Args:
          *         user_id: The user ID to retrieve.
-         *         _validate_id: User ID validation dependency.
          *         db: Database session dependency.
          *
          *     Returns:
          *         User data if found and public sharing enabled.
+         *
+         *     Raises:
+         *         NotFoundError: If the user does not exist or public sharing is off.
          */
         get: operations["read_users_id_api_v1_public_users_id__user_id__get"];
         put?: never;
@@ -3995,7 +4075,7 @@ export interface paths {
          *         server_settings_attributes: Settings to update.
          *         db: Database session.
          *         response: The response, which carries the new ETag.
-         *         if_match: The ``If-Match`` precondition, or None.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         Updated server settings configuration, without the tile API key.
@@ -4072,7 +4152,7 @@ export interface paths {
          *         mail_settings_attributes: Settings to update.
          *         db: Database session.
          *         response: The response, which carries the new ETag.
-         *         if_match: The ``If-Match`` precondition, or None.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         Updated mail settings, without the password.
@@ -4111,9 +4191,6 @@ export interface paths {
          *         token_user_id: The requesting admin's user ID, from the access token.
          *         mail: The platform mail provider.
          *         db: Database session.
-         *
-         *     Returns:
-         *         A confirmation message naming the recipient address.
          *
          *     Raises:
          *         ServiceUnavailableError: 503 if email is not configured.
@@ -4574,15 +4651,15 @@ export interface paths {
          * @description Retrieve paginated list of all users.
          *
          *     Args:
-         *         _validate_pagination_values: Pagination validation.
          *         db: Database session dependency.
-         *         page_number: Optional page number to retrieve.
-         *         num_records: Optional number of records per page.
+         *         identity_service: Identity service dependency.
+         *         page: The requested page and page size.
          *         show_inactive: Optional filter by inactive status.
          *         show_email_unverified: Optional filter by email verification status.
          *         show_pending_approval: Optional filter by pending approval status.
          *         show_external_auth: Optional filter by external authentication status.
          *         show_local_auth: Optional filter by local authentication status.
+         *         username: Optional text the username must contain.
          *
          *     Returns:
          *         Paginated list of users with total count.
@@ -4594,6 +4671,7 @@ export interface paths {
          * @description Create a new user (admin operation).
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user: User creation data.
          *         _check_scope: Authorization check.
          *         identity_service: Identity service dependency.
@@ -4623,9 +4701,13 @@ export interface paths {
          *     Args:
          *         email: Email address to search for.
          *         db: Database session dependency.
+         *         response: The response, which carries the user's ETag.
          *
          *     Returns:
-         *         User if found, None otherwise.
+         *         The user.
+         *
+         *     Raises:
+         *         NotFoundError: If there is no such user.
          */
         get: operations["read_users_email_api_v1_users_email__email__get"];
         put?: never;
@@ -4645,15 +4727,17 @@ export interface paths {
         };
         /**
          * Read Users Id
-         * @description Get user by ID.
+         * @description Get a user's public projection by ID.
          *
          *     Args:
          *         user_id: User ID to retrieve.
-         *         _validate_id: User ID validation dependency.
          *         db: Database session dependency.
          *
          *     Returns:
-         *         User if found, None otherwise.
+         *         The public projection.
+         *
+         *     Raises:
+         *         NotFoundError: If the user does not exist.
          */
         get: operations["read_users_id_api_v1_users_id__user_id__get"];
         put?: never;
@@ -4673,14 +4757,14 @@ export interface paths {
         };
         /**
          * Read Users Contain Username
-         * @description Search users by partial username match.
+         * @description Search active users by partial username match.
          *
          *     Args:
          *         username: Partial username to search for.
          *         db: Database session dependency.
          *
          *     Returns:
-         *         List of users matching the search.
+         *         The matching users' public projections.
          */
         get: operations["read_users_contain_username_api_v1_users_username_contains__username__get"];
         put?: never;
@@ -4705,9 +4789,13 @@ export interface paths {
          *     Args:
          *         username: Exact username to search for.
          *         db: Database session dependency.
+         *         response: The response, which carries the user's ETag.
          *
          *     Returns:
-         *         User if found, None otherwise.
+         *         The user.
+         *
+         *     Raises:
+         *         NotFoundError: If there is no such user.
          */
         get: operations["read_users_username_api_v1_users_username__username__get"];
         put?: never;
@@ -4725,16 +4813,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Read Users Full
+         * @description Get a user's full record by ID (admin operation).
+         *
+         *     Args:
+         *         user_id: User ID to retrieve.
+         *         db: Database session dependency.
+         *         response: The response, which carries the user's ETag.
+         *
+         *     Returns:
+         *         The full record.
+         *
+         *     Raises:
+         *         NotFoundError: If the user does not exist.
+         */
+        get: operations["read_users_full_api_v1_users__user_id__get"];
         /**
          * Edit User
          * @description Update user information.
          *
+         *     A change of email, access type or active flag signs the edited user out everywhere.
+         *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of user to update.
-         *         _validate_id: User ID validation dependency.
          *         user_attributtes: User data to update.
+         *         token_user_id: ID of the administrator making the edit.
          *         db: Database session dependency.
+         *         identity_service: Identity service dependency.
+         *         response: The response, which carries the new ETag.
+         *         if_match: The ``If-Match`` precondition.
          *
          *     Returns:
          *         Updated user data.
@@ -4746,8 +4855,9 @@ export interface paths {
          * @description Delete user account.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of user to delete.
-         *         _validate_id: User ID validation dependency.
+         *         storage: The platform storage provider.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -4772,12 +4882,10 @@ export interface paths {
          * @description Approve pending user account.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of user to approve.
-         *         _validate_id: User ID validation dependency.
          *         db: Database session dependency.
-         *
-         *     Returns:
-         *         Success message.
+         *         identity_service: Identity service dependency.
          */
         put: operations["approve_user_api_v1_users__user_id__approve_put"];
         post?: never;
@@ -4800,7 +4908,6 @@ export interface paths {
          *
          *     Args:
          *         user_id: ID of the user whose identity provider links to retrieve.
-         *         _validate_id: User ID validation dependency.
          *         identity_service: Identity service dependency.
          *
          *     Returns:
@@ -4830,9 +4937,9 @@ export interface paths {
          * @description Unlink an identity provider from a specific user (admin).
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of the user to unlink the identity provider from.
          *         idp_id: ID of the identity provider to unlink.
-         *         _validate_id: User ID validation dependency.
          *         identity_service: Identity service dependency.
          *
          *     Returns:
@@ -4858,13 +4965,14 @@ export interface paths {
          * @description Upload user profile image.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of user to upload image for.
-         *         _validate_id: User ID validation dependency.
          *         file: Uploaded image file.
+         *         storage: The platform storage provider.
          *         db: Database session dependency.
          *
          *     Returns:
-         *         Path to uploaded image.
+         *         The servable URL of the new photo.
          */
         post: operations["upload_user_image_api_v1_users__user_id__image_post"];
         delete?: never;
@@ -4873,7 +4981,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/users/{user_id}/password": {
+    "/api/v1/users/{user_id}/password/change": {
         parameters: {
             query?: never;
             header?: never;
@@ -4881,22 +4989,19 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
         /**
          * Edit User Password
          * @description Update user password.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of user to update password for.
-         *         _validate_id: User ID validation dependency.
          *         user_attributes: New password data.
          *         _check_scope: Authorization check.
          *         identity_service: Identity service dependency.
-         *
-         *     Returns:
-         *         Success message.
          */
-        put: operations["edit_user_password_api_v1_users__user_id__password_put"];
-        post?: never;
+        post: operations["edit_user_password_api_v1_users__user_id__password_change_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4916,14 +5021,12 @@ export interface paths {
          *
          *     Args:
          *         user_id: The user whose photo to serve.
+         *         storage: The platform storage provider.
+         *         db: Database session dependency.
          *         token: The signed access token (``?t=``) minted at serialization time.
          *
          *     Returns:
          *         The image bytes.
-         *
-         *     Raises:
-         *         HTTPException: 404 when the token is invalid/forged or no photo exists
-         *             (a 404 — rather than 403 — avoids confirming the user id).
          */
         get: operations["read_user_photo_api_v1_users__user_id__photo_get"];
         put?: never;
@@ -4933,8 +5036,9 @@ export interface paths {
          * @description Delete user profile photo.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of user whose photo to delete.
-         *         _validate_id: User ID validation dependency.
+         *         storage: The platform storage provider.
          *         db: Database session dependency.
          *
          *     Returns:
@@ -4970,7 +5074,7 @@ export interface paths {
          *         ticket_store: WsTicketStore for issuing tickets.
          *
          *     Returns:
-         *         JSON object with a single "ticket" key.
+         *         The ticket.
          */
         post: operations["issue_ws_ticket_api_v1_ws_ticket_post"];
         delete?: never;
@@ -5802,6 +5906,38 @@ export interface components {
             total_elevation_gain: number;
         };
         /**
+         * EmailChange
+         * @description Self-service email change, authorised by step-up verification.
+         *
+         *     Attributes:
+         *         email: The new email address.
+         *         revoke_other_sessions: Whether to sign out the user's other sessions after the change.
+         */
+        EmailChange: {
+            /**
+             * Current Password
+             * @description Current password (step-up verification). Required when the account has a local password.
+             */
+            current_password?: string | null;
+            /**
+             * Email
+             * Format: email
+             * @description The new email address
+             */
+            email: string;
+            /**
+             * Mfa Code
+             * @description TOTP or backup code, required when MFA is enabled
+             */
+            mfa_code?: string | null;
+            /**
+             * Revoke Other Sessions
+             * @description When true, revoke all of the user's other sessions (keeping the current one) after the change
+             * @default false
+             */
+            revoke_other_sessions: boolean;
+        };
+        /**
          * EmailStatus
          * @description Whether outgoing email is usable, and why not when it is not.
          *
@@ -5815,6 +5951,21 @@ export interface components {
             /** Problems */
             problems: string[];
         };
+        /**
+         * ExportFailure
+         * @description Stable, sanitized reasons an export can fail.
+         *
+         *     A closed set: the underlying exception text can carry internals, so the client gets a code it
+         *     can translate.
+         * @enum {string}
+         */
+        ExportFailure: "timed_out" | "processing_failed";
+        /**
+         * ExportStatus
+         * @description Where a profile export is.
+         * @enum {string}
+         */
+        ExportStatus: "queued" | "running" | "completed" | "failed";
         /**
          * FastingStatus
          * @description Enumeration of fasting session statuses.
@@ -5888,14 +6039,6 @@ export interface components {
          * @enum {string}
          */
         FollowStatus: "pending" | "accepted";
-        /**
-         * GarminDetail
-         * @description A human-readable outcome of a Garmin Connect request.
-         */
-        GarminDetail: {
-            /** Detail */
-            detail: string;
-        };
         /**
          * GarminLinkStatus
          * @description Where a Garmin Connect link attempt is.
@@ -6611,40 +6754,6 @@ export interface components {
             status: string;
         };
         /**
-         * HealthFastingListResponse
-         * @description Response model for listing health fasting records.
-         *
-         *     Extends the base HealthListResponse to provide a typed response containing
-         *     a list of fasting records. This model is used when returning multiple
-         *     fasting entries from API endpoints.
-         *
-         *     Attributes:
-         *         records: A list of HealthFastingRead objects representing individual
-         *         fasting records.
-         */
-        HealthFastingListResponse: {
-            /**
-             * Num Records
-             * @description Number of records in this response
-             */
-            num_records?: number | null;
-            /**
-             * Page Number
-             * @description Current page number
-             */
-            page_number?: number | null;
-            /**
-             * Records
-             * @description List of fasting records
-             */
-            records: components["schemas"]["HealthFastingRead"][];
-            /**
-             * Total
-             * @description Total number of health records for the user
-             */
-            total: number;
-        };
-        /**
          * HealthFastingRead
          * @description Schema for reading a fasting record.
          *
@@ -6694,6 +6803,12 @@ export interface components {
              * @description Foreign key reference to the user
              */
             user_id: number;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * HealthFastingStatsResponse
@@ -6741,9 +6856,10 @@ export interface components {
         };
         /**
          * HealthFastingUpdate
-         * @description Schema for updating a fasting record.
+         * @description Schema for the fields a PATCH changes on a fasting record.
          *
-         *     Inherits from HealthFastingRead for consistency with read operations.
+         *     The record is named by the path, so the body carries neither an id nor an owner; only the
+         *     fields present are changed.
          */
         HealthFastingUpdate: {
             /**
@@ -6764,11 +6880,6 @@ export interface components {
             /** @description Type of fasting protocol */
             fasting_type?: components["schemas"]["FastingType"] | null;
             /**
-             * Id
-             * @description Unique identifier for the fasting record
-             */
-            id: number;
-            /**
              * Notes
              * @description Optional notes about the fasting session
              */
@@ -6782,11 +6893,6 @@ export interface components {
              * @description Target fasting duration in seconds (max 72h)
              */
             target_duration_seconds?: number | null;
-            /**
-             * User Id
-             * @description Foreign key reference to the user
-             */
-            user_id: number;
         };
         /**
          * HealthPoopCreate
@@ -6827,36 +6933,6 @@ export interface components {
             count: number;
         };
         /**
-         * HealthPoopListResponse
-         * @description Response model for listing health poop records.
-         *
-         *     Attributes:
-         *         records: A list of HealthPoopRead objects representing
-         *             individual bowel movement records.
-         */
-        HealthPoopListResponse: {
-            /**
-             * Num Records
-             * @description Number of records in this response
-             */
-            num_records?: number | null;
-            /**
-             * Page Number
-             * @description Current page number
-             */
-            page_number?: number | null;
-            /**
-             * Records
-             * @description List of health poop records
-             */
-            records: components["schemas"]["HealthPoopRead"][];
-            /**
-             * Total
-             * @description Total number of health records for the user
-             */
-            total: number;
-        };
-        /**
          * HealthPoopRead
          * @description Schema for reading a poop record.
          *
@@ -6891,13 +6967,19 @@ export interface components {
              * @description Foreign key reference to the user
              */
             user_id: number;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * HealthPoopUpdate
-         * @description Schema for updating a poop record.
+         * @description Schema for the fields a PATCH changes on a poop record.
          *
-         *     Inherits from HealthPoopRead for consistency with read
-         *     operations while allowing modifications to poop data.
+         *     The record is named by the path, so the body carries neither an id nor an owner; only the
+         *     fields present are changed.
          */
         HealthPoopUpdate: {
             /** @description Bristol Stool Scale type (1-7) */
@@ -6910,22 +6992,12 @@ export interface components {
              */
             date_time?: string | null;
             /**
-             * Id
-             * @description Unique identifier for the poop record
-             */
-            id: number;
-            /**
              * Notes
              * @description Optional notes about the bowel movement
              */
             notes?: string | null;
             /** @description Source of the data */
             source?: components["schemas"]["modules__health__health_poop__schema__Source"] | null;
-            /**
-             * User Id
-             * @description Foreign key reference to the user
-             */
-            user_id: number;
         };
         /**
          * HealthSleepCreate
@@ -7136,40 +7208,6 @@ export interface components {
             total_sleep_seconds?: number | null;
         };
         /**
-         * HealthSleepListResponse
-         * @description Response model for listing health sleep records.
-         *
-         *     Extends the base HealthListResponse to provide a typed response containing
-         *     a list of sleep records. This model is used when returning multiple sleep
-         *     entries from API endpoints.
-         *
-         *     Attributes:
-         *         records: A list of HealthSleepRead objects representing individual
-         *             sleep records.
-         */
-        HealthSleepListResponse: {
-            /**
-             * Num Records
-             * @description Number of records in this response
-             */
-            num_records?: number | null;
-            /**
-             * Page Number
-             * @description Current page number
-             */
-            page_number?: number | null;
-            /**
-             * Records
-             * @description List of health sleep records
-             */
-            records: components["schemas"]["HealthSleepRead"][];
-            /**
-             * Total
-             * @description Total number of health records for the user
-             */
-            total: number;
-        };
-        /**
          * HealthSleepRead
          * @description Read schema for health sleep records.
          *
@@ -7359,6 +7397,12 @@ export interface components {
              * @description Foreign key reference to the user
              */
             user_id: number;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * HealthSleepStage
@@ -7394,13 +7438,10 @@ export interface components {
         };
         /**
          * HealthSleepUpdate
-         * @description Schema for updating health sleep records.
+         * @description Schema for the fields a PATCH changes on a sleep record.
          *
-         *     Inherits all fields from HealthSleepRead, allowing clients to update
-         *     existing sleep data while maintaining consistency with the read schema.
-         *
-         *     Used in PUT/PATCH requests to modify sleep tracking information such as
-         *     sleep duration, quality, and related health metrics.
+         *     The record is named by the path, so the body carries neither an id nor an owner; only the
+         *     fields present are changed.
          */
         HealthSleepUpdate: {
             /**
@@ -7474,11 +7515,6 @@ export interface components {
             highest_spo2?: number | null;
             /** @description Heart rate variability status */
             hrv_status?: components["schemas"]["HRVStatus"] | null;
-            /**
-             * Id
-             * @description Unique identifier for the sleep record to update
-             */
-            id: number;
             /** @description Light sleep percentage score */
             light_percentage_score?: components["schemas"]["SleepScore"] | null;
             /**
@@ -7576,11 +7612,6 @@ export interface components {
              * @description Unmeasurable sleep duration in seconds
              */
             unmeasurable_sleep_seconds?: number | null;
-            /**
-             * User Id
-             * @description Foreign key reference to the user
-             */
-            user_id: number;
         };
         /**
          * HealthStepsCreate
@@ -7617,40 +7648,6 @@ export interface components {
             steps?: number | null;
         };
         /**
-         * HealthStepsListResponse
-         * @description Response model for listing health steps records.
-         *
-         *     Extends the base HealthListResponse to provide a typed response containing
-         *     a list of steps records. This model is used when returning multiple steps
-         *     entries from API endpoints.
-         *
-         *     Attributes:
-         *         records: A list of HealthStepsRead objects representing individual
-         *             steps records.
-         */
-        HealthStepsListResponse: {
-            /**
-             * Num Records
-             * @description Number of records in this response
-             */
-            num_records?: number | null;
-            /**
-             * Page Number
-             * @description Current page number
-             */
-            page_number?: number | null;
-            /**
-             * Records
-             * @description List of health steps records
-             */
-            records: components["schemas"]["HealthStepsRead"][];
-            /**
-             * Total
-             * @description Total number of health records for the user
-             */
-            total: number;
-        };
-        /**
          * HealthStepsRead
          * @description Schema for reading health steps records.
          *
@@ -7684,14 +7681,19 @@ export interface components {
              * @description Foreign key reference to the user
              */
             user_id: number;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * HealthStepsUpdate
-         * @description Schema for updating health steps records.
+         * @description Schema for the fields a PATCH changes on a steps record.
          *
-         *     Inherits from HealthStepsRead to maintain consistency with read operations
-         *     while allowing modifications to health steps data. This schema is used for
-         *     PUT/PATCH requests to update existing health steps entries.
+         *     The record is named by the path, so the body carries neither an id nor an owner; only the
+         *     fields present are changed.
          */
         HealthStepsUpdate: {
             /**
@@ -7699,11 +7701,6 @@ export interface components {
              * @description Calendar date of the steps
              */
             date?: string | null;
-            /**
-             * Id
-             * @description Unique identifier for the steps record to update
-             */
-            id: number;
             /** @description Source of the steps data */
             source?: components["schemas"]["modules__health__health_steps__schema__Source"] | null;
             /**
@@ -7711,11 +7708,6 @@ export interface components {
              * @description Number of steps taken
              */
             steps?: number | null;
-            /**
-             * User Id
-             * @description Foreign key reference to the user
-             */
-            user_id: number;
         };
         /**
          * HealthTargetsRead
@@ -7724,6 +7716,7 @@ export interface components {
          *     Attributes:
          *         id: Unique identifier for the health target record.
          *         user_id: Foreign key reference to the user.
+         *         version: Optimistic-concurrency counter, also sent as the ETag.
          */
         HealthTargetsRead: {
             /**
@@ -7757,6 +7750,12 @@ export interface components {
              */
             user_id: number;
             /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
+            /**
              * Water Ml
              * @description Target daily water intake in milliliters
              */
@@ -7769,10 +7768,10 @@ export interface components {
         };
         /**
          * HealthTargetsUpdate
-         * @description Schema for updating health targets.
+         * @description Schema for the fields a PATCH changes on a user's health targets.
          *
-         *     Inherits all validation from HealthTargetsRead.
-         *     All fields are optional for partial updates.
+         *     The targets belong to the caller, so the body carries neither an id nor an owner; only the
+         *     fields present are changed.
          */
         HealthTargetsUpdate: {
             /**
@@ -7780,11 +7779,6 @@ export interface components {
              * @description Target fasting duration in seconds (max 72h)
              */
             fasting?: number | null;
-            /**
-             * Id
-             * @description Unique identifier for the health target
-             */
-            id: number;
             /**
              * Poop Count
              * @description Target daily bowel movement count
@@ -7800,11 +7794,6 @@ export interface components {
              * @description Target daily steps count
              */
             steps?: number | null;
-            /**
-             * User Id
-             * @description Foreign key reference to the user
-             */
-            user_id: number;
             /**
              * Water Ml
              * @description Target daily water intake in milliliters
@@ -7851,36 +7840,6 @@ export interface components {
             amount_ml?: number | null;
         };
         /**
-         * HealthWaterListResponse
-         * @description Response model for listing health water intake records.
-         *
-         *     Attributes:
-         *         records: A list of HealthWaterRead objects representing
-         *             individual water intake records.
-         */
-        HealthWaterListResponse: {
-            /**
-             * Num Records
-             * @description Number of records in this response
-             */
-            num_records?: number | null;
-            /**
-             * Page Number
-             * @description Current page number
-             */
-            page_number?: number | null;
-            /**
-             * Records
-             * @description List of health water intake records
-             */
-            records: components["schemas"]["HealthWaterRead"][];
-            /**
-             * Total
-             * @description Total number of health records for the user
-             */
-            total: number;
-        };
-        /**
          * HealthWaterRead
          * @description Schema for reading a water intake record.
          *
@@ -7911,13 +7870,19 @@ export interface components {
              * @description Foreign key reference to the user
              */
             user_id: number;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * HealthWaterUpdate
-         * @description Schema for updating a water intake record.
+         * @description Schema for the fields a PATCH changes on a water record.
          *
-         *     Inherits from HealthWaterRead for consistency with read
-         *     operations while allowing modifications to water intake data.
+         *     The record is named by the path, so the body carries neither an id nor an owner; only the
+         *     fields present are changed.
          */
         HealthWaterUpdate: {
             /**
@@ -7930,18 +7895,8 @@ export interface components {
              * @description Calendar date of the water intake
              */
             date?: string | null;
-            /**
-             * Id
-             * @description Unique identifier for the water intake record
-             */
-            id: number;
             /** @description Source of the water intake data */
             source?: components["schemas"]["modules__health__health_water__schema__Source"] | null;
-            /**
-             * User Id
-             * @description Foreign key reference to the user
-             */
-            user_id: number;
         };
         /**
          * HealthWeightCreate
@@ -8024,40 +7979,6 @@ export interface components {
             weight?: number | null;
         };
         /**
-         * HealthWeightListResponse
-         * @description Response model for listing health weight records.
-         *
-         *     Extends the base HealthListResponse to provide a typed response containing
-         *     a list of weight records. This model is used when returning multiple weight
-         *     entries from API endpoints.
-         *
-         *     Attributes:
-         *         records: A list of HealthWeightRead objects representing individual
-         *             weight records.
-         */
-        HealthWeightListResponse: {
-            /**
-             * Num Records
-             * @description Number of records in this response
-             */
-            num_records?: number | null;
-            /**
-             * Page Number
-             * @description Current page number
-             */
-            page_number?: number | null;
-            /**
-             * Records
-             * @description List of health weight records
-             */
-            records: components["schemas"]["HealthWeightRead"][];
-            /**
-             * Total
-             * @description Total number of health records for the user
-             */
-            total: number;
-        };
-        /**
          * HealthWeightRead
          * @description Schema for reading a health weight record.
          *
@@ -8122,6 +8043,12 @@ export interface components {
              */
             user_id: number;
             /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
+            /**
              * Visceral Fat
              * @description Visceral fat
              */
@@ -8134,11 +8061,10 @@ export interface components {
         };
         /**
          * HealthWeightUpdate
-         * @description Schema for updating health weight records.
+         * @description Schema for the fields a PATCH changes on a weight record.
          *
-         *     Inherits from HealthWeightRead to maintain consistency with read operations
-         *     while allowing modifications to health weight data. This schema is used for
-         *     PUT/PATCH requests to update existing health weight entries.
+         *     The record is named by the path, so the body carries neither an id nor an owner; only the
+         *     fields present are changed.
          */
         HealthWeightUpdate: {
             /**
@@ -8167,11 +8093,6 @@ export interface components {
              */
             date?: string | null;
             /**
-             * Id
-             * @description Unique identifier for the weight record to update
-             */
-            id: number;
-            /**
              * Metabolic Age
              * @description Metabolic age
              */
@@ -8188,11 +8109,6 @@ export interface components {
             physique_rating?: number | null;
             /** @description Source of the weight data */
             source?: components["schemas"]["modules__health__health_weight__schema__Source"] | null;
-            /**
-             * User Id
-             * @description Foreign key reference to the user
-             */
-            user_id: number;
             /**
              * Visceral Fat
              * @description Visceral fat
@@ -8625,6 +8541,24 @@ export interface components {
              */
             token: string;
         };
+        /**
+         * ImportFailure
+         * @description Stable, sanitized reasons an import can fail.
+         *
+         *     A closed set: the underlying exception text can carry file names and parser internals, so the
+         *     client gets a code it can translate.
+         * @enum {string}
+         */
+        ImportFailure: "invalid_file" | "too_large" | "too_many_activities" | "timed_out" | "files_incomplete" | "processing_failed";
+        /**
+         * ImportStatus
+         * @description Where a profile import is.
+         *
+         *     ``RUNNING`` is the database part, which is one transaction, so a worker that dies there has
+         *     imported nothing. ``WRITING_FILES`` starts once those rows are committed.
+         * @enum {string}
+         */
+        ImportStatus: "queued" | "running" | "writing_files" | "completed" | "failed";
         /**
          * IngestionJobErrorCode
          * @description Stable, sanitized reasons an ingestion job can fail.
@@ -9429,10 +9363,101 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[HealthFastingRead] */
+        Page_HealthFastingRead_: {
+            /** Items */
+            items: components["schemas"]["HealthFastingRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[HealthPoopRead] */
+        Page_HealthPoopRead_: {
+            /** Items */
+            items: components["schemas"]["HealthPoopRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[HealthSleepRead] */
+        Page_HealthSleepRead_: {
+            /** Items */
+            items: components["schemas"]["HealthSleepRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[HealthStepsRead] */
+        Page_HealthStepsRead_: {
+            /** Items */
+            items: components["schemas"]["HealthStepsRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[HealthWaterRead] */
+        Page_HealthWaterRead_: {
+            /** Items */
+            items: components["schemas"]["HealthWaterRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[HealthWeightRead] */
+        Page_HealthWeightRead_: {
+            /** Items */
+            items: components["schemas"]["HealthWeightRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+        };
         /** Page[NotificationRead] */
         Page_NotificationRead_: {
             /** Items */
             items: components["schemas"]["NotificationRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[UsersRead] */
+        Page_UsersRead_: {
+            /** Items */
+            items: components["schemas"]["UsersRead"][];
             /** Next */
             next?: number | null;
             /** Num Records */
@@ -9556,6 +9581,48 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * ProfileExportStatus
+         * @description Where the authenticated user's profile export is.
+         *
+         *     Attributes:
+         *         status: Lifecycle state of the export.
+         *         failure: Why the export failed; set only when it failed.
+         *         size_bytes: Size of the archive; set only when it completed and can be downloaded.
+         */
+        ProfileExportStatus: {
+            /** @description Reason the export failed */
+            failure?: components["schemas"]["ExportFailure"] | null;
+            /**
+             * Size Bytes
+             * @description Archive size in bytes, once completed
+             */
+            size_bytes?: number | null;
+            /** @description Lifecycle state of the export */
+            status: components["schemas"]["ExportStatus"];
+        };
+        /**
+         * ProfileImportStatus
+         * @description Where the authenticated user's profile import is.
+         *
+         *     Attributes:
+         *         status: Lifecycle state of the import.
+         *         failure: Why the import failed; set only when it failed.
+         *         imported: How many items of each kind were imported; set only when it completed.
+         */
+        ProfileImportStatus: {
+            /** @description Reason the import failed */
+            failure?: components["schemas"]["ImportFailure"] | null;
+            /**
+             * Imported
+             * @description Items imported per kind, once completed
+             */
+            imported?: {
+                [key: string]: number;
+            } | null;
+            /** @description Lifecycle state of the import */
+            status: components["schemas"]["ImportStatus"];
+        };
+        /**
          * ProfileUpdate
          * @description Schema for self-service profile updates.
          *
@@ -9570,7 +9637,6 @@ export interface components {
          *     Attributes:
          *         name: User's full name.
          *         username: Unique username.
-         *         email: User's email address.
          *         city: User's city.
          *         birthdate: User's birthdate.
          *         preferred_language: Preferred application language.
@@ -9583,6 +9649,9 @@ export interface components {
          *         timezone: IANA timezone the athlete lives in.
          *
          *     Note:
+         *         ``email`` is deliberately absent. It is the address password resets go to, so changing
+         *         it needs fresh proof of identity and is :class:`EmailChange`.
+         *
          *         ``photo_path`` is deliberately absent. The photo is a
          *         server-issued storage key written only by the upload and
          *         delete endpoints, so accepting it here would let a caller
@@ -9594,8 +9663,6 @@ export interface components {
             /** City */
             city?: string | null;
             currency?: components["schemas"]["Currency"] | null;
-            /** Email */
-            email?: string | null;
             first_day_of_week?: components["schemas"]["WeekDay"] | null;
             gender?: components["schemas"]["Gender"] | null;
             /** Height */
@@ -10434,6 +10501,61 @@ export interface components {
          */
         UserAccessType: "regular" | "admin";
         /**
+         * UserPhotoRead
+         * @description The photo a user has after an upload.
+         *
+         *     Attributes:
+         *         photo_path: Servable URL of the user's photo, or None when none is stored.
+         */
+        UserPhotoRead: {
+            /**
+             * Photo Path
+             * @description Servable URL of the user's photo
+             */
+            photo_path?: string | null;
+        };
+        /**
+         * UserPublicRead
+         * @description What any signed-in viewer, or an anonymous one on a shared link, may learn about a user.
+         *
+         *     A deliberate subset of :class:`UsersRead`: no email, birthdate, access level or account
+         *     state, so a lookup cannot be used to harvest personal data or to probe who is an admin.
+         *
+         *     Attributes:
+         *         id: User ID.
+         *         name: User's full name.
+         *         username: Unique username.
+         *         city: User's city.
+         *         photo_path: Servable URL of the user's photo.
+         */
+        UserPublicRead: {
+            /**
+             * City
+             * @description User's city
+             */
+            city?: string | null;
+            /**
+             * Id
+             * @description User ID
+             */
+            id: number;
+            /**
+             * Name
+             * @description User's full name
+             */
+            name: string;
+            /**
+             * Photo Path
+             * @description Servable URL of the user's photo
+             */
+            photo_path?: string | null;
+            /**
+             * Username
+             * @description Unique username
+             */
+            username: string;
+        };
+        /**
          * UsersAdminEditPassword
          * @description Schema for admin password reset operations.
          *
@@ -10824,6 +10946,12 @@ export interface components {
              */
             user_id: number;
             /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
+            /**
              * Virtual Ride Gear Id
              * @description Default gear for virtual ride activities
              */
@@ -10848,8 +10976,8 @@ export interface components {
          * UsersDefaultGearUpdate
          * @description Schema for updating user default gear settings.
          *
-         *     Inherits all gear assignment fields from read schema.
-         *     All fields are optional for partial updates.
+         *     Carries only the gear assignments, all optional for partial updates. The record is the
+         *     authenticated user's own, so the body names neither the record nor the user.
          */
         UsersDefaultGearUpdate: {
             /**
@@ -10867,11 +10995,6 @@ export interface components {
              * @description Default gear for hike activities
              */
             hike_gear_id?: number | null;
-            /**
-             * Id
-             * @description Unique identifier
-             */
-            id: number;
             /**
              * Mtb Ride Gear Id
              * @description Default gear for MTB ride activities
@@ -10913,11 +11036,6 @@ export interface components {
              */
             trail_run_gear_id?: number | null;
             /**
-             * User Id
-             * @description User ID
-             */
-            user_id: number;
-            /**
              * Virtual Ride Gear Id
              * @description Default gear for virtual ride activities
              */
@@ -10937,6 +11055,112 @@ export interface components {
              * @description Default gear for windsurf activities
              */
             windsurf_gear_id?: number | null;
+        };
+        /**
+         * UsersEdit
+         * @description Users schema for an administrative edit.
+         *
+         *     The stored columns of a user and nothing a read adds: ``id`` is the path, and
+         *     ``external_auth_count`` is derived. ``photo_path`` and ``mfa_enabled`` are read-only
+         *     projections, so a write ignores them.
+         */
+        UsersEdit: {
+            /** @description User access level */
+            access_type: components["schemas"]["UserAccessType"];
+            /**
+             * Active
+             * @description Whether the user is active
+             */
+            active: boolean;
+            /**
+             * Birthdate
+             * @description User's birthdate
+             */
+            birthdate?: string | null;
+            /**
+             * City
+             * @description User's city
+             */
+            city?: string | null;
+            /**
+             * @description User currency (euro, dollar, pound)
+             * @default euro
+             */
+            currency: components["schemas"]["Currency"];
+            /**
+             * Email
+             * Format: email
+             * @description User's email address
+             */
+            email: string;
+            /**
+             * Email Verified
+             * @description Whether email is verified
+             * @default false
+             */
+            email_verified: boolean;
+            /**
+             * @description First day of the week
+             * @default monday
+             */
+            first_day_of_week: components["schemas"]["WeekDay"];
+            /**
+             * @description User's gender
+             * @default unspecified
+             */
+            gender: components["schemas"]["Gender"];
+            /**
+             * Height
+             * @description Height in centimeters
+             */
+            height?: number | null;
+            /**
+             * Max Heart Rate
+             * @description Maximum heart rate in bpm
+             */
+            max_heart_rate?: number | null;
+            /**
+             * Mfa Enabled
+             * @description Whether MFA is enabled
+             * @default false
+             */
+            mfa_enabled: boolean;
+            /**
+             * Name
+             * @description User's full name
+             */
+            name: string;
+            /**
+             * Pending Admin Approval
+             * @description Whether pending admin approval
+             * @default false
+             */
+            pending_admin_approval: boolean;
+            /**
+             * Photo Path
+             * @description Servable URL of the user's photo (read-only)
+             */
+            photo_path?: string | null;
+            /**
+             * @description Preferred language
+             * @default en
+             */
+            preferred_language: components["schemas"]["Language"];
+            /**
+             * Timezone
+             * @description IANA timezone the athlete lives in. Used as the fallback for activities imported without a GPS track, which would otherwise inherit the server's timezone. Null means not set.
+             */
+            timezone?: string | null;
+            /**
+             * @description User units (metric, imperial)
+             * @default metric
+             */
+            units: components["schemas"]["Units"];
+            /**
+             * Username
+             * @description Unique username (alphanumeric, dots, hyphen, underscore)
+             */
+            username: string;
         };
         /**
          * UsersEditPassword
@@ -11166,12 +11390,19 @@ export interface components {
              * @description User who owns this goal
              */
             user_id: number;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * UsersGoalUpdate
-         * @description Schema for updating an existing users goal.
+         * @description Schema for replacing an existing users goal.
          *
-         *     Supports partial updates. Omitted fields remain unchanged.
+         *     The goal is named by the path, so the body carries neither an id nor an owner. It is the whole
+         *     goal, because the goal type decides which target field is required.
          */
         UsersGoalUpdate: {
             /** @description Type of activity for the goal */
@@ -11203,18 +11434,8 @@ export interface components {
             goal_elevation?: number | null;
             /** @description Type of goal metric being tracked */
             goal_type: components["schemas"]["GoalType"];
-            /**
-             * Id
-             * @description Unique identifier for the goal
-             */
-            id: number;
             /** @description Goal time interval */
             interval: components["schemas"]["modules__users__users_goals__schema__Interval"];
-            /**
-             * User Id
-             * @description User who owns this goal
-             */
-            user_id: number;
         };
         /**
          * UsersIdentityProviderResponse
@@ -11293,44 +11514,13 @@ export interface components {
             user_id: number;
         };
         /**
-         * UsersListResponse
-         * @description Response model for paginated user listing.
-         *
-         *     Attributes:
-         *         total: Total number of user records.
-         *         num_records: Number of records in this response.
-         *         page_number: Current page number.
-         *         records: List of user records.
-         */
-        UsersListResponse: {
-            /**
-             * Num Records
-             * @description Number of records in this response
-             */
-            num_records?: number | null;
-            /**
-             * Page Number
-             * @description Current page number
-             */
-            page_number?: number | null;
-            /**
-             * Records
-             * @description List of user records
-             */
-            records: components["schemas"]["UsersRead"][];
-            /**
-             * Total
-             * @description Total number of user records
-             */
-            total: number;
-        };
-        /**
          * UsersMe
          * @description Extended users schema for current user profile.
          *
          *     Includes privacy settings and integration status.
          *
          *     Attributes:
+         *         privacy_settings_version: Version of the privacy settings, for ``If-Match``.
          *         is_strava_linked: Strava integration status.
          *         is_garminconnect_linked: Garmin Connect status.
          *         default_activity_visibility: Default visibility level.
@@ -11524,6 +11714,11 @@ export interface components {
              */
             preferred_language: components["schemas"]["Language"];
             /**
+             * Privacy Settings Version
+             * @description Version of the privacy settings, sent back in If-Match when they are edited
+             */
+            privacy_settings_version?: number | null;
+            /**
              * Timezone
              * @description IANA timezone the athlete lives in. Used as the fallback for activities imported without a GPS track, which would otherwise inherit the server's timezone. Null means not set.
              */
@@ -11538,6 +11733,12 @@ export interface components {
              * @description Unique username (alphanumeric, dots, hyphen, underscore)
              */
             username: string;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * UsersPrivacySettingsUpdate
@@ -11741,6 +11942,12 @@ export interface components {
              * @description Unique username (alphanumeric, dots, hyphen, underscore)
              */
             username: string;
+            /**
+             * Version
+             * @description Optimistic-concurrency counter, also sent as the ETag
+             * @default 1
+             */
+            version: number;
         };
         /**
          * UsersSessionsRead
@@ -11997,6 +12204,17 @@ export interface components {
              * @description Optional breakdown by activity type
              */
             type_breakdown?: components["schemas"]["TypeBreakdownItem"][] | null;
+        };
+        /**
+         * WsTicketRead
+         * @description A single-use ticket that authenticates a websocket handshake.
+         *
+         *     Attributes:
+         *         ticket: Opaque, URL-safe ticket, valid for a short time and for one connection.
+         */
+        WsTicketRead: {
+            /** Ticket */
+            ticket: string;
         };
         /**
          * YearlyPeriodSummary
@@ -14063,13 +14281,11 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["GarminDetail"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -14618,12 +14834,10 @@ export interface operations {
     read_health_fasting_all_pagination_api_v1_health_fasting_get: {
         parameters: {
             query?: {
-                /** @description Pagination page number */
-                page_number?: number | null;
-                /** @description Number of records per page */
-                num_records?: number | null;
                 /** @description Filter by goal interval */
                 interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+                page_number?: number | null;
+                num_records?: number | null;
             };
             header?: never;
             path?: never;
@@ -14637,49 +14851,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthFastingListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-            /** @description Unexpected error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
-    edit_health_fasting_api_v1_health_fasting_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HealthFastingUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthFastingRead"];
+                    "application/json": components["schemas"]["Page_HealthFastingRead_"];
                 };
             };
             /** @description Validation Error */
@@ -14880,6 +15052,52 @@ export interface operations {
             };
         };
     };
+    edit_health_fasting_api_v1_health_fasting__health_fasting_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
+            path: {
+                health_fasting_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthFastingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthFastingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     complete_health_fasting_api_v1_health_fasting__health_fasting_id__complete_post: {
         parameters: {
             query?: never;
@@ -14927,12 +15145,10 @@ export interface operations {
     read_health_poop_all_pagination_api_v1_health_poop_get: {
         parameters: {
             query?: {
-                /** @description Pagination page number */
-                page_number?: number | null;
-                /** @description Number of records per page */
-                num_records?: number | null;
                 /** @description Filter by goal interval */
                 interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+                page_number?: number | null;
+                num_records?: number | null;
             };
             header?: never;
             path?: never;
@@ -14946,49 +15162,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthPoopListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-            /** @description Unexpected error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
-    edit_health_poop_api_v1_health_poop_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HealthPoopUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthPoopRead"];
+                    "application/json": components["schemas"]["Page_HealthPoopRead_"];
                 };
             };
             /** @description Validation Error */
@@ -15131,21 +15305,22 @@ export interface operations {
             };
         };
     };
-    read_health_sleep_all_pagination_api_v1_health_sleep_get: {
+    edit_health_poop_api_v1_health_poop__health_poop_id__patch: {
         parameters: {
-            query?: {
-                /** @description Pagination page number */
-                page_number?: number | null;
-                /** @description Number of records per page */
-                num_records?: number | null;
-                /** @description Filter by goal interval */
-                interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
             };
-            header?: never;
-            path?: never;
+            path: {
+                health_poop_id: number;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthPoopUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -15153,7 +15328,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthSleepListResponse"];
+                    "application/json": components["schemas"]["HealthPoopRead"];
                 };
             };
             /** @description Validation Error */
@@ -15176,18 +15351,19 @@ export interface operations {
             };
         };
     };
-    edit_health_sleep_api_v1_health_sleep_put: {
+    read_health_sleep_all_pagination_api_v1_health_sleep_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Filter by goal interval */
+                interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+                page_number?: number | null;
+                num_records?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HealthSleepUpdate"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -15195,7 +15371,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthSleepRead"];
+                    "application/json": components["schemas"]["Page_HealthSleepRead_"];
                 };
             };
             /** @description Validation Error */
@@ -15298,6 +15474,52 @@ export interface operations {
             };
         };
     };
+    edit_health_sleep_api_v1_health_sleep__health_sleep_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
+            path: {
+                health_sleep_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthSleepUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthSleepRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     read_health_daily_stats_api_v1_health_stats_daily_get: {
         parameters: {
             query?: never;
@@ -15330,12 +15552,10 @@ export interface operations {
     read_health_steps_all_pagination_api_v1_health_steps_get: {
         parameters: {
             query?: {
-                /** @description Pagination page number */
-                page_number?: number | null;
-                /** @description Number of records per page */
-                num_records?: number | null;
                 /** @description Filter by goal interval */
                 interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+                page_number?: number | null;
+                num_records?: number | null;
             };
             header?: never;
             path?: never;
@@ -15349,49 +15569,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthStepsListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-            /** @description Unexpected error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
-    edit_health_steps_api_v1_health_steps_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HealthStepsUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthStepsRead"];
+                    "application/json": components["schemas"]["Page_HealthStepsRead_"];
                 };
             };
             /** @description Validation Error */
@@ -15494,6 +15672,52 @@ export interface operations {
             };
         };
     };
+    edit_health_steps_api_v1_health_steps__health_steps_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
+            path: {
+                health_steps_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthStepsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthStepsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     read_health_targets_all_api_v1_health_targets_get: {
         parameters: {
             query?: never;
@@ -15523,10 +15747,12 @@ export interface operations {
             };
         };
     };
-    update_health_targets_api_v1_health_targets_put: {
+    update_health_targets_api_v1_health_targets_patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -15568,12 +15794,10 @@ export interface operations {
     read_health_water_all_pagination_api_v1_health_water_get: {
         parameters: {
             query?: {
-                /** @description Pagination page number */
-                page_number?: number | null;
-                /** @description Number of records per page */
-                num_records?: number | null;
                 /** @description Filter by goal interval */
                 interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+                page_number?: number | null;
+                num_records?: number | null;
             };
             header?: never;
             path?: never;
@@ -15587,49 +15811,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthWaterListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-            /** @description Unexpected error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
-    edit_health_water_api_v1_health_water_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HealthWaterUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthWaterRead"];
+                    "application/json": components["schemas"]["Page_HealthWaterRead_"];
                 };
             };
             /** @description Validation Error */
@@ -15732,21 +15914,22 @@ export interface operations {
             };
         };
     };
-    read_health_weight_all_pagination_api_v1_health_weight_get: {
+    edit_health_water_api_v1_health_water__health_water_id__patch: {
         parameters: {
-            query?: {
-                /** @description Pagination page number */
-                page_number?: number | null;
-                /** @description Number of records per page */
-                num_records?: number | null;
-                /** @description Filter by goal interval */
-                interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
             };
-            header?: never;
-            path?: never;
+            path: {
+                health_water_id: number;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthWaterUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -15754,7 +15937,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthWeightListResponse"];
+                    "application/json": components["schemas"]["HealthWaterRead"];
                 };
             };
             /** @description Validation Error */
@@ -15777,18 +15960,19 @@ export interface operations {
             };
         };
     };
-    edit_health_weight_api_v1_health_weight_put: {
+    read_health_weight_all_pagination_api_v1_health_weight_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Filter by goal interval */
+                interval?: components["schemas"]["modules__health__constants__Interval"] | null;
+                page_number?: number | null;
+                num_records?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HealthWeightUpdate"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -15796,7 +15980,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthWeightRead"];
+                    "application/json": components["schemas"]["Page_HealthWeightRead_"];
                 };
             };
             /** @description Validation Error */
@@ -15878,6 +16062,52 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    edit_health_weight_api_v1_health_weight__health_weight_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
+            path: {
+                health_weight_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthWeightUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthWeightRead"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -16369,10 +16599,12 @@ export interface operations {
             };
         };
     };
-    edit_user_api_v1_profile_put: {
+    edit_user_api_v1_profile_patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -16383,15 +16615,11 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -16589,10 +16817,12 @@ export interface operations {
             };
         };
     };
-    edit_user_default_gear_api_v1_profile_default_gear_put: {
+    edit_user_default_gear_api_v1_profile_default_gear_patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -16631,7 +16861,145 @@ export interface operations {
             };
         };
     };
-    export_profile_data_api_v1_profile_export_get: {
+    delete_my_account_api_v1_profile_delete_account_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepUpVerification"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    edit_profile_email_api_v1_profile_email_change_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    read_profile_export_status_api_v1_profile_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileExportStatus"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    export_profile_data_api_v1_profile_export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileExportStatus"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    download_profile_export_api_v1_profile_export_download_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -16681,48 +17049,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UsersGoalRead"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-            /** @description Unexpected error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
-    update_user_goal_api_v1_profile_goals_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UsersGoalUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UsersGoalRead"];
                 };
             };
             /** @description Validation Error */
@@ -16802,7 +17128,53 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersGoalProgress"][] | null;
+                    "application/json": components["schemas"]["UsersGoalProgress"][];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    update_user_goal_api_v1_profile_goals__goal_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
+            path: {
+                goal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UsersGoalUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsersGoalRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
                 };
             };
             /** @description Unexpected error */
@@ -17030,7 +17402,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": string;
+                    "application/json": components["schemas"]["UserPhotoRead"];
                 };
             };
             /** @description Validation Error */
@@ -17040,6 +17412,35 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    read_profile_import_status_api_v1_profile_import_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileImportStatus"];
                 };
             };
             /** @description Unexpected error */
@@ -17067,14 +17468,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ProfileImportStatus"];
                 };
             };
             /** @description Validation Error */
@@ -17358,7 +17757,7 @@ export interface operations {
             };
         };
     };
-    edit_profile_password_api_v1_profile_password_put: {
+    edit_profile_password_api_v1_profile_password_change_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -17372,15 +17771,11 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -17402,7 +17797,7 @@ export interface operations {
             };
         };
     };
-    delete_profile_photo_api_v1_profile_photo_put: {
+    delete_profile_photo_api_v1_profile_photo_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -17429,10 +17824,12 @@ export interface operations {
             };
         };
     };
-    edit_profile_privacy_settings_api_v1_profile_privacy_put: {
+    edit_profile_privacy_settings_api_v1_profile_privacy_patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -17443,15 +17840,11 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -18126,7 +18519,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersRead"] | null;
+                    "application/json": components["schemas"]["UserPublicRead"];
                 };
             };
             /** @description Validation Error */
@@ -18334,15 +18727,11 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
-                };
+                content?: never;
             };
             /** @description Unexpected error */
             default: {
@@ -18369,15 +18758,11 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -19071,10 +19456,6 @@ export interface operations {
     read_users_all_pagination_api_v1_users_get: {
         parameters: {
             query?: {
-                /** @description Pagination page number */
-                page_number?: number | null;
-                /** @description Number of records per page */
-                num_records?: number | null;
                 /** @description Filter by inactive status */
                 show_inactive?: boolean | null;
                 /** @description Filter by email verification status */
@@ -19085,6 +19466,10 @@ export interface operations {
                 show_external_auth?: boolean | null;
                 /** @description Filter by local authentication status */
                 show_local_auth?: boolean | null;
+                /** @description Keep only users whose username contains this text */
+                username?: string | null;
+                page_number?: number | null;
+                num_records?: number | null;
             };
             header?: never;
             path?: never;
@@ -19098,7 +19483,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersListResponse"];
+                    "application/json": components["schemas"]["Page_UsersRead_"];
                 };
             };
             /** @description Validation Error */
@@ -19180,7 +19565,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersRead"] | null;
+                    "application/json": components["schemas"]["UsersRead"];
                 };
             };
             /** @description Validation Error */
@@ -19220,7 +19605,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersRead"] | null;
+                    "application/json": components["schemas"]["UserPublicRead"];
                 };
             };
             /** @description Validation Error */
@@ -19260,7 +19645,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersRead"][] | null;
+                    "application/json": components["schemas"]["UserPublicRead"][];
                 };
             };
             /** @description Validation Error */
@@ -19300,7 +19685,47 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsersRead"] | null;
+                    "application/json": components["schemas"]["UsersRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    read_users_full_api_v1_users__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsersRead"];
                 };
             };
             /** @description Validation Error */
@@ -19326,7 +19751,9 @@ export interface operations {
     edit_user_api_v1_users__user_id__put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
             path: {
                 user_id: number;
             };
@@ -19334,7 +19761,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UsersRead"];
+                "application/json": components["schemas"]["UsersEdit"];
             };
         };
         responses: {
@@ -19417,15 +19844,11 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -19547,7 +19970,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": string;
+                    "application/json": components["schemas"]["UserPhotoRead"];
                 };
             };
             /** @description Validation Error */
@@ -19570,7 +19993,7 @@ export interface operations {
             };
         };
     };
-    edit_user_password_api_v1_users__user_id__password_put: {
+    edit_user_password_api_v1_users__user_id__password_change_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -19586,15 +20009,11 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -19713,9 +20132,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["WsTicketRead"];
                 };
             };
             /** @description Unexpected error */

@@ -6,6 +6,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import modules.health.health_steps.models as health_steps_models
 import modules.health.health_steps.schema as health_steps_schema
@@ -36,6 +37,27 @@ def _get_model_by_id_and_user_id(health_steps_id: int, user_id: int, db: Session
         raise core_exceptions.NotFoundError("Health steps not found")
 
     return db_health_steps
+
+
+def health_steps_exists(health_steps_id: int, user_id: int, db: Session) -> bool:
+    """Report whether a user has a steps record.
+
+    Args:
+        health_steps_id: The record to look for.
+        user_id: The record's owner.
+        db: Database session.
+
+    Returns:
+        True when the user has such a record.
+    """
+    stmt = select(
+        select(health_steps_models.HealthSteps.id)
+        .where(
+            health_steps_models.HealthSteps.id == health_steps_id, health_steps_models.HealthSteps.user_id == user_id
+        )
+        .exists()
+    )
+    return bool(db.execute(stmt).scalar())
 
 
 def get_health_steps_number_by_user_id(user_id: int, db: Session, since: date_type | None = None) -> int:
@@ -148,22 +170,31 @@ def create_health_steps(
 
 
 def edit_health_steps(
-    user_id: int, health_steps: health_steps_schema.HealthStepsUpdate, db: Session
+    user_id: int,
+    health_steps_id: int,
+    health_steps: health_steps_schema.HealthStepsUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_steps_schema.HealthStepsRead:
     """Stage an update to a user's steps record.
 
     Args:
         user_id: The record's owner.
-        health_steps: The record with its changes.
+        health_steps_id: The record to change.
+        health_steps: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
-    db_health_steps = _get_model_by_id_and_user_id(health_steps.id, user_id, db)
+    db_health_steps = _get_model_by_id_and_user_id(health_steps_id, user_id, db)
+    core_etag.require_if_match(if_match, db_health_steps.version, "steps record")
 
     for key, value in health_steps.model_dump(exclude_unset=True).items():
         setattr(db_health_steps, key, value)

@@ -946,7 +946,6 @@
       "invalidType": "Te rugăm să alegi o arhivă .zip.",
       "exportSuccess": "Export pregătit, descărcarea ta ar trebui să înceapă în curând",
       "exportError": "Nu am putut exporta datele tale. Te rugăm să încerci din nou.",
-      "importSuccess": "Date importate",
       "importError": "Nu am putut importa arhiva. Te rugăm să verifici fișierul și să încerci din nou."
     }
   }

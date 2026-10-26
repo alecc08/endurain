@@ -27,12 +27,13 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 import core.cryptography as core_cryptography
+import core.exceptions as core_exceptions
 import core.logger as core_logger
 import modules.auth.mfa.backup_codes.crud as mfa_backup_codes_crud
 import modules.auth.mfa.backup_codes.utils as mfa_backup_codes_utils
 import modules.auth.mfa.crud as auth_mfa_crud
 import modules.auth.mfa.schema as mfa_schema
-import modules.users.users.utils as users_utils
+import modules.users.users.integration_service as users_integration
 
 logger = core_logger.get_logger(__name__)
 
@@ -122,7 +123,7 @@ def setup_user_mfa(user_id: int, db: Session) -> mfa_schema.MFASetupResponse:
     Raises:
         HTTPException: If user not found or MFA already enabled.
     """
-    user = users_utils.get_user_by_id_or_404(user_id, db)
+    user = users_integration.require_user(user_id, db)
 
     if is_mfa_enabled_for_user(user_id, db):
         raise HTTPException(
@@ -160,7 +161,7 @@ def enable_user_mfa(
         HTTPException: If user not found, MFA already enabled, code
             invalid, or encryption fails.
     """
-    users_utils.get_user_by_id_or_404(user_id, db)
+    users_integration.require_user(user_id, db)
 
     if is_mfa_enabled_for_user(user_id, db):
         raise HTTPException(
@@ -206,7 +207,7 @@ def disable_user_mfa(user_id: int, db: Session) -> None:
         HTTPException: 404 if the user is not found, 400 if MFA
             is not currently enabled.
     """
-    users_utils.get_user_by_id_or_404(user_id, db)
+    users_integration.require_user(user_id, db)
 
     if not is_mfa_enabled_for_user(user_id, db):
         raise HTTPException(
@@ -244,7 +245,7 @@ def verify_user_mfa(
         - If TOTP fails and code is 9 characters (XXXX-XXXX), tries backup code
         - Backup codes are consumed on successful verification
     """
-    user = users_utils.get_user_by_id_or_404(user_id, db)
+    user = users_integration.require_user(user_id, db)
 
     mfa_row = auth_mfa_crud.get_user_mfa_row(user.id, db)
     if not mfa_row or not mfa_row.mfa_enabled or not mfa_row.mfa_secret:
@@ -302,11 +303,9 @@ def is_mfa_enabled_for_user(user_id: int, db: Session) -> bool:
         True if MFA is enabled, False otherwise.
     """
     try:
-        user = users_utils.get_user_by_id_or_404(user_id, db)
-    except HTTPException as err:
-        if err.status_code == status.HTTP_404_NOT_FOUND:
-            return False
-        raise
+        user = users_integration.require_user(user_id, db)
+    except core_exceptions.NotFoundError:
+        return False
 
     if not user:
         return False

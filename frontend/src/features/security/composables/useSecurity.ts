@@ -14,8 +14,10 @@ import type {
 import { queryKeys } from '@/services/queryKeys'
 import { useAuthStore } from '@/features/auth/stores/auth'
 import {
+  changeEmail,
   changePassword,
   createApiKey,
+  deleteAccount,
   deleteApiKey,
   disableMfa,
   enableMfa,
@@ -262,6 +264,47 @@ export function useDeleteApiKeyMutation() {
     mutationFn: (id) => deleteApiKey(id),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.security.apiKeys() })
+    },
+  })
+}
+
+/**
+ * Delete-my-account mutation. On success the account and its sessions no longer
+ * exist on the server, so only the local session is cleared (which also empties
+ * the Query cache); calling the logout endpoint would just fail.
+ *
+ * @returns The TanStack Query mutation for deleting the account.
+ */
+export function useDeleteAccountMutation() {
+  const authStore = useAuthStore()
+
+  return useMutation<void, Error, StepUpInput>({
+    mutationKey: queryKeys.security.all(),
+    mutationFn: (input) => deleteAccount(input),
+    onSuccess: () => authStore.clearLocalSession(),
+  })
+}
+
+/**
+ * Change-email mutation, run after step-up. The address is shown by the profile and the app
+ * shell, so both are refetched.
+ *
+ * @returns The TanStack Query mutation for changing the account email.
+ */
+export function useChangeEmailMutation() {
+  const client = useQueryClient()
+
+  return useMutation<
+    void,
+    Error,
+    { email: string; stepUp: StepUpInput; revokeOtherSessions: boolean }
+  >({
+    mutationKey: queryKeys.security.all(),
+    mutationFn: ({ email, stepUp, revokeOtherSessions }) =>
+      changeEmail(email, stepUp, revokeOtherSessions),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.profile.all() })
+      void client.invalidateQueries({ queryKey: queryKeys.currentUser() })
     },
   })
 }

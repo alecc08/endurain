@@ -14,7 +14,6 @@ from typing import Annotated
 from fastapi import (
     APIRouter,
     Depends,
-    Header,
     Query,
     Request,
     Response,
@@ -237,7 +236,7 @@ def edit_activity(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
     response: Response,
-    if_match: Annotated[str | None, Header(alias=core_etag.IF_MATCH_HEADER)] = None,
+    if_match: core_dependencies.IfMatch,
 ) -> activity_schema.ActivityRead:
     """Apply partial updates to one of the authenticated user's activities.
 

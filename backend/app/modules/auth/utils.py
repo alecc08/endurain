@@ -30,7 +30,7 @@ import modules.auth.schema as auth_schema
 import modules.auth.sessions.utils as auth_sessions_utils
 import modules.server_settings.contracts as server_settings_contracts
 import modules.server_settings.integration_service as server_settings_integration
-import modules.users.users.crud as users_crud
+import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
 
 REFRESH_TOKEN_COOKIE_NAME = "endurain_refresh_token"
@@ -68,7 +68,7 @@ def authenticate_user(
         HTTPException: If the username does not exist or the password is invalid.
     """
     # Get the user from the database
-    user = users_crud.get_user_by_username(username, db)
+    user = users_integration.get_user_by_username(username, db)
 
     # Check if the user exists and if the password is correct
     if not user:

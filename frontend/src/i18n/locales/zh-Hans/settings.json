@@ -946,7 +946,6 @@
       "invalidType": "请选择 .zip 压缩文件。",
       "exportSuccess": "导出完成，您的下载将很快开始",
       "exportError": "无法导出您的数据，请重试。",
-      "importSuccess": "数据已导入",
       "importError": "无法导入压缩文件，请检查文件后重试。"
     }
   }

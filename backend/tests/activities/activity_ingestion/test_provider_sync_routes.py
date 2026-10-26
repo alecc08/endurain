@@ -28,6 +28,12 @@ _CASES = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def users_today():
+    with patch.object(garmin_sync_service.users_integration, "local_today", return_value=date(2026, 1, 31)):
+        yield
+
+
 def _call(route, **overrides):
     kwargs = {
         "request": MagicMock(),

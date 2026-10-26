@@ -14,8 +14,6 @@ from pydantic import (
     model_validator,
 )
 
-import modules.health.schema as health_schema
-
 
 class Source(Enum):
     """Enum representing the source of sleep health data.
@@ -256,29 +254,12 @@ class HealthSleepRead(HealthSleepBase):
 
     id: StrictInt = Field(..., description="Unique identifier for the sleep record to update")
     user_id: StrictInt = Field(..., description="Foreign key reference to the user")
+    version: StrictInt = Field(default=1, ge=1, description="Optimistic-concurrency counter, also sent as the ETag")
 
 
-class HealthSleepUpdate(HealthSleepRead):
-    """Schema for updating health sleep records.
+class HealthSleepUpdate(HealthSleepBase):
+    """Schema for the fields a PATCH changes on a sleep record.
 
-    Inherits all fields from HealthSleepRead, allowing clients to update
-    existing sleep data while maintaining consistency with the read schema.
-
-    Used in PUT/PATCH requests to modify sleep tracking information such as
-    sleep duration, quality, and related health metrics.
+    The record is named by the path, so the body carries neither an id nor an owner; only the
+    fields present are changed.
     """
-
-
-class HealthSleepListResponse(health_schema.HealthListResponse):
-    """Response model for listing health sleep records.
-
-    Extends the base HealthListResponse to provide a typed response containing
-    a list of sleep records. This model is used when returning multiple sleep
-    entries from API endpoints.
-
-    Attributes:
-        records: A list of HealthSleepRead objects representing individual
-            sleep records.
-    """
-
-    records: list[HealthSleepRead] = Field(..., description="List of health sleep records")

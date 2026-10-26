@@ -359,11 +359,7 @@ export function useDeleteActivityMediaMutation(id: MaybeRefOrGetter<number | nul
 export function useEditActivityMutation() {
   const client = useQueryClient()
 
-  return useMutation<
-    Activity,
-    Error,
-    { id: number; input: ActivityEditInput; version?: number | null }
-  >({
+  return useMutation<Activity, Error, { id: number; input: ActivityEditInput; version: number }>({
     mutationFn: ({ id, input, version }) => editActivity(id, input, version),
     onSuccess: (updated) => {
       client.setQueryData(queryKeys.activities.detail(updated.id), updated)

@@ -15,8 +15,6 @@ from pydantic import (
     StrictInt,
 )
 
-import modules.health.schema as health_schema
-
 
 class Source(Enum):
     """Enumeration of data sources for water intake records.
@@ -85,25 +83,12 @@ class HealthWaterRead(HealthWaterBase):
         ...,
         description="Foreign key reference to the user",
     )
+    version: StrictInt = Field(default=1, ge=1, description="Optimistic-concurrency counter, also sent as the ETag")
 
 
-class HealthWaterUpdate(HealthWaterRead):
-    """Schema for updating a water intake record.
+class HealthWaterUpdate(HealthWaterBase):
+    """Schema for the fields a PATCH changes on a water record.
 
-    Inherits from HealthWaterRead for consistency with read
-    operations while allowing modifications to water intake data.
+    The record is named by the path, so the body carries neither an id nor an owner; only the
+    fields present are changed.
     """
-
-
-class HealthWaterListResponse(health_schema.HealthListResponse):
-    """Response model for listing health water intake records.
-
-    Attributes:
-        records: A list of HealthWaterRead objects representing
-            individual water intake records.
-    """
-
-    records: list[HealthWaterRead] = Field(
-        ...,
-        description="List of health water intake records",
-    )

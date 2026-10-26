@@ -1,5 +1,7 @@
 """Temporary Garmin MFA code storage for cross-request handoff.
 
+The code is a live credential, so it is encrypted before it is stored.
+
 The Garmin Connect link flow is asynchronous: the backend starts a blocking
 login in a thread that eventually calls back for an MFA code, while the user
 submits that code via a separate HTTP request.  In a multi-worker deployment
@@ -16,14 +18,27 @@ Interface::
 
 from jasil.providers import StateBackendUnavailableError, StateProvider
 
+import core.attempt_state as core_attempt_state
+import core.cryptography as core_cryptography
 import core.logger as core_logger
 import modules.garmin.constants as garmin_constants
-import modules.garmin.state_store as garmin_state_store
 
 logger = core_logger.get_logger(__name__)
 
 # TTL must exceed the MFA_WAIT_SECONDS a login waits for a code.
 _DEFAULT_TTL_SECONDS: int = garmin_constants.MFA_WAIT_SECONDS + 30
+
+
+def _encrypt(code: str) -> bytes:
+    """Encrypt an MFA code, a live credential, before it reaches shared state.
+
+    Args:
+        code: The MFA code submitted by the user.
+
+    Returns:
+        The encrypted code.
+    """
+    return (core_cryptography.encrypt_token_fernet(code) or "").encode()
 
 
 class GarminMFACodeStore:
@@ -46,7 +61,7 @@ class GarminMFACodeStore:
 
     def _key(self, user_id: int) -> str:
         """Build the storage key for a user's pending MFA code."""
-        return garmin_state_store.key("mfa:code", str(user_id))
+        return core_attempt_state.key("garmin", "mfa:code", str(user_id))
 
     def add_code(self, user_id: int, code: str) -> None:
         """Store a Garmin MFA code with TTL.
@@ -56,12 +71,12 @@ class GarminMFACodeStore:
             code: The MFA code submitted by the user.
 
         Raises:
-            GarminStateUnavailableError: When storage is unavailable.
+            StateUnavailableError: When storage is unavailable.
         """
         try:
-            self._state.set(self._key(user_id), code.encode(), ttl_seconds=self._ttl_seconds)
+            self._state.set(self._key(user_id), _encrypt(code), ttl_seconds=self._ttl_seconds)
         except StateBackendUnavailableError as err:
-            garmin_state_store.raise_unavailable("add Garmin MFA code", err)
+            core_attempt_state.raise_unavailable("add Garmin MFA code", err)
         logger.debug(
             "Stored Garmin MFA code",
             extra=core_logger.context(user_id=user_id),
@@ -77,13 +92,14 @@ class GarminMFACodeStore:
             The stored code string, or None if missing or expired.
 
         Raises:
-            GarminStateUnavailableError: When storage is unavailable.
+            StateUnavailableError: When storage is unavailable.
+            CryptographyError: When the stored code cannot be decrypted.
         """
         try:
             value = self._state.get(self._key(user_id))
         except StateBackendUnavailableError as err:
-            garmin_state_store.raise_unavailable("get Garmin MFA code", err)
-        return value.decode() if value is not None else None
+            core_attempt_state.raise_unavailable("get Garmin MFA code", err)
+        return core_cryptography.decrypt_token_fernet(value.decode()) if value is not None else None
 
     def delete_code(self, user_id: int) -> None:
         """Remove the Garmin MFA code for a user.

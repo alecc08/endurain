@@ -946,7 +946,6 @@
       "invalidType": "Wybierz archiwum .zip.",
       "exportSuccess": "Eksport gotowy, pobieranie powinno się wkrótce rozpocząć",
       "exportError": "Nie udało się wyeksportować danych. Spróbuj ponownie.",
-      "importSuccess": "Zaimportowano dane",
       "importError": "Nie udało się zaimportować archiwum. Sprawdź plik i spróbuj ponownie."
     }
   }

@@ -37,7 +37,7 @@ const VISIBILITY_OPTIONS: { value: ActivityVisibility; labelKey: string }[] = [
 ]
 
 /** The per-field hide toggles, in display order. */
-type HideKey = Exclude<keyof PrivacySettings, 'defaultActivityVisibility'>
+type HideKey = Exclude<keyof PrivacySettings, 'defaultActivityVisibility' | 'version'>
 const HIDE_FIELDS: { key: HideKey; labelKey: string }[] = [
   { key: 'hideStartTime', labelKey: 'settings.profile.privacy.hideStartTime' },
   { key: 'hideLocation', labelKey: 'settings.profile.privacy.hideLocation' },

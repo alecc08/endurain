@@ -50,8 +50,7 @@ function targetToCount(raw: string): number | null {
 async function submitForm(values: TargetFormValues): Promise<void> {
   try {
     await updateTargetMutation.mutateAsync({
-      id: props.targets.id,
-      userId: props.targets.userId,
+      version: props.targets.version,
       steps: targetToCount(values.steps),
     })
     emit('success', t('health.steps.target.saveSuccess'))

@@ -137,7 +137,7 @@ class TestStoreActivitiesFromFile:
 
         with (
             patch.object(pipeline.users_integration, "get_user"),
-            patch.object(pipeline.users_integration, "get_privacy_settings"),
+            patch.object(pipeline.users_privacy_settings_integration, "get_privacy_settings"),
             patch.object(
                 pipeline,
                 "parse_file",
@@ -175,7 +175,7 @@ class TestStoreActivitiesFromFile:
 
         with (
             patch.object(pipeline.users_integration, "get_user"),
-            patch.object(pipeline.users_integration, "get_privacy_settings"),
+            patch.object(pipeline.users_privacy_settings_integration, "get_privacy_settings"),
             patch.object(
                 pipeline,
                 "parse_file",
@@ -203,7 +203,7 @@ class TestStoreActivitiesFromFile:
 
         with (
             patch.object(pipeline.users_integration, "get_user"),
-            patch.object(pipeline.users_integration, "get_privacy_settings"),
+            patch.object(pipeline.users_privacy_settings_integration, "get_privacy_settings"),
             patch.object(pipeline, "parse_file", return_value=activity_contracts.ParsedFile()),
             patch.object(pipeline.core_file_uploads, "sha256_file", return_value="hash"),
             patch.object(pipeline.activity_file_storage_integration, "store_activity_file_for_ids") as store,
@@ -228,7 +228,7 @@ class TestStoreActivitiesFromFile:
 
         with (
             patch.object(pipeline.users_integration, "get_user"),
-            patch.object(pipeline.users_integration, "get_privacy_settings"),
+            patch.object(pipeline.users_privacy_settings_integration, "get_privacy_settings"),
             patch.object(pipeline, "parse_file", return_value=None),
         ):
             result = pipeline.store_activities_from_file(

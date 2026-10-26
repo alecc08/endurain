@@ -454,6 +454,10 @@ export const queryKeys = {
     detail: () => ['profile', 'detail'] as const,
     /** The user's per-activity default-gear assignments. */
     defaultGear: () => ['profile', 'default-gear'] as const,
+    /** The state of the user's profile export. */
+    export: () => ['profile', 'export'] as const,
+    /** The state of the user's profile import. */
+    import: () => ['profile', 'import'] as const,
   },
 
   /**

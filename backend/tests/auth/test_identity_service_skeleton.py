@@ -215,10 +215,10 @@ class TestResolveFromAccessToken:
 
         with (
             patch(
-                "modules.auth.identity_service.users_utils.get_user_by_id_or_404",
+                "modules.auth.identity_service.users_integration.require_user",
                 return_value=mock_user,
             ),
-            patch("modules.auth.identity_service.users_utils.check_user_is_active"),
+            patch("modules.auth.identity_service.users_integration.require_active_user"),
         ):
             result = service.resolve_from_access_token("token123")
 
@@ -323,10 +323,10 @@ class TestResolveFromApiKey:
                 return_value=mock_db_key,
             ),
             patch(
-                "modules.auth.identity_service.users_utils.get_user_by_id_or_404",
+                "modules.auth.identity_service.users_integration.require_user",
                 return_value=mock_user,
             ),
-            patch("modules.auth.identity_service.users_utils.check_user_is_active"),
+            patch("modules.auth.identity_service.users_integration.require_active_user"),
             patch("modules.auth.identity_service.auth_api_keys_crud.update_last_used"),
             patch(
                 "modules.auth.identity_service.auth_api_keys_utils.json_to_scopes",
@@ -386,10 +386,10 @@ class TestResolveFromApiKey:
                 return_value=mock_db_key,
             ),
             patch(
-                "modules.auth.identity_service.users_utils.get_user_by_id_or_404",
+                "modules.auth.identity_service.users_integration.require_user",
                 return_value=_mock_user(),
             ),
-            patch("modules.auth.identity_service.users_utils.check_user_is_active"),
+            patch("modules.auth.identity_service.users_integration.require_active_user"),
             pytest.raises(HTTPException) as exc_info,
         ):
             service.resolve_from_api_key("revoked", mock_request)
@@ -419,10 +419,10 @@ class TestResolveFromApiKey:
                 return_value=mock_db_key,
             ),
             patch(
-                "modules.auth.identity_service.users_utils.get_user_by_id_or_404",
+                "modules.auth.identity_service.users_integration.require_user",
                 return_value=_mock_user(),
             ),
-            patch("modules.auth.identity_service.users_utils.check_user_is_active"),
+            patch("modules.auth.identity_service.users_integration.require_active_user"),
             pytest.raises(HTTPException) as exc_info,
         ):
             service.resolve_from_api_key("expired_key", mock_request)
@@ -458,10 +458,10 @@ class TestResolveFromApiKey:
                 return_value=mock_db_key,
             ),
             patch(
-                "modules.auth.identity_service.users_utils.get_user_by_id_or_404",
+                "modules.auth.identity_service.users_integration.require_user",
                 return_value=mock_user,
             ),
-            patch("modules.auth.identity_service.users_utils.check_user_is_active"),
+            patch("modules.auth.identity_service.users_integration.require_active_user"),
             patch(
                 "modules.auth.identity_service.auth_api_keys_crud.update_last_used",
                 side_effect=SQLAlchemyError("db down"),
@@ -500,10 +500,10 @@ class TestResolveFromSessionCookie:
                 return_value=mock_session,
             ),
             patch(
-                "modules.auth.identity_service.users_utils.get_user_by_id_or_404",
+                "modules.auth.identity_service.users_integration.require_user",
                 return_value=mock_user,
             ),
-            patch("modules.auth.identity_service.users_utils.check_user_is_active"),
+            patch("modules.auth.identity_service.users_integration.require_active_user"),
         ):
             result = service.resolve_from_session_cookie("sess-abc")
 
@@ -815,7 +815,18 @@ class TestSetLocalPasswordHash:
             "modules.auth.identity_service.auth_credentials_crud.upsert_password_hash",
         ) as upsert:
             service.set_local_password_hash(42, "$argon2id$abc")
-        upsert.assert_called_once_with(42, "$argon2id$abc", mock_db)
+        upsert.assert_called_once_with(42, "$argon2id$abc", mock_db, commit=False)
+
+
+class TestVerifyStepUp:
+    """Tests for DefaultIdentityService.verify_step_up."""
+
+    def test_delegates_to_the_step_up_service(self, service, mock_db):
+        step_up = MagicMock(current_password="pw", mfa_code="123456")
+        store = MagicMock()
+        with patch("modules.auth.identity_service.auth_step_up_service.verify_step_up_credentials") as verify:
+            service.verify_step_up(step_up, 42, store)
+        verify.assert_called_once_with(42, "pw", "123456", service, store, mock_db)
 
 
 class TestClearLocalPassword:
@@ -827,3 +838,15 @@ class TestClearLocalPassword:
         ) as delete_credential:
             service.clear_local_password(42)
         delete_credential.assert_called_once_with(42, mock_db)
+
+
+class TestDeleteAllUserSessions:
+    """delete_all_user_sessions signs every device of a user out."""
+
+    def test_deletes_every_session_of_the_user(self, service, mock_db):
+        with patch(
+            "modules.auth.identity_service.auth_sessions_crud.delete_sessions_by_user", return_value=3
+        ) as delete:
+            service.delete_all_user_sessions(7)
+
+        delete.assert_called_once_with(7, mock_db)

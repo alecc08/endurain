@@ -64,6 +64,7 @@
       "email": "Email",
       "emailRequired": "Email is required",
       "emailInvalid": "Enter a valid email address",
+      "emailChangeHint": "The new address is marked unverified, and the user is signed out of every device.",
       "accessType": "Access type",
       "accessTypeRegular": "Regular user",
       "accessTypeAdmin": "Administrator",
@@ -157,7 +158,7 @@
       "close": "Close",
       "createSuccess": "User added",
       "updateSuccess": "User updated",
-      "conflict": "That username or email is already in use",
+      "conflict": "That username is already in use",
       "saveError": "Couldn't save the user. Please try again."
     },
     "delete": {
@@ -656,6 +657,7 @@
     "hidePassword": "Hide password",
     "mfaCode": "Authentication code",
     "mfaCodePlaceholder": "123456",
+    "confirmPhrase": "Type {phrase} to confirm",
     "loadError": {
       "title": "Couldn't load your security settings",
       "description": "Something went wrong. You can try again."
@@ -758,6 +760,27 @@
       "alreadyLinked": "That account is already linked.",
       "lastMethodError": "You can't unlink your only sign-in method. Set a password first."
     },
+    "email": {
+      "title": "Email address",
+      "subtitle": "This is where password resets and notices are sent. Changing it requires you to confirm your identity, and the new address must be verified.",
+      "current": "Current email",
+      "action": "Change email",
+      "new": "New email",
+      "invalid": "Enter a valid email address.",
+      "success": "Email updated. Check your inbox to verify the new address.",
+      "conflict": "That email is already in use.",
+      "error": "Couldn't change your email. Please try again."
+    },
+    "deleteAccount": {
+      "title": "Delete my account",
+      "subtitle": "Permanently delete your account and all of your data, including activities and their files, health records, gear, goals, integrations and sessions. This can't be undone. Export your data first if you want to keep a copy.",
+      "action": "Delete my account",
+      "dialogTitle": "Delete your account?",
+      "dialogDescription": "This permanently deletes your account and all of your data. Confirm your identity to continue.",
+      "confirm": "Delete my account",
+      "error": "Couldn't delete your account. Please try again.",
+      "onlyAdminError": "You are the only administrator. Make another user an administrator before deleting your account."
+    },
     "apiKeys": {
       "title": "API keys",
       "subtitle": "Create keys to upload activities from scripts and third-party tools",
@@ -848,7 +871,7 @@
       "retrievingGear": "Retrieving your Strava gear in the background…",
       "retrieveGearError": "Couldn't start retrieving Strava gear. Please try again.",
       "unlinkTitle": "Disconnect Strava?",
-      "unlinkBody": "Endurain will stop importing from Strava. Your existing activities are kept.",
+      "unlinkBody": "Endurain will stop importing from Strava and delete the activities and gear it imported from Strava, including those from a Strava bulk export. Activities from other sources are kept.",
       "unlinkSuccess": "Strava disconnected",
       "unlinkError": "Couldn't disconnect Strava. Please try again."
     },
@@ -923,6 +946,8 @@
     "title": "My profile",
     "subtitle": "Manage your account details and privacy",
     "notSet": "Not set",
+    "emailManagedIn": "Your email is changed in Security settings.",
+    "emailManagedLink": "Open Security settings",
     "error": {
       "title": "Couldn't load your profile",
       "description": "Something went wrong while loading your profile. You can try again.",
@@ -1028,10 +1053,40 @@
       "export": "Export data",
       "import": "Import data",
       "invalidType": "Please choose a .zip archive.",
-      "exportSuccess": "Export ready. Your download should begin shortly",
-      "exportError": "Couldn't export your data. Please try again.",
-      "importSuccess": "Data imported",
-      "importError": "Couldn't import the archive. Please check the file and try again."
+      "download": "Download export",
+      "downloadSuccess": "Your download should begin shortly",
+      "downloadError": "Couldn't download the export. Please try again.",
+      "exportQueued": "Export started. You can leave this page.",
+      "exportError": "Couldn't start the export. Please try again.",
+      "exportInProgress": "An export is already in progress.",
+      "exportStatus": {
+        "queued": "Waiting for the export to start…",
+        "running": "Preparing your export…",
+        "completed": "Your export is ready to download. It stays available for two hours.",
+        "failed": "The export didn't complete: {reason}"
+      },
+      "exportFailure": {
+        "timed_out": "it took too long. You can try again.",
+        "processing_failed": "something went wrong. You can try again."
+      },
+      "importQueued": "Import started. You can leave this page.",
+      "importError": "Couldn't start the import. Please check the file and try again.",
+      "importInProgress": "An import is already in progress.",
+      "status": {
+        "queued": "Waiting for the import to start…",
+        "running": "Importing your data…",
+        "writing_files": "Saving your files…",
+        "completed": "Import finished: {activities} activities and {gears} gears imported.",
+        "failed": "The import didn't complete: {reason}"
+      },
+      "failure": {
+        "invalid_file": "the archive isn't a valid Endurain export. Nothing was imported.",
+        "too_large": "the archive is too large. Nothing was imported.",
+        "too_many_activities": "the archive has too many activities. Nothing was imported.",
+        "timed_out": "it took too long. Nothing was imported, so you can try again.",
+        "files_incomplete": "your data was imported but some files are missing. Don't import it again; it would duplicate your data.",
+        "processing_failed": "something went wrong. Nothing was imported, so you can try again."
+      }
     }
   }
 }

@@ -11,7 +11,7 @@ import modules.activities.activity.schema as activity_schema
 import modules.activities.activity_ingestion.integration_service as activity_ingestion_integration
 import modules.strava.activity_utils as strava_activity_utils
 import modules.strava.bulk_import_source as strava_bulk_import_source
-import modules.users.users_integrations.crud as user_integrations_crud
+import modules.users.users_integrations.integration_service as user_integrations_integration
 from core.database import SessionLocal
 
 PROVIDER_NAME = "strava"
@@ -48,7 +48,7 @@ def _linked_user_ids(after_id: int, limit: int) -> list[int]:
         The linked user ids, ascending.
     """
     with SessionLocal() as db:
-        return user_integrations_crud.list_user_ids_with_strava_linked(after_id, limit, db)
+        return user_integrations_integration.list_user_ids_with_strava_linked(after_id, limit, db)
 
 
 def register_activity_provider() -> None:

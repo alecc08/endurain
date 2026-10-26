@@ -113,24 +113,24 @@ def service_with_mocked_db(
     )
 
     # Patch DB utility used inside resolve_from_access_token
-    import modules.users.users.utils as users_utils
+    import modules.users.users.integration_service as users_integration
 
-    users_utils_patcher = patch.object(
-        users_utils,
-        "get_user_by_id_or_404",
+    users_patcher = patch.object(
+        users_integration,
+        "require_user",
         return_value=mock_user_orm,
     )
     check_patcher = patch.object(
-        users_utils,
-        "check_user_is_active",
+        users_integration,
+        "require_active_user",
         return_value=None,
     )
-    users_utils_patcher.start()
+    users_patcher.start()
     check_patcher.start()
 
     yield svc
 
-    users_utils_patcher.stop()
+    users_patcher.stop()
     check_patcher.stop()
 
 
@@ -185,7 +185,7 @@ class TestResolveFromAccessTokenBenchmark:
         """
         from unittest.mock import patch
 
-        import modules.users.users.utils as users_utils
+        import modules.users.users.integration_service as users_integration
 
         mock_db = MagicMock()
         password_hasher = auth_password_hasher.get_password_hasher()
@@ -201,13 +201,13 @@ class TestResolveFromAccessTokenBenchmark:
 
         with (
             patch.object(
-                users_utils,
-                "get_user_by_id_or_404",
+                users_integration,
+                "require_user",
                 return_value=mock_user_orm,
             ) as mock_get_user,
             patch.object(
-                users_utils,
-                "check_user_is_active",
+                users_integration,
+                "require_active_user",
                 return_value=None,
             ),
         ):

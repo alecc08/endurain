@@ -17,7 +17,7 @@ from a future CLI or scheduled trigger without constructing an HTTP response.
 """
 
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from itertools import batched
 
@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 import core.config as core_config
 import core.database as core_database
 import core.exceptions as core_exceptions
+import core.local_pool as core_local_pool
 import core.logger as core_logger
 import modules.activities.activity.integration_service as activity_integration
 import modules.activities.activity_ingestion.constants as activity_ingestion_constants
@@ -133,7 +134,9 @@ def accept_upload(
         UnsupportedFormatError: When the extension is not a supported format.
         ConflictError: When the key was already used for different content.
         DomainError: When the shared upload validators reject the payload.
+        PoolFullError: On the local profile, when the in-process pool is full.
     """
+    activity_ingestion_dispatch_service.require_capacity()
     received = activity_ingestion_upload_entry_service.receive_upload(
         filename, save_upload, fingerprint=idempotency_key is not None
     )
@@ -220,7 +223,7 @@ def accept_upload(
     # No durable worker drains the queue on the local profile, so the parse runs
     # on the background pool and leaves the request threadpool alone. In-flight
     # work is lost on restart, which is the reliability gap durable jobs close.
-    activity_ingestion_dispatch_service.run_in_background(run_upload_job, job_id, storage)
+    run_in_background_or_fail(run_upload_job, job_id, storage)
 
     logger.info(
         "Activity upload accepted for background import",
@@ -313,7 +316,11 @@ def accept_refresh(
 
     Returns:
         The accepted refresh job, in the pending state.
+
+    Raises:
+        PoolFullError: On the local profile, when the in-process pool is full.
     """
+    activity_ingestion_dispatch_service.require_capacity()
     job_id = str(uuid.uuid4())
 
     activity_ingestion_crud.create_ingestion_job(
@@ -331,7 +338,7 @@ def accept_refresh(
             job_id, token_user_id, db, commit=commit
         ),
     )
-    activity_ingestion_dispatch_service.run_in_background(run_refresh_job, job_id, storage)
+    run_in_background_or_fail(run_refresh_job, job_id, storage)
 
     logger.info(
         "Provider refresh accepted for background sync",
@@ -477,7 +484,13 @@ def _queue_refresh_batch(user_ids: list[int], storage: platform_providers.Storag
         )
 
     for job_id, _user_id in jobs:
-        activity_ingestion_dispatch_service.run_in_background(run_refresh_job, job_id, storage)
+        try:
+            run_in_background_or_fail(run_refresh_job, job_id, storage)
+        except core_local_pool.PoolFullError:
+            logger.warning(
+                "A provider refresh was dropped: the in-process pool is full",
+                extra=core_logger.context(job_id=job_id),
+            )
     logger.debug("Queued a batch of provider refresh jobs", extra=core_logger.context(count=len(jobs)))
     return len(jobs)
 
@@ -604,6 +617,29 @@ def release_ingestion_job(job_id: str) -> None:
             exc_info=err,
             extra=core_logger.context(job_id=job_id),
         )
+
+
+def run_in_background_or_fail(
+    run: Callable[[str, platform_providers.StorageProvider], None],
+    job_id: str,
+    storage: platform_providers.StorageProvider,
+) -> None:
+    """Run a committed job on the in-process pool, closing it when the pool turns it away.
+
+    Args:
+        run: The job body.
+        job_id: The committed job.
+        storage: The blob-storage provider handed to the job.
+
+    Raises:
+        PoolFullError: When the pool filled after the request was admitted. The job is failed
+            first, so it does not sit pending and block the user's next one.
+    """
+    try:
+        activity_ingestion_dispatch_service.run_in_background(run, job_id, storage)
+    except core_local_pool.PoolFullError:
+        fail_ingestion_job(job_id, activity_ingestion_constants.IngestionJobErrorCode.PROCESSING_FAILED, storage)
+        raise
 
 
 def fail_ingestion_job(

@@ -25,6 +25,7 @@ def passthrough_serializers():
 def _row(record_id: int = 1, amount_ml: float = 500.0) -> MagicMock:
     row = MagicMock(spec=health_water_models.HealthWater)
     row.id = record_id
+    row.version = 1
     row.user_id = 1
     row.amount_ml = amount_ml
     return row
@@ -99,11 +100,9 @@ class TestEditHealthWater:
     def test_updates_the_given_fields_and_stages(self, mock_db):
         row = _row()
         _returns_one(mock_db, row)
-        update = health_water_schema.HealthWaterUpdate(
-            id=1, user_id=1, date=datetime_date(2024, 1, 15), amount_ml=900.0
-        )
+        update = health_water_schema.HealthWaterUpdate(date=datetime_date(2024, 1, 15), amount_ml=900.0)
 
-        health_water_crud.edit_health_water(1, update, mock_db)
+        health_water_crud.edit_health_water(1, 1, update, mock_db, if_match="*")
 
         assert row.amount_ml == 900.0
         mock_db.flush.assert_called_once()
@@ -111,12 +110,10 @@ class TestEditHealthWater:
 
     def test_unknown_record_is_not_found(self, mock_db):
         _returns_one(mock_db, None)
-        update = health_water_schema.HealthWaterUpdate(
-            id=9, user_id=1, date=datetime_date(2024, 1, 15), amount_ml=900.0
-        )
+        update = health_water_schema.HealthWaterUpdate(date=datetime_date(2024, 1, 15), amount_ml=900.0)
 
         with pytest.raises(core_exceptions.NotFoundError, match="Health water not found"):
-            health_water_crud.edit_health_water(1, update, mock_db)
+            health_water_crud.edit_health_water(1, 9, update, mock_db, if_match="*")
 
 
 class TestDeleteHealthWater:

@@ -30,10 +30,11 @@ never use a module-level singleton.
 from __future__ import annotations
 
 import hmac
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated, Protocol, runtime_checkable
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -44,16 +45,19 @@ import modules.auth._internal.password_hasher as auth_password_hasher
 import modules.auth._internal.services.account_security_service as auth_account_security_service
 import modules.auth._internal.services.identity_link_service as auth_identity_link_service
 import modules.auth._internal.services.mfa_workflow as auth_mfa_workflow
+import modules.auth._internal.services.step_up_service as auth_step_up_service
 import modules.auth._internal.token_manager as auth_token_manager
 import modules.auth.api_keys.crud as auth_api_keys_crud
 import modules.auth.api_keys.utils as auth_api_keys_utils
 import modules.auth.credentials.crud as auth_credentials_crud
 import modules.auth.mfa.crud as auth_mfa_crud
+import modules.auth.password_policy as auth_password_policy
 import modules.auth.sessions.crud as auth_sessions_crud
+import modules.auth.sign_up_tokens.utils as auth_sign_up_tokens_utils
 import modules.auth.utils as auth_utils
 import modules.server_settings.contracts as server_settings_contracts
+import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
-import modules.users.users.utils as users_utils
 from modules.auth.principal import (
     AccessTokenCred,
     ApiKeyCred,
@@ -73,6 +77,7 @@ if TYPE_CHECKING:
     import modules.auth.mfa.schema as auth_mfa_schema
     import modules.auth.mfa.setup_store as auth_mfa_setup_store
     import modules.auth.sessions.schema as auth_sessions_schema
+    import modules.server_settings.schema as server_settings_schema
 
 __all__ = [
     "DefaultIdentityService",
@@ -260,6 +265,50 @@ class IdentityService(Protocol):
         """
         ...
 
+    def validate_and_hash_password_for_user(
+        self,
+        server_settings: server_settings_schema.ServerSettingsRead,
+        access_type: str,
+        password: str,
+    ) -> str:
+        """Validate a password against the policy of a user's access type and hash it.
+
+        Args:
+            server_settings: Settings containing the password policy.
+            access_type: User access type string ("admin" or other).
+            password: Plaintext password to validate and hash.
+
+        Returns:
+            Secure password hash.
+
+        Raises:
+            HTTPException: 400 if the password policy fails.
+        """
+        ...
+
+    def request_sign_up_approved_email(self, user_id: int, *, commit: Callable[[], None]) -> bool:
+        """Commit an approval together with the notice telling the user their sign-up was approved.
+
+        Args:
+            user_id: ID of the approved user.
+            commit: Commit the caller's uncommitted approval.
+
+        Returns:
+            True if the notice was queued, False if outgoing email is not configured.
+        """
+        ...
+
+    def request_email_reverification(self, user_id: int) -> bool:
+        """Queue the verification email for a user whose address just changed.
+
+        Args:
+            user_id: ID of the user whose email changed.
+
+        Returns:
+            True if the email was queued, False if outgoing email is not configured.
+        """
+        ...
+
     def hash_password(self, password: str) -> str:
         """Return a secure hash for a trusted generated secret.
 
@@ -317,7 +366,9 @@ class IdentityService(Protocol):
         ...
 
     def set_local_password_hash(self, user_id: int, password_hash: str) -> None:
-        """Insert or update a user's local password hash.
+        """Stage the insert or update of a user's local password hash.
+
+        The write is staged on the identity service's session; the caller commits.
 
         Args:
             user_id: ID of the user to write the credential for.
@@ -340,10 +391,11 @@ class IdentityService(Protocol):
         ...
 
     def initialize_user_mfa(self, user_id: int) -> None:
-        """Create the default (disabled) MFA row for a new user.
+        """Stage the default (disabled) MFA row for a new user.
 
         Establishes the 1:1 ``users``↔``users_mfa`` invariant so non-auth
-        modules never touch the auth-owned MFA table directly.
+        modules never touch the auth-owned MFA table directly. The row is staged
+        on the identity service's session; the caller commits.
 
         Args:
             user_id: ID of the newly created user.
@@ -392,6 +444,17 @@ class IdentityService(Protocol):
         Args:
             user_id: Owner of the sessions.
             current_session_id: The caller's session, left intact.
+
+        Returns:
+            None.
+        """
+        ...
+
+    def delete_all_user_sessions(self, user_id: int) -> None:
+        """Delete every session of a user, signing all their devices out.
+
+        Args:
+            user_id: Owner of the sessions.
 
         Returns:
             None.
@@ -588,6 +651,32 @@ class IdentityService(Protocol):
         """
         ...
 
+    def clear_session_cookies(self, response: Response) -> None:
+        """Delete the browser's refresh-token cookies on a response.
+
+        Args:
+            response: Response that receives the cookie-deletion headers.
+        """
+        ...
+
+    def verify_step_up(
+        self,
+        step_up: users_schema.StepUpVerification,
+        user_id: int,
+        step_up_store: auth_security_stores.StepUpStore,
+    ) -> None:
+        """Require fresh proof of identity for a sensitive account operation.
+
+        Args:
+            step_up: Step-up verification payload.
+            user_id: ID of the authenticated user.
+            step_up_store: Step-up lockout store.
+
+        Raises:
+            HTTPException: If the password or MFA code is wrong, or the account is locked out.
+        """
+        ...
+
     def delete_identity_provider_link(
         self,
         idp_id: int,
@@ -663,6 +752,31 @@ class IdentityService(Protocol):
 
         Raises:
             HTTPException: 401/400/409 on invalid, replayed, or conflicting tokens.
+        """
+        ...
+
+    def start_browser_idp_link(
+        self,
+        link_token: str,
+        idp_id: int,
+        redirect: str | None,
+        request: Request,
+    ) -> str:
+        """Claim a one-time link token and return the identity provider's authorization URL.
+
+        Args:
+            link_token: Plaintext one-time link token from the query string.
+            idp_id: The identity provider to link.
+            redirect: Optional frontend return path or configured custom scheme.
+            request: The incoming request.
+
+        Returns:
+            The identity provider's authorization URL.
+
+        Raises:
+            HTTPException: 400 for a bad redirect target, 401 for an invalid, expired or used
+                link token, 404 when the provider does not exist or is disabled, 409 when it is
+                already linked, 500 when the flow cannot be started.
         """
         ...
 
@@ -838,8 +952,8 @@ class DefaultIdentityService:
                 detail=("Invalid token: 'sid' claim must be a string"),
             )
 
-        user = users_utils.get_user_by_id_or_404(int(sub), self._db)
-        users_utils.check_user_is_active(user)
+        user = users_integration.require_user(int(sub), self._db)
+        users_integration.require_active_user(user)
 
         return self._build_principal(
             user,
@@ -885,8 +999,8 @@ class DefaultIdentityService:
                 headers={"WWW-Authenticate": "ApiKey"},
             )
 
-        user = users_utils.get_user_by_id_or_404(db_key.user_id, self._db)
-        users_utils.check_user_is_active(user)
+        user = users_integration.require_user(db_key.user_id, self._db)
+        users_integration.require_active_user(user)
 
         if not db_key.is_active:
             raise HTTPException(
@@ -954,8 +1068,8 @@ class DefaultIdentityService:
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        user = users_utils.get_user_by_id_or_404(db_session.user_id, self._db)
-        users_utils.check_user_is_active(user)
+        user = users_integration.require_user(db_session.user_id, self._db)
+        users_integration.require_active_user(user)
 
         return self._build_principal(
             user,
@@ -1058,6 +1172,50 @@ class DefaultIdentityService:
             ) from err
         return self._password_hasher.hash_password(password)
 
+    def validate_and_hash_password_for_user(
+        self,
+        server_settings: server_settings_schema.ServerSettingsRead,
+        access_type: str,
+        password: str,
+    ) -> str:
+        """Validate a password against the policy of a user's access type and hash it.
+
+        Args:
+            server_settings: Settings containing the password policy.
+            access_type: User access type string ("admin" or other).
+            password: Plaintext password to validate and hash.
+
+        Returns:
+            Secure password hash.
+
+        Raises:
+            HTTPException: 400 if the password policy fails.
+        """
+        return auth_password_policy.validate_and_hash_for_user(self, server_settings, access_type, password)
+
+    def request_sign_up_approved_email(self, user_id: int, *, commit: Callable[[], None]) -> bool:
+        """Commit an approval together with the notice telling the user their sign-up was approved.
+
+        Args:
+            user_id: ID of the approved user.
+            commit: Commit the caller's uncommitted approval.
+
+        Returns:
+            True if the notice was queued, False if outgoing email is not configured.
+        """
+        return auth_sign_up_tokens_utils.request_sign_up_approved_email(user_id, self._db, commit=commit)
+
+    def request_email_reverification(self, user_id: int) -> bool:
+        """Queue the verification email for a user whose address just changed.
+
+        Args:
+            user_id: ID of the user whose email changed.
+
+        Returns:
+            True if the email was queued, False if outgoing email is not configured.
+        """
+        return auth_sign_up_tokens_utils.request_email_reverification(user_id, self._db)
+
     def hash_password(self, password: str) -> str:
         """Return a secure hash for a trusted generated secret.
 
@@ -1116,7 +1274,9 @@ class DefaultIdentityService:
         return auth_credentials_crud.get_credential(user_id, self._db) is not None
 
     def set_local_password_hash(self, user_id: int, password_hash: str) -> None:
-        """Insert or update a user's local password hash.
+        """Stage the insert or update of a user's local password hash.
+
+        The write is staged on the identity service's session; the caller commits.
 
         Args:
             user_id: ID of the user to write the credential for.
@@ -1125,7 +1285,7 @@ class DefaultIdentityService:
         Returns:
             None.
         """
-        auth_credentials_crud.upsert_password_hash(user_id, password_hash, self._db)
+        auth_credentials_crud.upsert_password_hash(user_id, password_hash, self._db, commit=False)
 
     def clear_local_password(self, user_id: int) -> None:
         """Remove a user's local password credential, if present.
@@ -1139,10 +1299,11 @@ class DefaultIdentityService:
         auth_credentials_crud.delete_credential(user_id, self._db)
 
     def initialize_user_mfa(self, user_id: int) -> None:
-        """Create the default (disabled) MFA row for a new user.
+        """Stage the default (disabled) MFA row for a new user.
 
         Establishes the 1:1 ``users``↔``users_mfa`` invariant so non-auth
-        modules never touch the auth-owned MFA table directly.
+        modules never touch the auth-owned MFA table directly. The row is staged
+        on the identity service's session; the caller commits.
 
         Args:
             user_id: ID of the newly created user.
@@ -1150,7 +1311,7 @@ class DefaultIdentityService:
         Returns:
             None.
         """
-        auth_mfa_crud.create_users_mfa_row(user_id, self._db)
+        auth_mfa_crud.create_users_mfa_row(user_id, self._db, commit=False)
 
     # ------------------------------------------------------------------
     # Account-security workflows (delegate to auth._internal.services.*)
@@ -1171,6 +1332,11 @@ class DefaultIdentityService:
             current_session_id,
             self._db,
         )
+
+    def delete_all_user_sessions(self, user_id: int) -> None:
+        """Delete every session of a user, signing all their devices out."""
+        revoked = auth_sessions_crud.delete_sessions_by_user(user_id, self._db)
+        logger.info("Revoked a user's sessions", extra=core_logger.context(user_id=user_id, revoked=revoked))
 
     def change_own_password(
         self,
@@ -1278,6 +1444,26 @@ class DefaultIdentityService:
             self._db,
         )
 
+    def clear_session_cookies(self, response: Response) -> None:
+        """Delete the browser's refresh-token cookies on a response."""
+        auth_utils.clear_refresh_token_cookies(response)
+
+    def verify_step_up(
+        self,
+        step_up: users_schema.StepUpVerification,
+        user_id: int,
+        step_up_store: auth_security_stores.StepUpStore,
+    ) -> None:
+        """Require fresh proof of identity for a sensitive account operation."""
+        auth_step_up_service.verify_step_up_credentials(
+            user_id,
+            step_up.current_password,
+            step_up.mfa_code,
+            self,
+            step_up_store,
+            self._db,
+        )
+
     def delete_identity_provider_link(
         self,
         idp_id: int,
@@ -1325,6 +1511,27 @@ class DefaultIdentityService:
             link_token,
             idp_id,
             client_ip,
+            self._db,
+        )
+
+    def start_browser_idp_link(
+        self,
+        link_token: str,
+        idp_id: int,
+        redirect: str | None,
+        request: Request,
+    ) -> str:
+        """Claim a one-time link token and return the identity provider's authorization URL."""
+        # Imported here: the identity-provider utils import the identity-provider service, which
+        # imports this module.
+        import modules.auth.identity_providers.utils as idp_utils
+
+        return idp_utils.start_browser_link(
+            link_token,
+            idp_id,
+            redirect,
+            request,
+            self.validate_and_claim_browser_link_token,
             self._db,
         )
 

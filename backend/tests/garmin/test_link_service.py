@@ -136,32 +136,36 @@ class TestWaitForMfaCode:
         assert link_states.get(1).status == Status.MFA_REQUIRED
 
 
-def test_starting_a_link_hands_it_to_the_dedicated_executor(stores):
-    with patch.object(garmin_link_service, "_LINK_EXECUTOR") as executor:
+def test_starting_a_link_hands_it_to_the_link_pool(stores):
+    with patch.object(garmin_link_service, "_link_pool") as pool:
         garmin_link_service.start_link(1, garmin_schema.GarminLogin(username="me", password="pw"), *stores)
 
-    executor.submit.assert_called_once_with(garmin_link_service.link_garminconnect, 1, "me", "pw", *stores, False)
+    pool.submit.assert_called_once_with(garmin_link_service.link_garminconnect, 1, "me", "pw", *stores, False)
 
 
-def test_a_link_beyond_the_capacity_is_refused_and_leaves_no_attempt_behind(stores):
+def test_a_link_beyond_the_capacity_is_refused_and_leaves_no_attempt_behind(stores, blocked_pool, monkeypatch):
+    monkeypatch.setattr(garmin_link_service, "link_garminconnect", lambda *args: blocked_pool.release.wait(5))
+    monkeypatch.setattr(garmin_link_service, "_link_pool", blocked_pool(garmin_link_service.MAX_CONCURRENT_LINKS))
     login = garmin_schema.GarminLogin(username="me", password="pw")
-    with patch.object(garmin_link_service, "_LINK_EXECUTOR"):
-        for user_id in range(garmin_link_service.MAX_CONCURRENT_LINKS):
-            garmin_link_service.start_link(user_id, login, *stores)
+    for user_id in range(garmin_link_service.MAX_CONCURRENT_LINKS):
+        garmin_link_service.start_link(user_id, login, *stores)
 
-        with pytest.raises(core_exceptions.ServiceUnavailableError):
-            garmin_link_service.start_link(99, login, *stores)
+    with pytest.raises(core_exceptions.ServiceUnavailableError):
+        garmin_link_service.start_link(99, login, *stores)
 
     assert stores[1].get(99) is None
 
 
-def test_a_refused_duplicate_link_gives_its_slot_back(stores):
+def test_a_refused_duplicate_link_takes_no_capacity(stores, blocked_pool, monkeypatch):
+    monkeypatch.setattr(garmin_link_service, "link_garminconnect", lambda *args: blocked_pool.release.wait(5))
+    monkeypatch.setattr(garmin_link_service, "_link_pool", blocked_pool(2))
     login = garmin_schema.GarminLogin(username="me", password="pw")
-    with patch.object(garmin_link_service, "_LINK_EXECUTOR"):
-        garmin_link_service.start_link(1, login, *stores)
-        for _ in range(garmin_link_service.MAX_CONCURRENT_LINKS + 1):
-            with pytest.raises(core_exceptions.ConflictError):
-                garmin_link_service.start_link(1, login, *stores)
+    garmin_link_service.start_link(1, login, *stores)
+    for _ in range(3):
+        with pytest.raises(core_exceptions.ConflictError):
+            garmin_link_service.start_link(1, login, *stores)
+
+    assert garmin_link_service.start_link(2, login, *stores).status == Status.PENDING
 
 
 class TestSubmitMfaCode:
@@ -195,8 +199,8 @@ class TestLinkStatus:
 
 def test_a_link_that_cannot_start_releases_its_claim(stores):
     mfa_codes, link_states = stores
-    with patch.object(garmin_link_service, "_LINK_EXECUTOR") as executor:
-        executor.submit.side_effect = RuntimeError("shut down")
+    with patch.object(garmin_link_service, "_link_pool") as pool:
+        pool.submit.side_effect = RuntimeError("shut down")
         with pytest.raises(RuntimeError):
             garmin_link_service.start_link(
                 1, garmin_schema.GarminLogin(username="u", password="p"), mfa_codes, link_states

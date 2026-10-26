@@ -5,8 +5,6 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
-import modules.health.schema as health_schema
-
 
 class Source(Enum):
     """An enumeration representing supported sources for the application.
@@ -68,27 +66,12 @@ class HealthStepsRead(HealthStepsBase):
 
     id: StrictInt = Field(..., description="Unique identifier for the steps record to update")
     user_id: StrictInt = Field(..., description="Foreign key reference to the user")
+    version: StrictInt = Field(default=1, ge=1, description="Optimistic-concurrency counter, also sent as the ETag")
 
 
-class HealthStepsUpdate(HealthStepsRead):
-    """Schema for updating health steps records.
+class HealthStepsUpdate(HealthStepsBase):
+    """Schema for the fields a PATCH changes on a steps record.
 
-    Inherits from HealthStepsRead to maintain consistency with read operations
-    while allowing modifications to health steps data. This schema is used for
-    PUT/PATCH requests to update existing health steps entries.
+    The record is named by the path, so the body carries neither an id nor an owner; only the
+    fields present are changed.
     """
-
-
-class HealthStepsListResponse(health_schema.HealthListResponse):
-    """Response model for listing health steps records.
-
-    Extends the base HealthListResponse to provide a typed response containing
-    a list of steps records. This model is used when returning multiple steps
-    entries from API endpoints.
-
-    Attributes:
-        records: A list of HealthStepsRead objects representing individual
-            steps records.
-    """
-
-    records: list[HealthStepsRead] = Field(..., description="List of health steps records")

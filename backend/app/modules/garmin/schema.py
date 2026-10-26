@@ -19,12 +19,6 @@ class MFARequest(BaseModel):
     mfa_code: str = Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9]+$")
 
 
-class GarminDetail(BaseModel):
-    """A human-readable outcome of a Garmin Connect request."""
-
-    detail: str
-
-
 class GarminLinkStatus(BaseModel):
     """Where a Garmin Connect link attempt is.
 

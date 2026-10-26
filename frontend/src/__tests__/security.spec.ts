@@ -4,7 +4,9 @@ import type { SecuritySessionDto } from '@/features/security/types'
 
 import { apiFetch } from '@/services/http'
 import {
+  changeEmail,
   changePassword,
+  deleteAccount,
   disableMfa,
   enableMfa,
   fetchBackupCodeStatus,
@@ -96,8 +98,8 @@ describe('security service requests', () => {
       revokeOtherSessions: true,
     })
 
-    expect(apiFetch).toHaveBeenCalledWith('/profile/password', {
-      method: 'PUT',
+    expect(apiFetch).toHaveBeenCalledWith('/profile/password/change', {
+      method: 'POST',
       body: JSON.stringify({
         current_password: 'old',
         password: 'new',
@@ -215,6 +217,58 @@ describe('security service requests', () => {
 
     expect(apiFetch).toHaveBeenCalledWith('/profile/sessions', {
       method: 'DELETE',
+      responseType: 'void',
+    })
+  })
+})
+
+describe('deleteAccount', () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset()
+  })
+
+  it('POSTs the step-up body to the delete-account path', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(undefined)
+
+    await deleteAccount({ currentPassword: 'pw', mfaCode: '123456' })
+
+    expect(apiFetch).toHaveBeenCalledWith('/profile/delete-account', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: 'pw', mfa_code: '123456' }),
+      responseType: 'void',
+    })
+  })
+
+  it('sends null for step-up fields that do not apply', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(undefined)
+
+    await deleteAccount({ currentPassword: null, mfaCode: null })
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/profile/delete-account',
+      expect.objectContaining({ body: JSON.stringify({ current_password: null, mfa_code: null }) }),
+    )
+  })
+})
+
+describe('changeEmail', () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset()
+  })
+
+  it('PUTs the new address together with the step-up credentials', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(undefined)
+
+    await changeEmail('new@example.com', { currentPassword: 'pw', mfaCode: '123456' }, true)
+
+    expect(apiFetch).toHaveBeenCalledWith('/profile/email/change', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: 'new@example.com',
+        current_password: 'pw',
+        mfa_code: '123456',
+        revoke_other_sessions: true,
+      }),
       responseType: 'void',
     })
   })

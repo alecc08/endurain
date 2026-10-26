@@ -105,7 +105,7 @@ async function submitForm(values: WaterFormValues): Promise<void> {
     if (props.entry) {
       await updateMutation.mutateAsync({
         id: props.entry.id,
-        userId: props.entry.userId,
+        version: props.entry.version,
         input,
       })
       emit('success', t('health.water.form.updateSuccess'))

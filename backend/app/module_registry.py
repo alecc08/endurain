@@ -1,10 +1,8 @@
 """Application composition for installed module runtime contributions."""
 
-import contextvars
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import jasil.settings as jasil_settings
@@ -15,6 +13,7 @@ from jasil.providers import EventBusProvider, RealtimeProvider
 import core.config as core_config
 import core.database as core_database
 import core.geocoding as core_geocoding
+import core.local_pool as core_local_pool
 import core.logger as core_logger
 import core.mail as core_mail
 import core.scheduler as core_scheduler
@@ -47,6 +46,11 @@ import modules.gears.gear_components.integration_service as gear_components_inte
 import modules.notifications.scheduled_jobs as notifications_scheduled_jobs
 import modules.notifications.subscriber_registry as notifications_subscriber_registry
 import modules.server_settings.integration_service as server_settings_integration
+import modules.users.contributor_registry as users_contributor_registry
+import modules.users.contributors as users_contributors
+import modules.users.users_profile.integration_service as users_profile_integration
+import modules.users.users_profile.scheduled_jobs as users_profile_scheduled_jobs
+import modules.users.users_profile.subscriber_registry as users_profile_subscriber_registry
 import modules.websocket.subscriber_registry as websocket_subscriber_registry
 
 logger = core_logger.get_logger(__name__)
@@ -55,46 +59,14 @@ logger = core_logger.get_logger(__name__)
 _SETTINGS_CACHE_SECONDS = 5.0
 
 # Small on purpose: derived work (thumbnails, cleanup, notifications) must not
-# compete with request threads for the process.
-_DEFERRED_SUBSCRIBER_WORKERS = 2
-
-_deferred_executor: ThreadPoolExecutor | None = None
-
-
-def _get_deferred_executor() -> ThreadPoolExecutor:
-    """Return the pool in-process bus subscribers run on, creating it on first use.
-
-    Returns:
-        The shared subscriber thread pool.
-    """
-    global _deferred_executor
-    if _deferred_executor is None:
-        _deferred_executor = ThreadPoolExecutor(
-            max_workers=_DEFERRED_SUBSCRIBER_WORKERS, thread_name_prefix="event-subscriber"
-        )
-    return _deferred_executor
+# compete with request threads for the process. A subscriber past the queue bound is
+# dropped and left to its reconciliation net, so a burst cannot grow the queue without limit.
+_deferred_pool = core_local_pool.BoundedPool("event-subscriber", workers=2, max_pending=500)
 
 
 def shutdown_deferred_subscribers() -> None:
     """Stop the subscriber pool without waiting; queued work is repaired by the reconciliation nets."""
-    global _deferred_executor
-    if _deferred_executor is not None:
-        _deferred_executor.shutdown(wait=False, cancel_futures=True)
-        _deferred_executor = None
-
-
-def _log_deferred_failure(handler_name: str, future) -> None:
-    """Log an exception escaping a deferred subscriber.
-
-    Args:
-        handler_name: The subscriber's name.
-        future: The completed future.
-    """
-    error = future.exception()
-    if error is not None:
-        logger.error(
-            "Deferred event subscriber failed", exc_info=error, extra=core_logger.context(handler=handler_name)
-        )
+    _deferred_pool.shutdown()
 
 
 class _DeferredSubscriptions:
@@ -119,9 +91,13 @@ class _DeferredSubscriptions:
         """
 
         def deferred(event) -> None:
-            context = contextvars.copy_context()
-            future = _get_deferred_executor().submit(context.run, handler, event)
-            future.add_done_callback(lambda done: _log_deferred_failure(handler.__name__, done))
+            try:
+                _deferred_pool.submit(handler, event)
+            except core_local_pool.PoolFullError:
+                logger.warning(
+                    "Dropped an event subscriber: the subscriber pool is full; its reconciliation net repairs it",
+                    extra=core_logger.context(handler=handler.__name__, event_type=event_type),
+                )
 
         deferred.__name__ = handler.__name__
         self._events.subscribe(event_type, deferred)
@@ -231,6 +207,13 @@ MODULES: tuple[RuntimeModule, ...] = (
         recurring_jobs=notifications_scheduled_jobs.recurring_jobs,
     ),
     RuntimeModule(
+        name="users_profile",
+        register_bus=users_profile_subscriber_registry.register_bus_subscribers,
+        register_durable=users_profile_subscriber_registry.register_durable_handlers,
+        nets=users_profile_subscriber_registry.DURABLE_SUBSCRIBER_NETS,
+        recurring_jobs=users_profile_scheduled_jobs.recurring_jobs,
+    ),
+    RuntimeModule(
         name="garmin",
         register_durable=garmin_subscriber_registry.register_durable_handlers,
         nets=garmin_subscriber_registry.DURABLE_SUBSCRIBER_NETS,
@@ -285,6 +268,16 @@ def configure_gear_contributors() -> None:
             usage_by_window=activity_integration.get_gear_usage_totals_by_window,
             components_cost=gear_components_integration.get_gear_components_total_cost,
             clear_activities_gear=activity_integration.clear_activities_gear,
+        )
+    )
+
+
+def configure_user_contributors() -> None:
+    """Install the erasures the users namespace asks the activities and profile modules to answer."""
+    users_contributor_registry.register(
+        users_contributors.UserErasers(
+            delete_activities=activity_integration.delete_all_activities_for_user,
+            delete_staged_files=users_profile_integration.delete_staged_transfers,
         )
     )
 

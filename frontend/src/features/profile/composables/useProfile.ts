@@ -73,10 +73,10 @@ function invalidateWeekDependentQueries(
 export function useUpdateProfileMutation() {
   const client = useQueryClient()
 
-  return useMutation<void, Error, ProfileEditInput>({
+  return useMutation<void, Error, { input: ProfileEditInput; version: number }>({
     mutationKey: queryKeys.profile.all(),
-    mutationFn: (input) => updateProfile(input),
-    onSuccess: (_data, input) => invalidateWeekDependentQueries(client, input.firstDayOfWeek),
+    mutationFn: ({ input, version }) => updateProfile(input, version),
+    onSuccess: (_data, { input }) => invalidateWeekDependentQueries(client, input.firstDayOfWeek),
     onSettled: () => invalidateProfileAndShell(client),
   })
 }

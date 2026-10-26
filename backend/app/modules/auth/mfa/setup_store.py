@@ -12,6 +12,7 @@ import jasil.runtime as platform_runtime
 from jasil.providers import StateBackendUnavailableError, StateProvider
 
 import core.cryptography as core_cryptography
+import core.exceptions as core_exceptions
 import core.hashing as core_hashing
 import core.logger as core_logger
 
@@ -21,13 +22,17 @@ _MFA_SECRET_KEY_PREFIX = "endurain:auth:mfa:setup_secret"  # noqa: S105 - storag
 _DEFAULT_TTL_SECONDS: int = 300
 
 
-class MFASecretStoreUnavailableError(RuntimeError):
+class MFASecretStoreUnavailableError(core_exceptions.ServiceUnavailableError, RuntimeError):
     """
     Raised when MFA secret storage cannot be reached.
+
+    Answered as a 503 by the API boundary, so a route needs no handler of its own.
 
     Attributes:
         None.
     """
+
+    default_detail = "MFA setup temporarily unavailable"
 
 
 def _raise_store_unavailable(operation: str, err: StateBackendUnavailableError) -> NoReturn:

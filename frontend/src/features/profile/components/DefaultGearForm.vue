@@ -52,8 +52,7 @@ function gearsForType(gearType: number): Gear[] {
 }
 
 /**
- * Persists the assignments, merging them over the loaded record so id/userId
- * round-trip. The outcome is surfaced as a toast.
+ * Persists the assignments, merging them over the loaded record. The outcome is surfaced as a toast.
  *
  * @param values - The current assignments.
  */

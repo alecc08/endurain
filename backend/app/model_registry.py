@@ -9,6 +9,7 @@ import modules.gears.model_registry as gears_model_registry
 import modules.health.model_registry as health_model_registry
 import modules.notifications.model_registry as notifications_model_registry
 import modules.server_settings.model_registry as server_settings_model_registry
+import modules.users.model_registry as users_model_registry
 
 _APP_ROOT = pathlib.Path(__file__).resolve().parent
 _MODULES_ROOT = _APP_ROOT / "modules"
@@ -21,6 +22,7 @@ _CONVERTED_MODEL_MODULES = frozenset(
         *health_model_registry.MODEL_MODULES,
         *notifications_model_registry.MODEL_MODULES,
         *server_settings_model_registry.MODEL_MODULES,
+        *users_model_registry.MODEL_MODULES,
     )
 )
 

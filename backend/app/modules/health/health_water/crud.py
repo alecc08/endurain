@@ -7,6 +7,7 @@ from sqlalchemy import desc, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import modules.health.health_water.models as health_water_models
 import modules.health.health_water.schema as health_water_schema
@@ -37,6 +38,27 @@ def _get_model_by_id_and_user_id(health_water_id: int, user_id: int, db: Session
         raise core_exceptions.NotFoundError("Health water not found")
 
     return db_health_water
+
+
+def health_water_exists(health_water_id: int, user_id: int, db: Session) -> bool:
+    """Report whether a user has a water intake record.
+
+    Args:
+        health_water_id: The record to look for.
+        user_id: The record's owner.
+        db: Database session.
+
+    Returns:
+        True when the user has such a record.
+    """
+    stmt = select(
+        select(health_water_models.HealthWater.id)
+        .where(
+            health_water_models.HealthWater.id == health_water_id, health_water_models.HealthWater.user_id == user_id
+        )
+        .exists()
+    )
+    return bool(db.execute(stmt).scalar())
 
 
 def get_health_water_number_by_user_id(user_id: int, db: Session, since: date_type | None = None) -> int:
@@ -149,22 +171,31 @@ def create_health_water(
 
 
 def edit_health_water(
-    user_id: int, health_water: health_water_schema.HealthWaterUpdate, db: Session
+    user_id: int,
+    health_water_id: int,
+    health_water: health_water_schema.HealthWaterUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_water_schema.HealthWaterRead:
     """Stage an update to a user's water intake record.
 
     Args:
         user_id: The record's owner.
-        health_water: The record with its changes.
+        health_water_id: The record to change.
+        health_water: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
-    db_health_water = _get_model_by_id_and_user_id(health_water.id, user_id, db)
+    db_health_water = _get_model_by_id_and_user_id(health_water_id, user_id, db)
+    core_etag.require_if_match(if_match, db_health_water.version, "water intake record")
 
     for key, value in health_water.model_dump(exclude_unset=True).items():
         setattr(db_health_water, key, value)
@@ -200,7 +231,12 @@ def add_health_water_amount(
     db.execute(
         update(health_water_models.HealthWater)
         .where(health_water_models.HealthWater.id == health_water_id)
-        .values(amount_ml=health_water_models.HealthWater.amount_ml + amount_ml, source=source)
+        .values(
+            amount_ml=health_water_models.HealthWater.amount_ml + amount_ml,
+            source=source,
+            # A bulk UPDATE skips the ORM's version bump, and an intake is a change another client must see.
+            version=health_water_models.HealthWater.version + 1,
+        )
         .execution_options(synchronize_session=False)
     )
     db.refresh(db_health_water)

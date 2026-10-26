@@ -25,7 +25,7 @@ class TestReads:
     def test_the_active_filter_applies(self, db):
         crud.create_gear_component(component_create(), 1, db)
         retired = crud.create_gear_component(component_create(), 1, db)
-        crud.edit_gear_component(retired.id, component_update(retired_date=date(2025, 1, 1)), 1, db)
+        crud.edit_gear_component(retired.id, component_update(retired_date=date(2025, 1, 1)), 1, db, if_match="*")
 
         assert len(crud.get_gear_components_user_by_gear_id(1, 1, db, active=True)) == 1
         assert [c.id for c in crud.get_gear_components_user_by_gear_id(1, 1, db, active=False)] == [retired.id]
@@ -69,7 +69,7 @@ class TestWrites:
         created = crud.create_gear_component(component_create(), 1, db)
 
         updated = crud.edit_gear_component(
-            created.id, component_update(retired_date=date(2025, 1, 1), active=True), 1, db
+            created.id, component_update(retired_date=date(2025, 1, 1), active=True), 1, db, if_match="*"
         )
 
         assert updated.active is False
@@ -77,7 +77,7 @@ class TestWrites:
     def test_an_unretired_component_keeps_the_submitted_active_flag(self, db):
         created = crud.create_gear_component(component_create(), 1, db)
 
-        updated = crud.edit_gear_component(created.id, component_update(active=False), 1, db)
+        updated = crud.edit_gear_component(created.id, component_update(active=False), 1, db, if_match="*")
 
         assert updated.active is False
 
@@ -100,7 +100,7 @@ class TestWrites:
         created = crud.create_gear_component(component_create(), 1, db)
 
         with pytest.raises(core_exceptions.NotFoundError):
-            crud.edit_gear_component(created.id, component_update(brand="x"), 2, db)
+            crud.edit_gear_component(created.id, component_update(brand="x"), 2, db, if_match="*")
         with pytest.raises(core_exceptions.NotFoundError):
             crud.delete_gear_component(2, created.id, db)
 

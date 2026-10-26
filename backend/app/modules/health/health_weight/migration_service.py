@@ -20,16 +20,17 @@ def get_all_health_weight(db: Session) -> list[health_weight_schema.HealthWeight
 
 
 def edit_health_weight(
-    user_id: int, health_weight: health_weight_schema.HealthWeightUpdate, db: Session
+    user_id: int, health_weight_id: int, health_weight: health_weight_schema.HealthWeightUpdate, db: Session
 ) -> health_weight_schema.HealthWeightRead:
     """Edit a weight record, deriving its BMI, and commit it, as migrations did.
 
     Args:
         user_id: The record's owner.
-        health_weight: The record with its changes.
+        health_weight_id: The record to change.
+        health_weight: The fields to change.
         db: Database session.
 
     Returns:
         The updated record.
     """
-    return health_weight_service.edit_health_weight(user_id, health_weight, db)
+    return health_weight_service.edit_health_weight(user_id, health_weight_id, health_weight, db)

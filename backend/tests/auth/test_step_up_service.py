@@ -98,7 +98,7 @@ class TestVerifyStepUpCredentials:
 
         with (
             patch(
-                "modules.auth._internal.services.step_up_service.users_utils.get_user_by_id_or_404",
+                "modules.auth._internal.services.step_up_service.users_integration.require_user",
                 return_value=mock_user,
             ),
             patch(

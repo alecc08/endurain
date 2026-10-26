@@ -6,7 +6,7 @@ including timing, duration, type, and status information.
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
@@ -29,6 +29,14 @@ class HealthFasting(Base):
     """
 
     __tablename__ = "health_fasting"
+    __table_args__ = (
+        Index(
+            "uq_health_fasting_one_in_progress_per_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("status = 'in_progress'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(
         primary_key=True,
@@ -79,3 +87,14 @@ class HealthFasting(Base):
         nullable=True,
         comment="Data source (manual, garmin, etc.)",
     )
+
+    version: Mapped[int] = mapped_column(
+        nullable=False,
+        server_default="1",
+        default=1,
+        comment="Optimistic-concurrency counter, surfaced to clients as the ETag",
+    )
+
+    # SQLAlchemy bumps ``version`` on each ORM flush and adds it to the UPDATE's
+    # WHERE clause, raising StaleDataError when the row moved underneath.
+    __mapper_args__ = {"version_id_col": version}  # noqa: RUF012

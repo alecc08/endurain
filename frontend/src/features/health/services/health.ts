@@ -31,6 +31,7 @@ import type {
 } from '@/features/health/types'
 
 import { apiFetch } from '@/services/http'
+import { ifMatchHeaders, rowVersion } from '@/services/ifMatch'
 
 type HealthTargetsDto = Schemas['HealthTargetsRead']
 type HealthDashboardDto = Schemas['HealthDashboardResponse']
@@ -48,6 +49,7 @@ function mapTargets(dto: HealthTargetsDto): HealthTargets {
   return {
     id: dto.id,
     userId: dto.user_id,
+    version: rowVersion(dto.version),
     sleepSeconds: dto.sleep ?? null,
     steps: dto.steps ?? null,
     weightKg: dto.weight ?? null,
@@ -122,7 +124,7 @@ interface HealthHistoryResponse<Dto> {
   /** Total matching rows across all pages. */
   total: number
   /** Records in the current page. */
-  records?: Dto[] | null
+  items: Dto[]
 }
 
 /** Shared clean page shape returned by health-history services. */
@@ -168,7 +170,7 @@ async function fetchHealthHistoryPage<Dto, Entry>(
     buildHealthHistoryPath(resource, params),
     { signal },
   )
-  return { records: (response.records ?? []).map(mapEntry), total: response.total }
+  return { records: response.items.map(mapEntry), total: response.total }
 }
 
 /** Creates a health resource and maps the returned record. */
@@ -184,14 +186,17 @@ async function createHealthResource<Dto, Entry, Payload extends object>(
   return mapEntry(dto)
 }
 
-/** Updates a health resource and maps the returned record. */
+/** Changes the given fields of a health resource record and maps the returned record. */
 async function updateHealthResource<Dto, Entry, Payload extends object>(
   resource: string,
+  id: number,
   payload: Payload,
+  version: number,
   mapEntry: (dto: Dto) => Entry,
 ): Promise<Entry> {
-  const dto = await apiFetch<Dto>(`/health/${resource}`, {
-    method: 'PUT',
+  const dto = await apiFetch<Dto>(`/health/${resource}/${id}`, {
+    method: 'PATCH',
+    headers: ifMatchHeaders(version),
     body: JSON.stringify(payload),
   })
   return mapEntry(dto)
@@ -205,9 +210,11 @@ async function deleteHealthResource(resource: string, id: number): Promise<void>
 /** Updates a subset of the health-targets record and maps the response. */
 async function updateHealthTargets(
   payload: Schemas['HealthTargetsUpdate'],
+  version: number,
 ): Promise<HealthTargets> {
   const dto = await apiFetch<HealthTargetsDto>('/health/targets', {
-    method: 'PUT',
+    method: 'PATCH',
+    headers: ifMatchHeaders(version),
     body: JSON.stringify(payload),
   })
   return mapTargets(dto)
@@ -217,10 +224,10 @@ async function updateHealthTargets(
 interface HealthCrudService<Entry, Input> {
   /** Fetches one filtered page of history and maps each record. */
   fetch: (params: HealthListParams, signal?: AbortSignal) => Promise<HealthHistoryPage<Entry>>
-  /** Creates (or upserts the existing same-date) record and maps the response. */
+  /** Creates a record, which is refused when the day already has one, and maps the response. */
   create: (input: Input) => Promise<Entry>
-  /** Updates an existing record (echoing id + user_id) and maps the response. */
-  update: (id: number, userId: number, input: Input) => Promise<Entry>
+  /** Changes an existing record, conditional on the version the caller read, and maps the response. */
+  update: (id: number, input: Input, version: number) => Promise<Entry>
   /** Deletes a record by id. */
   remove: (id: number) => Promise<void>
 }
@@ -244,31 +251,27 @@ function createHealthCrudService<Dto, Entry, Wire extends object, Input>(
   return {
     fetch: (params, signal) => fetchHealthHistoryPage(resource, params, mapEntry, signal),
     create: (input) => createHealthResource(resource, toWireFields(input), mapEntry),
-    update: (id, userId, input) =>
-      updateHealthResource(resource, { id, user_id: userId, ...toWireFields(input) }, mapEntry),
+    update: (id, input, version) =>
+      updateHealthResource(resource, id, toWireFields(input), version, mapEntry),
     remove: (id) => deleteHealthResource(resource, id),
   }
 }
 
 /**
  * Builds an updater for a single health-targets field. The returned function
- * sends only `id`, `user_id`, and the one field so a stale local copy never
- * clobbers the user's other targets.
+ * sends only the one field so a stale local copy never clobbers the user's other
+ * targets, and names the version it read so a concurrent change is refused.
  *
  * @param field - The snake-cased targets field this updater writes.
- * @returns A `(id, userId, value)` updater that PUTs the single field.
+ * @returns A `(version, value)` updater that PATCHes the single field.
  */
 function createHealthTargetUpdater<Field extends keyof Schemas['HealthTargetsUpdate']>(
   field: Field,
 ) {
-  return (
-    id: number,
-    userId: number,
-    value: Schemas['HealthTargetsUpdate'][Field],
-  ): Promise<HealthTargets> =>
+  return (version: number, value: Schemas['HealthTargetsUpdate'][Field]): Promise<HealthTargets> =>
     // The key is statically constrained to a valid targets field, so the
     // assembled object is a valid partial targets update.
-    updateHealthTargets({ id, user_id: userId, [field]: value } as Schemas['HealthTargetsUpdate'])
+    updateHealthTargets({ [field]: value } as Schemas['HealthTargetsUpdate'], version)
 }
 
 /** Maps a raw weight DTO to the clean {@link WeightEntry} model. */
@@ -276,6 +279,7 @@ function mapWeightEntry(dto: HealthWeightDto): WeightEntry {
   return {
     id: dto.id,
     userId: dto.user_id,
+    version: rowVersion(dto.version),
     date: dto.date ?? null,
     weightKg: dto.weight ?? null,
     bmi: dto.bmi ?? null,
@@ -324,6 +328,7 @@ function mapStepsEntry(dto: HealthStepsDto): StepsEntry {
   return {
     id: dto.id,
     userId: dto.user_id,
+    version: rowVersion(dto.version),
     date: dto.date ?? null,
     steps: dto.steps ?? null,
     source: dto.source ?? null,
@@ -362,6 +367,7 @@ function mapWaterEntry(dto: HealthWaterDto): WaterEntry {
   return {
     id: dto.id,
     userId: dto.user_id,
+    version: rowVersion(dto.version),
     date: dto.date ?? null,
     amountMl: dto.amount_ml ?? null,
     source: dto.source ?? null,
@@ -400,6 +406,7 @@ function mapPoopEntry(dto: HealthPoopDto): PoopEntry {
   return {
     id: dto.id,
     userId: dto.user_id,
+    version: rowVersion(dto.version),
     dateTime: dto.date_time ?? null,
     bristolType: dto.bristol_type ?? null,
     color: dto.color ?? null,
@@ -484,6 +491,7 @@ function mapFastingEntry(dto: HealthFastingReadDto): FastingEntry {
   return {
     id: dto.id,
     userId: dto.user_id,
+    version: rowVersion(dto.version),
     fastStartTime: dto.fast_start_time ?? null,
     fastEndTime: dto.fast_end_time ?? null,
     fastingType: dto.fasting_type ?? null,
@@ -577,12 +585,10 @@ export async function createFastingEntry(input: FastingEntryInput): Promise<Fast
  */
 export async function updateFastingEntry(
   id: number,
-  userId: number,
   input: FastingEntryInput,
+  version: number,
 ): Promise<FastingEntry> {
   const payload: Schemas['HealthFastingUpdate'] = {
-    id,
-    user_id: userId,
     fast_start_time: input.fastStartTime,
     fast_end_time: input.fastEndTime,
     fasting_type: input.fastingType,
@@ -591,7 +597,7 @@ export async function updateFastingEntry(
     status: input.status,
     notes: input.notes,
   }
-  return updateHealthResource('fasting', payload, mapFastingEntry)
+  return updateHealthResource('fasting', id, payload, version, mapFastingEntry)
 }
 
 /**
@@ -646,6 +652,7 @@ function mapSleepEntry(dto: HealthSleepDto): SleepEntry {
   return {
     id: dto.id,
     userId: dto.user_id,
+    version: rowVersion(dto.version),
     date: dto.date ?? null,
     sleepStartTimeLocal: dto.sleep_start_time_local ?? null,
     sleepEndTimeLocal: dto.sleep_end_time_local ?? null,

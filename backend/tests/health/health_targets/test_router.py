@@ -18,6 +18,7 @@ class TestReadHealthTargetsAll:
         mock_targets = MagicMock(spec=health_targets_models.HealthTargets)
         mock_targets.id = 1
         mock_targets.user_id = 1
+        mock_targets.version = 1
         mock_targets.weight = 75.5
         mock_targets.steps = 10000
         mock_targets.sleep = 28800
@@ -30,7 +31,7 @@ class TestReadHealthTargetsAll:
         # Act
         response = fast_api_client.get(
             "/health/targets/",
-            headers={"Authorization": "Bearer mock_token"},
+            headers={"Authorization": "Bearer mock_token", "If-Match": "*"},
         )
 
         # Assert
@@ -51,7 +52,7 @@ class TestReadHealthTargetsAll:
         # Act
         response = fast_api_client.get(
             "/health/targets/",
-            headers={"Authorization": "Bearer mock_token"},
+            headers={"Authorization": "Bearer mock_token", "If-Match": "*"},
         )
 
         # Assert
@@ -67,6 +68,7 @@ class TestReadHealthTargetsAll:
         mock_targets = MagicMock(spec=health_targets_models.HealthTargets)
         mock_targets.id = 1
         mock_targets.user_id = 1
+        mock_targets.version = 1
         mock_targets.weight = 75.5
         mock_targets.steps = None
         mock_targets.sleep = None
@@ -79,7 +81,7 @@ class TestReadHealthTargetsAll:
         # Act
         response = fast_api_client.get(
             "/health/targets/",
-            headers={"Authorization": "Bearer mock_token"},
+            headers={"Authorization": "Bearer mock_token", "If-Match": "*"},
         )
 
         # Assert
@@ -88,6 +90,17 @@ class TestReadHealthTargetsAll:
         assert data["weight"] == 75.5
         assert data["steps"] is None
         assert data["sleep"] is None
+
+
+class TestUpdateNeedsIfMatch:
+    @patch("modules.health.health_targets.router.health_targets_service.update_health_targets")
+    def test_an_update_without_if_match_is_428(self, mock_update, fast_api_client):
+        response = fast_api_client.patch(
+            "/health/targets/", json={"weight": 80.0}, headers={"Authorization": "Bearer mock_token"}
+        )
+
+        assert response.status_code == 428
+        mock_update.assert_not_called()
 
 
 class TestUpdateHealthTargets:
@@ -104,6 +117,7 @@ class TestUpdateHealthTargets:
         mock_updated_targets = MagicMock(spec=health_targets_models.HealthTargets)
         mock_updated_targets.id = 1
         mock_updated_targets.user_id = 1
+        mock_updated_targets.version = 1
         mock_updated_targets.weight = 80.0
         mock_updated_targets.steps = 12000
         mock_updated_targets.sleep = 32400
@@ -114,16 +128,14 @@ class TestUpdateHealthTargets:
         mock_edit.return_value = mock_updated_targets
 
         # Act
-        response = fast_api_client.put(
+        response = fast_api_client.patch(
             "/health/targets/",
             json={
-                "id": 1,
-                "user_id": 1,
                 "weight": 80.0,
                 "steps": 12000,
                 "sleep": 32400,
             },
-            headers={"Authorization": "Bearer mock_token"},
+            headers={"Authorization": "Bearer mock_token", "If-Match": "*"},
         )
 
         # Assert
@@ -142,6 +154,7 @@ class TestUpdateHealthTargets:
         mock_updated_targets = MagicMock(spec=health_targets_models.HealthTargets)
         mock_updated_targets.id = 1
         mock_updated_targets.user_id = 1
+        mock_updated_targets.version = 1
         mock_updated_targets.weight = 75.0
         mock_updated_targets.steps = 10000
         mock_updated_targets.sleep = 28800
@@ -152,14 +165,12 @@ class TestUpdateHealthTargets:
         mock_edit.return_value = mock_updated_targets
 
         # Act
-        response = fast_api_client.put(
+        response = fast_api_client.patch(
             "/health/targets/",
             json={
-                "id": 1,
-                "user_id": 1,
                 "weight": 75.0,
             },
-            headers={"Authorization": "Bearer mock_token"},
+            headers={"Authorization": "Bearer mock_token", "If-Match": "*"},
         )
 
         # Assert
@@ -176,6 +187,7 @@ class TestUpdateHealthTargets:
         mock_updated_targets = MagicMock(spec=health_targets_models.HealthTargets)
         mock_updated_targets.id = 1
         mock_updated_targets.user_id = 1
+        mock_updated_targets.version = 1
         mock_updated_targets.weight = None
         mock_updated_targets.steps = None
         mock_updated_targets.sleep = None
@@ -186,16 +198,14 @@ class TestUpdateHealthTargets:
         mock_edit.return_value = mock_updated_targets
 
         # Act
-        response = fast_api_client.put(
+        response = fast_api_client.patch(
             "/health/targets/",
             json={
-                "id": 1,
-                "user_id": 1,
                 "weight": None,
                 "steps": None,
                 "sleep": None,
             },
-            headers={"Authorization": "Bearer mock_token"},
+            headers={"Authorization": "Bearer mock_token", "If-Match": "*"},
         )
 
         # Assert
@@ -214,14 +224,12 @@ class TestUpdateHealthTargets:
         mock_edit.side_effect = core_exceptions.NotFoundError("Health targets not found")
 
         # Act
-        response = fast_api_client.put(
+        response = fast_api_client.patch(
             "/health/targets/",
             json={
-                "id": 1,
-                "user_id": 1,
                 "weight": 80.0,
             },
-            headers={"Authorization": "Bearer mock_token"},
+            headers={"Authorization": "Bearer mock_token", "If-Match": "*"},
         )
 
         # Assert
@@ -236,6 +244,7 @@ class TestUpdateHealthTargets:
         mock_updated_targets = MagicMock(spec=health_targets_models.HealthTargets)
         mock_updated_targets.id = 1
         mock_updated_targets.user_id = 1
+        mock_updated_targets.version = 1
         mock_updated_targets.weight = 85.5
         mock_updated_targets.steps = 15000
         mock_updated_targets.sleep = 36000
@@ -246,16 +255,14 @@ class TestUpdateHealthTargets:
         mock_edit.return_value = mock_updated_targets
 
         # Act
-        response = fast_api_client.put(
+        response = fast_api_client.patch(
             "/health/targets/",
             json={
-                "id": 1,
-                "user_id": 1,
                 "weight": 85.5,
                 "steps": 15000,
                 "sleep": 36000,
             },
-            headers={"Authorization": "Bearer mock_token"},
+            headers={"Authorization": "Bearer mock_token", "If-Match": "*"},
         )
 
         # Assert
@@ -264,3 +271,19 @@ class TestUpdateHealthTargets:
         assert data["weight"] == 85.5
         assert data["steps"] == 15000
         assert data["sleep"] == 36000
+
+
+class TestReadSendsTheETag:
+    @patch("modules.health.health_targets.router.health_targets_service.get_health_targets")
+    def test_the_targets_carry_their_version(self, mock_get_targets, fast_api_client):
+        mock_targets = MagicMock(spec=health_targets_models.HealthTargets)
+        mock_targets.id = 1
+        mock_targets.user_id = 1
+        mock_targets.version = 4
+        for field in ("weight", "steps", "sleep", "fasting", "water_ml", "poop_count"):
+            setattr(mock_targets, field, None)
+        mock_get_targets.return_value = mock_targets
+
+        response = fast_api_client.get("/health/targets/", headers={"Authorization": "Bearer mock_token"})
+
+        assert response.headers["ETag"] == '"4"'

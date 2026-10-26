@@ -282,6 +282,22 @@ _OUTBOUND_SURFACE_STEMS = frozenset({"identity_service"})
 #: rooted at ``app``. Every entry is a deliberate seam; anything else fails.
 _LAYER_EXCEPTIONS: dict[tuple[str, str], str] = {
     (
+        "modules.users.users_profile.export_service",
+        "modules.activities.contributor_registry",
+    ): (
+        "The activities packages answer their own section of a profile export through the contributors "
+        "installed in this registry, so the profile does not enumerate or import them. The registry holds "
+        "typed callbacks only: it owns no table and runs no query."
+    ),
+    (
+        "modules.users.users_profile.import_service",
+        "modules.activities.contributor_registry",
+    ): (
+        "The activities packages restore their own section of a profile import through the contributors "
+        "installed in this registry, so the profile does not enumerate or import them. The registry holds "
+        "typed callbacks only: it owns no table and runs no query."
+    ),
+    (
         "modules.health.health_fasting.crud",
         "modules.health.computation",
     ): (
@@ -377,6 +393,27 @@ def _excepted(importer: str, imported: str) -> bool:
 #: surface write **stages** and its caller commits; what is listed here is
 #: deliberately a self-contained unit of work, with the reason it has to be.
 _SURFACE_UNITS_OF_WORK: dict[str, str] = {
+    "users.integration_service.create_signup_user": (
+        "Creates the user row, the auth-owned password hash and MFA row, and every default row as one "
+        "commit, so an account never exists without its credential or MFA row; a caller composing the "
+        "steps itself could commit between them."
+    ),
+    "users.integration_service.delete_user": (
+        "Erases the user's data and the user row in one commit, then removes the stored photo blobs, "
+        "which cannot be staged; deleting the blobs before the commit could leave a user with no photo."
+    ),
+    "users.integration_service.upload_user_photo": (
+        "Writes the blob to storage before recording its key, so the commit is what publishes the photo; "
+        "a caller committing later could leave a stored blob nothing references."
+    ),
+    "users.integration_service.store_user_photo": (
+        "Writes the blob to storage before recording its key, so the commit is what publishes the photo, "
+        "then removes the blobs it replaced; the profile importer restores the photo this way."
+    ),
+    "users.integration_service.delete_user_photo": (
+        "Commits the cleared reference before deleting the stored blobs, so a failure never leaves a row "
+        "pointing at a blob that is already gone; the blob removal cannot be staged."
+    ),
     "activity.integration_service.store_parsed_activity": (
         "Stages the activity, its components and activity.created, and the caller commits. It rolls back "
         "only on failure: a lost race on the dedup key leaves the session unusable until it is rolled "

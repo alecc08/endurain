@@ -9,6 +9,7 @@ import type {
 import type { Schemas } from '@/types'
 
 import { apiFetch, HttpError } from '@/services/http'
+import { ifMatchHeaders } from '@/services/ifMatch'
 
 /** Largest page the list endpoint serves; the filtered lookups fetch one such page. */
 const MAX_NUM_RECORDS = 200
@@ -205,7 +206,7 @@ export async function createGear(input: GearInput): Promise<Gear> {
  * @returns The updated gear, mapped to the clean model.
  * @throws {HttpError} When the request fails, including 412 when the copy is stale.
  */
-export async function updateGear(id: number, input: GearInput, version?: number): Promise<Gear> {
+export async function updateGear(id: number, input: GearInput, version: number): Promise<Gear> {
   const { created_at, initial_kms, ...fields } = toGearWireFields(input)
   const payload: Schemas['GearUpdate'] = {
     ...fields,
@@ -215,7 +216,7 @@ export async function updateGear(id: number, input: GearInput, version?: number)
   const dto = await apiFetch<GearDto>(`/gears/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
-    headers: version == null ? {} : { 'If-Match': `"${version}"` },
+    headers: ifMatchHeaders(version),
   })
   return mapGear(dto)
 }

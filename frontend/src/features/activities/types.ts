@@ -217,7 +217,7 @@ export interface Activity {
    * built from a stale copy is refused instead of overwriting whoever saved in
    * between. `null` when the activity came from a response that omits it.
    */
-  version: number | null
+  version: number
 
   /**
    * Activity start as a UTC instant (ISO 8601 with offset), or `null` when the

@@ -34,9 +34,12 @@ import core.rate_limit as core_rate_limit
 import modules.activities.activity.router as activity_router
 import modules.activities.activity_ingestion.router as ingestion_router
 import modules.activities.activity_media.router as activity_media_router
+import modules.auth.identity_providers.profile_router as auth_idp_profile_router
 import modules.auth.identity_providers.public_router as idp_public_router
+import modules.auth.mfa.profile_router as auth_mfa_profile_router
 import modules.auth.password_reset_tokens.router as password_reset_router
 import modules.auth.router as auth_router
+import modules.auth.sessions.profile_router as auth_sessions_profile_router
 import modules.auth.sign_up_tokens.router as sign_up_tokens_router
 import modules.followers.router as followers_router
 import modules.garmin.router as garmin_router
@@ -53,6 +56,9 @@ import modules.notifications.router as notifications_router
 import modules.server_settings.logs_router as server_settings_logs_router
 import modules.server_settings.router as server_settings_router
 import modules.strava.router as strava_router
+import modules.users.users.router as users_router
+import modules.users.users_default_gear.router as users_default_gear_router
+import modules.users.users_goals.router as users_goals_router
 import modules.users.users_profile.router as users_profile_router
 import modules.websocket.router as websocket_router
 
@@ -110,20 +116,54 @@ _TIERED_ENDPOINTS = [
         id="oidc-token-exchange",
     ),
     pytest.param(
-        users_profile_router.generate_link_token,
+        auth_idp_profile_router.generate_link_token,
         core_rate_limit.SENSITIVE,
         id="sso-link-token",
     ),
     pytest.param(
-        users_profile_router.generate_mfa_backup_codes,
+        auth_mfa_profile_router.generate_mfa_backup_codes,
         core_rate_limit.SENSITIVE,
         id="mfa-backup-codes",
     ),
     pytest.param(
-        users_profile_router.delete_my_identity_provider,
+        auth_idp_profile_router.delete_my_identity_provider,
         core_rate_limit.SENSITIVE,
         id="sso-unlink",
     ),
+    pytest.param(users_router.create_user, core_rate_limit.SENSITIVE, id="user-create"),
+    pytest.param(users_router.upload_user_image, core_rate_limit.UPLOAD, id="user-image-upload"),
+    pytest.param(users_router.edit_user, core_rate_limit.WRITE, id="user-edit"),
+    pytest.param(users_router.approve_user, core_rate_limit.WRITE, id="user-approve"),
+    pytest.param(users_router.edit_user_password, core_rate_limit.SENSITIVE, id="user-password-reset"),
+    pytest.param(users_router.delete_user_photo, core_rate_limit.WRITE, id="user-photo-delete"),
+    pytest.param(users_router.delete_user, core_rate_limit.SENSITIVE, id="user-delete"),
+    pytest.param(users_router.delete_user_identity_provider, core_rate_limit.WRITE, id="user-idp-unlink"),
+    pytest.param(users_profile_router.upload_profile_image, core_rate_limit.UPLOAD, id="profile-image-upload"),
+    pytest.param(users_profile_router.edit_user, core_rate_limit.WRITE, id="profile-edit"),
+    pytest.param(users_profile_router.edit_profile_email, core_rate_limit.SENSITIVE, id="profile-email-change"),
+    pytest.param(users_profile_router.export_profile_data, core_rate_limit.SENSITIVE, id="profile-export"),
+    pytest.param(users_profile_router.download_profile_export, core_rate_limit.SENSITIVE, id="profile-export-download"),
+    pytest.param(users_profile_router.edit_profile_privacy_settings, core_rate_limit.WRITE, id="profile-privacy-edit"),
+    pytest.param(users_profile_router.edit_profile_password, core_rate_limit.SENSITIVE, id="profile-password-change"),
+    pytest.param(users_profile_router.delete_profile_photo, core_rate_limit.WRITE, id="profile-photo-delete"),
+    pytest.param(
+        auth_sessions_profile_router.delete_profile_other_sessions,
+        core_rate_limit.WRITE,
+        id="profile-sessions-revoke-others",
+    ),
+    pytest.param(
+        auth_sessions_profile_router.delete_profile_session, core_rate_limit.WRITE, id="profile-session-delete"
+    ),
+    pytest.param(users_profile_router.import_profile_data, core_rate_limit.UPLOAD, id="profile-import"),
+    pytest.param(users_profile_router.delete_my_account, core_rate_limit.SENSITIVE, id="profile-account-delete"),
+    pytest.param(auth_mfa_profile_router.setup_mfa, core_rate_limit.SENSITIVE, id="mfa-setup"),
+    pytest.param(auth_mfa_profile_router.enable_mfa, core_rate_limit.SENSITIVE, id="mfa-enable"),
+    pytest.param(auth_mfa_profile_router.disable_mfa, core_rate_limit.SENSITIVE, id="mfa-disable"),
+    pytest.param(auth_mfa_profile_router.verify_mfa, core_rate_limit.SENSITIVE, id="profile-mfa-verify"),
+    pytest.param(users_goals_router.create_user_goal, core_rate_limit.WRITE, id="goal-create"),
+    pytest.param(users_goals_router.update_user_goal, core_rate_limit.WRITE, id="goal-update"),
+    pytest.param(users_goals_router.delete_user_goal, core_rate_limit.WRITE, id="goal-delete"),
+    pytest.param(users_default_gear_router.edit_user_default_gear, core_rate_limit.WRITE, id="default-gear-edit"),
     pytest.param(
         ingestion_router.create_activity_with_uploaded_file,
         core_rate_limit.UPLOAD,

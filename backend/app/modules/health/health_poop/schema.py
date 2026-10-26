@@ -17,8 +17,6 @@ from pydantic import (
     model_validator,
 )
 
-import modules.health.schema as health_schema
-
 
 class Source(Enum):
     """Enumeration of data sources for poop records.
@@ -158,25 +156,12 @@ class HealthPoopRead(HealthPoopBase):
         ...,
         description="Foreign key reference to the user",
     )
+    version: StrictInt = Field(default=1, ge=1, description="Optimistic-concurrency counter, also sent as the ETag")
 
 
-class HealthPoopUpdate(HealthPoopRead):
-    """Schema for updating a poop record.
+class HealthPoopUpdate(HealthPoopBase):
+    """Schema for the fields a PATCH changes on a poop record.
 
-    Inherits from HealthPoopRead for consistency with read
-    operations while allowing modifications to poop data.
+    The record is named by the path, so the body carries neither an id nor an owner; only the
+    fields present are changed.
     """
-
-
-class HealthPoopListResponse(health_schema.HealthListResponse):
-    """Response model for listing health poop records.
-
-    Attributes:
-        records: A list of HealthPoopRead objects representing
-            individual bowel movement records.
-    """
-
-    records: list[HealthPoopRead] = Field(
-        ...,
-        description="List of health poop records",
-    )

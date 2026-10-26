@@ -314,13 +314,15 @@ describe('server settings service requests', () => {
     expect(status).toEqual({ configured: false, problems: ['Host is not set'] })
   })
 
-  it('sendTestEmail POSTs to the test endpoint and returns the confirmation message', async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ message: 'Test email sent to admin@example.com.' })
+  it('sendTestEmail POSTs to the test endpoint and expects no body', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(undefined)
 
-    const message = await sendTestEmail()
+    await sendTestEmail()
 
-    expect(apiFetch).toHaveBeenCalledWith('/server-settings/email/test', { method: 'POST' })
-    expect(message).toBe('Test email sent to admin@example.com.')
+    expect(apiFetch).toHaveBeenCalledWith('/server-settings/email/test', {
+      method: 'POST',
+      responseType: 'void',
+    })
   })
 })
 

@@ -1457,7 +1457,7 @@ def edit_activity(
     activity_attributes: activity_schema.ActivityEdit | activity_schema.ActivityRead,
     db: Session,
     *,
-    if_match: str | None = None,
+    if_match: str,
 ) -> activity_schema.ActivityRead:
     """Stage partial updates to a user's activity.
 
@@ -1467,7 +1467,7 @@ def edit_activity(
         activity_attributes: Pydantic model carrying the fields to update;
             only the fields explicitly set are applied.
         db: Database session.
-        if_match: The ``If-Match`` precondition, or None. Checked against the very
+        if_match: The ``If-Match`` precondition. Checked against the very
             row this function edits, so the version it compares is the version the
             flush's ``version_id_col`` guard then holds the write to.
 

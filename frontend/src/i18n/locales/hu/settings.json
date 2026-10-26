@@ -946,7 +946,6 @@
       "invalidType": "Kérjük, válassz egy .zip archívumot.",
       "exportSuccess": "Az export kész, a letöltésed hamarosan elkezdődik",
       "exportError": "Nem sikerült exportálni az adataidat. Kérjük, próbáld újra.",
-      "importSuccess": "Adatok importálva",
       "importError": "Nem sikerült importálni az archívumot. Kérjük, ellenőrizd a fájlt, és próbáld újra."
     }
   }

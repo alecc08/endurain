@@ -19,6 +19,7 @@ import type {
   PasswordChangeInput,
   SecuritySession,
   SecuritySessionDto,
+  EmailChangeDto,
   StepUpDto,
   StepUpInput,
 } from '@/features/security/types'
@@ -130,8 +131,8 @@ export async function changePassword(input: PasswordChangeInput): Promise<void> 
     mfa_code: input.mfaCode,
     revoke_other_sessions: input.revokeOtherSessions,
   }
-  await apiFetch('/profile/password', {
-    method: 'PUT',
+  await apiFetch('/profile/password/change', {
+    method: 'POST',
     body: JSON.stringify(payload),
     responseType: 'void',
   })
@@ -326,6 +327,50 @@ export async function revokeApiKey(id: string): Promise<void> {
 export async function deleteApiKey(id: string): Promise<void> {
   await apiFetch(`/profile/api_keys/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+    responseType: 'void',
+  })
+}
+
+/**
+ * Permanently deletes the authenticated user's account and all of their data
+ * (the GDPR right to erasure) after step-up verification. The backend removes
+ * the activities and their files, health records, gear, goals, integrations,
+ * sessions and every other row that references the user, and refuses when the
+ * user is the server's only administrator.
+ *
+ * @param input - The step-up credentials.
+ * @throws {HttpError} When the request fails (401 step-up, 409 only administrator).
+ */
+export async function deleteAccount(input: StepUpInput): Promise<void> {
+  await apiFetch('/profile/delete-account', {
+    method: 'POST',
+    body: JSON.stringify(toStepUpWire(input)),
+    responseType: 'void',
+  })
+}
+
+/**
+ * Changes the account email after step-up verification. The new address starts unverified and
+ * the backend emails it a verification link when mail is configured.
+ *
+ * @param email - The new email address.
+ * @param input - The step-up credentials (password and, with MFA, a code).
+ * @param revokeOtherSessions - Whether to sign out every other session after the change.
+ * @throws {HttpError} When the request fails (401 step-up, 409 address already in use).
+ */
+export async function changeEmail(
+  email: string,
+  input: StepUpInput,
+  revokeOtherSessions: boolean,
+): Promise<void> {
+  const payload: EmailChangeDto = {
+    email,
+    ...toStepUpWire(input),
+    revoke_other_sessions: revokeOtherSessions,
+  }
+  await apiFetch('/profile/email/change', {
+    method: 'POST',
+    body: JSON.stringify(payload),
     responseType: 'void',
   })
 }

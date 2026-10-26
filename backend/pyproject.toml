@@ -44,7 +44,7 @@ dependencies = [
     "staticmap>=0.5.7",
     # Pinned below the next minor: JASIL is pre-1.0 and documents breaking
     # changes on minor versions.
-    "jasil[fastapi,geocoding,jobs,migrations]>=0.10.1,<0.11.0",
+    "jasil[fastapi,geocoding,jobs,migrations]>=0.11.0,<0.12.0",
 ]
 
 [project.optional-dependencies]
@@ -54,7 +54,7 @@ dependencies = [
 distributed = [
     "boto3>=1.43.99",
     "redis>=8.1.0",
-    "jasil[redis,s3]>=0.10.1,<0.11.0",
+    "jasil[redis,s3]>=0.11.0,<0.12.0",
 ]
 
 [dependency-groups]
@@ -240,7 +240,7 @@ ignore = [
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-# Docstring rules ("D") apply to the converted modules (activities, followers, gears, notifications, server_settings). Everything
+# Docstring rules ("D") apply to the converted modules (activities, followers, garmin, gears, health, notifications, server_settings, users, websocket). Everything
 # below is outside them until converted: removing a module from this list is part of
 # converting it. ``tests/architecture/test_module_boundaries.py`` keeps the module entries
 # in step with UNCONVERTED_MODULES.
@@ -254,7 +254,6 @@ convention = "google"
 "app/migrations/**/*.py" = ["D"]
 "app/modules/auth/**/*.py" = ["D"]
 "app/modules/strava/**/*.py" = ["D"]
-"app/modules/users/**/*.py" = ["D"]
 "scripts/**/*.py" = ["D"]
 "tests/**/*.py" = ["D", "S101", "S105", "S106", "S108"]  # allow assert, password-like test data, and hardcoded /tmp-style paths in test mocks/fixtures
 "app/alembic/**/*.py" = ["D", "E402", "I001"]  # alembic migrations have specific import order; docstrings not required

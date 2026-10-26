@@ -24,6 +24,9 @@ export type BackupCodesDto = Schemas['MFABackupCodesResponse']
 /** Step-up verification body shared by sensitive self-service actions. */
 export type StepUpDto = Schemas['StepUpVerification']
 
+/** Email-change request body: the new address plus the step-up credentials. */
+export type EmailChangeDto = Schemas['EmailChange']
+
 /** Raw session payload (snake_case wire shape). */
 export type SecuritySessionDto = Schemas['UsersSessionsRead']
 

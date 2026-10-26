@@ -50,8 +50,7 @@ function targetToSeconds(formValues: TargetFormValues): number | null {
 async function submitForm(formValues: TargetFormValues): Promise<void> {
   try {
     await updateTargetMutation.mutateAsync({
-      id: props.targets.id,
-      userId: props.targets.userId,
+      version: props.targets.version,
       fastingSeconds: targetToSeconds(formValues),
     })
     emit('success', t('health.fasting.target.saveSuccess'))

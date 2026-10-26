@@ -50,5 +50,10 @@
   "noLoginMethods": "No login methods are enabled on this server",
   "imageAlt": "Endurain login illustration",
   "tagline1": "Track every move",
-  "tagline2": "Own every moment"
+  "tagline2": "Own every moment",
+  "accountDeleted": {
+    "title": "Sorry to see you go",
+    "body": "Your account and all of your data have been permanently deleted.",
+    "backToLogin": "Back to sign in"
+  }
 }

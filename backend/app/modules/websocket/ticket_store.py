@@ -7,39 +7,20 @@ platform ``StateProvider`` (in-process under ``local``, Redis under
 """
 
 import secrets
-from typing import NoReturn
 
 from jasil.providers import StateBackendUnavailableError, StateProvider
 
-import core.exceptions as core_exceptions
+import core.attempt_state as core_attempt_state
 import core.logger as core_logger
 
 logger = core_logger.get_logger(__name__)
 
 TICKET_TTL_SECONDS = 30
-_TICKET_KEY_PREFIX = "ws:ticket:"
 
 
-class WsTicketStoreUnavailableError(core_exceptions.ServiceUnavailableError):
-    """Raised when WS ticket storage cannot be reached; the API answers 503.
-
-    Attributes:
-        None.
-    """
-
-
-def _raise_store_unavailable(operation: str, err: StateBackendUnavailableError) -> NoReturn:
-    """Log a storage outage and re-raise it as a WS-ticket error.
-
-    Args:
-        operation: Storage operation that failed.
-        err: The provider outage error.
-
-    Raises:
-        WsTicketStoreUnavailableError: Always raised.
-    """
-    logger.error("WS ticket storage failed", exc_info=err, extra=core_logger.context(operation=operation))
-    raise WsTicketStoreUnavailableError("WS ticket storage is unavailable") from err
+def _ticket_key(ticket: str) -> str:
+    """Build the storage key of a ticket."""
+    return core_attempt_state.key("websocket", "ticket", ticket)
 
 
 class WsTicketStore:
@@ -71,16 +52,16 @@ class WsTicketStore:
             Opaque, URL-safe ticket string.
 
         Raises:
-            WsTicketStoreUnavailableError: When storage is unavailable.
+            core_attempt_state.StateUnavailableError: When storage is unavailable.
         """
         try:
             for _ in range(3):
                 ticket = secrets.token_urlsafe(32)
-                key = f"{_TICKET_KEY_PREFIX}{ticket}"
+                key = _ticket_key(ticket)
                 if self._state.set_if_absent(key, str(user_id).encode(), ttl_seconds=TICKET_TTL_SECONDS):
                     return ticket
         except StateBackendUnavailableError as err:
-            _raise_store_unavailable("create_ticket", err)
+            core_attempt_state.raise_unavailable("create_ticket", err)
         raise RuntimeError(  # pragma: no cover
             "Failed to generate a unique WS ticket after 3 attempts"
         )
@@ -95,13 +76,13 @@ class WsTicketStore:
             Authenticated user ID, or None if invalid/expired/unknown.
 
         Raises:
-            WsTicketStoreUnavailableError: When storage is unavailable.
+            core_attempt_state.StateUnavailableError: When storage is unavailable.
         """
-        key = f"{_TICKET_KEY_PREFIX}{ticket}"
+        key = _ticket_key(ticket)
         try:
             value = self._state.get_and_delete(key)
         except StateBackendUnavailableError as err:
-            _raise_store_unavailable("consume_ticket", err)
+            core_attempt_state.raise_unavailable("consume_ticket", err)
         if value is None:
             return None
         try:

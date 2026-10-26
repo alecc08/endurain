@@ -25,8 +25,14 @@ const props = withDefaults(
     requireMfa?: boolean
     /** Whether the confirming action is in flight. */
     pending: boolean
+    /** Text the user must type exactly before confirming (for irreversible actions). */
+    confirmPhrase?: string
+    /** Whether the confirming action is destructive. */
+    destructive?: boolean
+    /** Whether the fields the parent adds through the default slot are valid. */
+    extraValid?: boolean
   }>(),
-  { requireMfa: true },
+  { requireMfa: true, confirmPhrase: undefined, destructive: false, extraValid: true },
 )
 
 const emit = defineEmits<{
@@ -37,9 +43,12 @@ const { t } = useI18n()
 
 const password = ref('')
 const mfaCode = ref('')
+const typedPhrase = ref('')
 
 const canSubmit = computed(
   () =>
+    props.extraValid &&
+    (props.confirmPhrase === undefined || typedPhrase.value === props.confirmPhrase) &&
     (!props.requirePassword || password.value.length > 0) &&
     (!props.requireMfa || mfaCode.value.trim().length > 0),
 )
@@ -49,6 +58,7 @@ watch(open, (isOpen) => {
   if (isOpen) {
     password.value = ''
     mfaCode.value = ''
+    typedPhrase.value = ''
   }
 })
 
@@ -71,9 +81,25 @@ function onSubmit(): void {
     :close-label="t('settings.security.close')"
     :submitting="pending"
     :can-submit="canSubmit"
+    :destructive="destructive"
     @submit="onSubmit"
   >
     <div class="flex flex-col gap-3">
+      <slot />
+      <div v-if="confirmPhrase !== undefined" class="flex flex-col gap-1.5">
+        <Label for="stepup-confirm-phrase">
+          {{ t('settings.security.confirmPhrase', { phrase: confirmPhrase }) }}
+        </Label>
+        <Input
+          id="stepup-confirm-phrase"
+          v-model="typedPhrase"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          :disabled="pending"
+          class="w-full"
+        />
+      </div>
       <div v-if="requirePassword" class="flex flex-col gap-1.5">
         <Label for="stepup-password">{{ t('settings.security.password.current') }}</Label>
         <PasswordInput

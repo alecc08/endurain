@@ -7,6 +7,7 @@ import type {
 import type { Schemas } from '@/types'
 
 import { apiFetch } from '@/services/http'
+import { ifMatchHeaders } from '@/services/ifMatch'
 
 /**
  * Maps a raw `GearComponentRead` payload to the clean {@link GearComponent}
@@ -122,7 +123,7 @@ export async function createGearComponent(input: GearComponentInput): Promise<Ge
 export async function updateGearComponent(
   id: number,
   input: GearComponentInput,
-  version?: number,
+  version: number,
 ): Promise<GearComponent> {
   // `purchase_date` cannot be cleared on the backend, so it is left out of the partial update when empty.
   const { purchase_date, ...fields } = toComponentWireFields(input)
@@ -133,7 +134,7 @@ export async function updateGearComponent(
   const dto = await apiFetch<GearComponentDto>(`/gear-components/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
-    headers: version == null ? {} : { 'If-Match': `"${version}"` },
+    headers: ifMatchHeaders(version),
   })
   return mapGearComponent(dto)
 }

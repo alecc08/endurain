@@ -97,7 +97,7 @@ def update_user_mfa(user_id: int, db: Session, encrypted_secret: str | None = No
 
 
 @core_decorators.handle_db_errors
-def create_users_mfa_row(user_id: int, db: Session) -> auth_mfa_models.UsersMFA:
+def create_users_mfa_row(user_id: int, db: Session, commit: bool = True) -> auth_mfa_models.UsersMFA:
     """
     Create the default ``users_mfa`` row for a newly created user.
 
@@ -109,9 +109,11 @@ def create_users_mfa_row(user_id: int, db: Session) -> auth_mfa_models.UsersMFA:
     Args:
         user_id: ID of the user to create the row for.
         db: SQLAlchemy database session.
+        commit: Whether to commit immediately. Pass ``False`` to stage the row in a larger
+            transaction owned by the caller.
 
     Returns:
-        The persisted ``UsersMFA`` row.
+        The ``UsersMFA`` row.
 
     Raises:
         HTTPException: 500 if the database operation fails.
@@ -122,6 +124,9 @@ def create_users_mfa_row(user_id: int, db: Session) -> auth_mfa_models.UsersMFA:
         mfa_secret=None,
     )
     db.add(mfa_row)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(mfa_row)
     return mfa_row

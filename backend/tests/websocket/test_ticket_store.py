@@ -6,10 +6,10 @@ import pytest
 from jasil.backends.state_memory import MemoryState
 from jasil.providers import StateBackendUnavailableError
 
+import core.attempt_state as core_attempt_state
 from modules.websocket.ticket_store import (
     TICKET_TTL_SECONDS,
     WsTicketStore,
-    WsTicketStoreUnavailableError,
 )
 
 
@@ -68,20 +68,20 @@ class TestWsTicketStore:
         assert len(mock_log.method_calls) == 1
         warning_msg = mock_log.warning.call_args.args[0]
         assert "secret-ticket-abc" not in warning_msg
-        assert "ws:ticket:" not in warning_msg
+        assert "endurain:websocket:ticket" not in warning_msg
 
 
 class TestWsTicketStoreUnavailable:
-    """Backend outages surface as WsTicketStoreUnavailableError."""
+    """Backend outages surface as core_attempt_state.StateUnavailableError."""
 
     def test_create_ticket_raises(self):
         state = MagicMock()
         state.set_if_absent.side_effect = StateBackendUnavailableError("down")
-        with pytest.raises(WsTicketStoreUnavailableError):
+        with pytest.raises(core_attempt_state.StateUnavailableError):
             WsTicketStore(state=state).create_ticket(user_id=1)
 
     def test_consume_ticket_raises(self):
         state = MagicMock()
         state.get_and_delete.side_effect = StateBackendUnavailableError("down")
-        with pytest.raises(WsTicketStoreUnavailableError):
+        with pytest.raises(core_attempt_state.StateUnavailableError):
             WsTicketStore(state=state).consume_ticket("some-ticket")

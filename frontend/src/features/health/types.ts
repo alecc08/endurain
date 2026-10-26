@@ -19,6 +19,8 @@ export interface HealthTargets {
   id: number
   /** The owning user's id. */
   userId: number
+  /** The row version, sent back in `If-Match` so an edit of a stale copy is refused. */
+  version: number
   /** Target sleep duration in seconds, or `null`. */
   sleepSeconds: number | null
   /** Target daily step count, or `null`. */
@@ -83,6 +85,8 @@ export interface WeightEntry {
   id: number
   /** The owning user's id (echoed back on edit). */
   userId: number
+  /** The row version, sent back in `If-Match` so an edit of a stale copy is refused. */
+  version: number
   /** Measurement date as a `yyyy-mm-dd` string, or `null`. */
   date: string | null
   /** Body weight in kilograms, or `null`. */
@@ -136,6 +140,8 @@ export interface StepsEntry {
   id: number
   /** The owning user's id (echoed back on edit). */
   userId: number
+  /** The row version, sent back in `If-Match` so an edit of a stale copy is refused. */
+  version: number
   /** Measurement date as a `yyyy-mm-dd` string, or `null`. */
   date: string | null
   /** Step count for the day, or `null`. */
@@ -166,6 +172,8 @@ export interface WaterEntry {
   id: number
   /** The owning user's id (echoed back on edit). */
   userId: number
+  /** The row version, sent back in `If-Match` so an edit of a stale copy is refused. */
+  version: number
   /** Measurement date as a `yyyy-mm-dd` string, or `null`. */
   date: string | null
   /** Water consumed for the day in millilitres, or `null`. */
@@ -201,6 +209,8 @@ export interface PoopEntry {
   id: number
   /** The owning user's id (echoed back on edit). */
   userId: number
+  /** The row version, sent back in `If-Match` so an edit of a stale copy is refused. */
+  version: number
   /** ISO timestamp of the bowel movement, or `null`. */
   dateTime: string | null
   /** Bristol Stool Scale type (1–7), or `null` when not recorded. */
@@ -271,6 +281,8 @@ export interface FastingEntry {
   id: number
   /** The owning user's id (echoed back on edit). */
   userId: number
+  /** The row version, sent back in `If-Match` so an edit of a stale copy is refused. */
+  version: number
   /** ISO start timestamp of the fast, or `null`. */
   fastStartTime: string | null
   /** ISO end timestamp of the fast, or `null` while ongoing. */
@@ -362,6 +374,8 @@ export interface SleepEntry {
   id: number
   /** The owning user's id (echoed back on edit). */
   userId: number
+  /** The row version, sent back in `If-Match` so an edit of a stale copy is refused. */
+  version: number
   /** Calendar date of the session as a `yyyy-mm-dd` string, or `null`. */
   date: string | null
   /** Local start-of-sleep timestamp (`yyyy-mm-ddThh:mm`), or `null`. */

@@ -64,8 +64,7 @@ function targetToKg(raw: string): number | null {
 async function submitForm(values: TargetFormValues): Promise<void> {
   try {
     await updateTargetMutation.mutateAsync({
-      id: props.targets.id,
-      userId: props.targets.userId,
+      version: props.targets.version,
       weightKg: targetToKg(values.weight),
     })
     emit('success', t('health.weight.target.saveSuccess'))

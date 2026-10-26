@@ -62,7 +62,6 @@ class TestRequestEmails:
         for call in (
             lambda: sign_up_tokens_utils.request_sign_up_verification_email(1, mock_db),
             lambda: sign_up_tokens_utils.request_sign_up_admin_approval_emails(1, mock_db),
-            lambda: sign_up_tokens_utils.request_sign_up_approved_email(1, mock_db),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 call()
@@ -76,7 +75,7 @@ class TestRequestEmails:
         mock_publish.assert_called_once_with(5, mock_db)
 
     @patch("modules.auth.sign_up_tokens.utils.sign_up_tokens_event_publishers.publish_sign_up_approval_requested")
-    @patch("modules.auth.sign_up_tokens.utils.users_utils.get_admin_users_or_404")
+    @patch("modules.auth.sign_up_tokens.utils.users_integration.require_admin_users")
     @patch("modules.auth.sign_up_tokens.utils.server_settings_integration.is_mail_configured", return_value=True)
     def test_admin_approval_publishes_one_event_per_admin(self, _configured, mock_admins, mock_publish, mock_db):
         mock_admins.return_value = [MagicMock(id=10), MagicMock(id=11)]
@@ -85,7 +84,7 @@ class TestRequestEmails:
 
         assert [c.args for c in mock_publish.call_args_list] == [(5, 10, mock_db), (5, 11, mock_db)]
 
-    @patch("modules.auth.sign_up_tokens.utils.users_utils.get_admin_users_or_404")
+    @patch("modules.auth.sign_up_tokens.utils.users_integration.require_admin_users")
     @patch("modules.auth.sign_up_tokens.utils.server_settings_integration.is_mail_configured", return_value=True)
     def test_admin_approval_no_admins_raises_404(self, _configured, mock_admins, mock_db):
         mock_admins.side_effect = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No admin users found")
@@ -97,16 +96,31 @@ class TestRequestEmails:
 
     @patch("modules.auth.sign_up_tokens.utils.sign_up_tokens_event_publishers.publish_sign_up_approved")
     @patch("modules.auth.sign_up_tokens.utils.server_settings_integration.is_mail_configured", return_value=True)
-    def test_approved_publishes_event(self, _configured, mock_publish, mock_db):
-        sign_up_tokens_utils.request_sign_up_approved_email(5, mock_db)
+    def test_approved_publishes_event_around_the_commit(self, _configured, mock_publish, mock_db):
+        commit = MagicMock()
 
-        mock_publish.assert_called_once_with(5, mock_db)
+        queued = sign_up_tokens_utils.request_sign_up_approved_email(5, mock_db, commit=commit)
+
+        assert queued is True
+        mock_publish.assert_called_once_with(5, mock_db, commit=commit)
+        commit.assert_not_called()
+
+    @patch("modules.auth.sign_up_tokens.utils.sign_up_tokens_event_publishers.publish_sign_up_approved")
+    @patch("modules.auth.sign_up_tokens.utils.server_settings_integration.is_mail_configured", return_value=False)
+    def test_approved_without_mail_still_commits(self, _configured, mock_publish, mock_db):
+        commit = MagicMock()
+
+        queued = sign_up_tokens_utils.request_sign_up_approved_email(5, mock_db, commit=commit)
+
+        assert queued is False
+        commit.assert_called_once_with()
+        mock_publish.assert_not_called()
 
 
 class TestSendEmailsToUser:
     """Tests for the handler-side send functions."""
 
-    @patch("modules.auth.sign_up_tokens.utils.users_crud.get_user_by_id", return_value=None)
+    @patch("modules.auth.sign_up_tokens.utils.users_integration.get_user", return_value=None)
     def test_missing_user_is_skipped(self, _get_user, mock_db):
         mail = MagicMock()
 
@@ -116,7 +130,7 @@ class TestSendEmailsToUser:
         mail.send.assert_not_called()
 
     @patch("modules.auth.sign_up_tokens.utils.create_sign_up_token", return_value="plain-token")
-    @patch("modules.auth.sign_up_tokens.utils.users_crud.get_user_by_id")
+    @patch("modules.auth.sign_up_tokens.utils.users_integration.get_user")
     def test_verification_sends_link_with_token(self, mock_get_user, _create_token, mock_db):
         mock_get_user.return_value = _user(email="new@example.com")
         mail = MagicMock()
@@ -127,7 +141,7 @@ class TestSendEmailsToUser:
         assert message.to == ["new@example.com"]
         assert "verify-email?token=plain-token" in message.text
 
-    @patch("modules.auth.sign_up_tokens.utils.users_crud.get_user_by_id")
+    @patch("modules.auth.sign_up_tokens.utils.users_integration.get_user")
     def test_approval_request_goes_to_admin(self, mock_get_user, mock_db):
         users = {1: _user(id=1, username="newbie"), 2: _user(id=2, email="admin@example.com")}
         mock_get_user.side_effect = lambda user_id, _db: users[user_id]
@@ -139,7 +153,7 @@ class TestSendEmailsToUser:
         assert message.to == ["admin@example.com"]
         assert "newbie" in message.text
 
-    @patch("modules.auth.sign_up_tokens.utils.users_crud.get_user_by_id")
+    @patch("modules.auth.sign_up_tokens.utils.users_integration.get_user")
     def test_approved_goes_to_user(self, mock_get_user, mock_db):
         mock_get_user.return_value = _user(email="ok@example.com")
         mail = MagicMock()
@@ -148,7 +162,7 @@ class TestSendEmailsToUser:
 
         assert mail.send.call_args.args[0].to == ["ok@example.com"]
 
-    @patch("modules.auth.sign_up_tokens.utils.users_crud.get_user_by_id")
+    @patch("modules.auth.sign_up_tokens.utils.users_integration.get_user")
     def test_permanent_failure_is_not_retried(self, mock_get_user, mock_db):
         mock_get_user.return_value = _user()
         mail = MagicMock()
@@ -156,7 +170,7 @@ class TestSendEmailsToUser:
 
         assert sign_up_tokens_utils.send_sign_up_approved_email_to_user(1, mail, mock_db) is False
 
-    @patch("modules.auth.sign_up_tokens.utils.users_crud.get_user_by_id")
+    @patch("modules.auth.sign_up_tokens.utils.users_integration.get_user")
     def test_transient_failure_propagates_for_retry(self, mock_get_user, mock_db):
         mock_get_user.return_value = _user()
         mail = MagicMock()

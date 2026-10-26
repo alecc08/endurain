@@ -7,6 +7,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import modules.health.computation as health_computation
 import modules.health.health_fasting.models as health_fasting_models
@@ -43,6 +44,28 @@ def _get_model_by_id_and_user_id(
         raise core_exceptions.NotFoundError("Health fasting not found")
 
     return db_health_fasting
+
+
+def health_fasting_exists(health_fasting_id: int, user_id: int, db: Session) -> bool:
+    """Report whether a user has a fasting session record.
+
+    Args:
+        health_fasting_id: The record to look for.
+        user_id: The record's owner.
+        db: Database session.
+
+    Returns:
+        True when the user has such a record.
+    """
+    stmt = select(
+        select(health_fasting_models.HealthFasting.id)
+        .where(
+            health_fasting_models.HealthFasting.id == health_fasting_id,
+            health_fasting_models.HealthFasting.user_id == user_id,
+        )
+        .exists()
+    )
+    return bool(db.execute(stmt).scalar())
 
 
 def get_health_fasting_number_by_user_id(user_id: int, db: Session, since: date | None = None) -> int:
@@ -249,7 +272,7 @@ def create_health_fasting(
         The staged session.
 
     Raises:
-        ConflictError: If the insert violates a database constraint.
+        ConflictError: If the user already has a running fast.
     """
     db_health_fasting = health_fasting_models.HealthFasting(
         **health_fasting.model_dump(exclude_none=False),
@@ -261,33 +284,46 @@ def create_health_fasting(
         db.flush()
         db.refresh(db_health_fasting)
     except IntegrityError as err:
-        raise core_exceptions.ConflictError("Failed to create fasting record. Database integrity error.") from err
+        raise core_exceptions.ConflictError("User already has an active fasting session") from err
 
     return health_fasting_serializers.to_read_schema(db_health_fasting)
 
 
 def edit_health_fasting(
-    user_id: int, health_fasting: health_fasting_schema.HealthFastingUpdate, db: Session
+    user_id: int,
+    health_fasting_id: int,
+    health_fasting: health_fasting_schema.HealthFastingUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_fasting_schema.HealthFastingRead:
     """Stage an update to a user's fasting record.
 
     Args:
         user_id: The record's owner.
-        health_fasting: The record with its changes.
+        health_fasting_id: The record to change.
+        health_fasting: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
+        ConflictError: If the change would leave the user with two running fasts.
     """
-    db_health_fasting = _get_model_by_id_and_user_id(health_fasting.id, user_id, db)
+    db_health_fasting = _get_model_by_id_and_user_id(health_fasting_id, user_id, db)
+    core_etag.require_if_match(if_match, db_health_fasting.version, "fasting session record")
 
     for key, value in health_fasting.model_dump(exclude_unset=True).items():
         setattr(db_health_fasting, key, value)
 
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as err:
+        raise core_exceptions.ConflictError("User already has an active fasting session") from err
     db.refresh(db_health_fasting)
 
     return health_fasting_serializers.to_read_schema(db_health_fasting)

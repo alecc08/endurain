@@ -4,14 +4,13 @@ Owns the dedicated login threads. Unlinking and the sessions a linked account's 
 :mod:`modules.garmin.service`.
 """
 
-import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import garminconnect
 
 import core.database as core_database
 import core.exceptions as core_exceptions
+import core.local_pool as core_local_pool
 import core.logger as core_logger
 import modules.garmin.constants as garmin_constants
 import modules.garmin.link_state_store as garmin_link_state_store
@@ -28,17 +27,16 @@ logger = core_logger.get_logger(__name__)
 # A login past this capacity is refused rather than queued: a queued one would outlive its
 # polled state while holding the user's credentials in memory.
 MAX_CONCURRENT_LINKS = 4
-_LINK_EXECUTOR = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_LINKS, thread_name_prefix="garmin-link")
-_link_slots = threading.BoundedSemaphore(MAX_CONCURRENT_LINKS)
+_link_pool = core_local_pool.BoundedPool("garmin-link", workers=MAX_CONCURRENT_LINKS, max_pending=MAX_CONCURRENT_LINKS)
 
 
-def shutdown_link_executor(*, wait: bool = False) -> None:
+def shutdown_link_pool(*, wait: bool = False) -> None:
     """Stop accepting link attempts and release the login threads.
 
     Args:
         wait: Whether to wait for logins still running.
     """
-    _LINK_EXECUTOR.shutdown(wait=wait, cancel_futures=True)
+    _link_pool.shutdown(wait=wait)
 
 
 def wait_for_mfa_code(
@@ -92,31 +90,26 @@ def start_link(
 
     Raises:
         ConflictError: When an attempt for this user is already running.
-        ServiceUnavailableError: When every login thread of this process is busy.
+        PoolFullError: When every login thread of this process is busy.
     """
-    if not _link_slots.acquire(blocking=False):
-        raise core_exceptions.ServiceUnavailableError("Too many Garmin Connect links in progress; try again shortly")
+    # Checked before the attempt is recorded, so a refused login leaves no pending state to poll.
+    _link_pool.require_capacity()
+    if not link_states.begin(user_id):
+        raise core_exceptions.ConflictError("A Garmin Connect link is already in progress")
     try:
-        if not link_states.begin(user_id):
-            raise core_exceptions.ConflictError("A Garmin Connect link is already in progress")
-        try:
-            future = _LINK_EXECUTOR.submit(
-                link_garminconnect,
-                user_id,
-                login.username,
-                login.password.get_secret_value(),
-                mfa_codes,
-                link_states,
-                login.is_cn,
-            )
-        except BaseException:
-            # The attempt never started, so nothing would ever release its claim.
-            link_states.release(user_id)
-            raise
+        _link_pool.submit(
+            link_garminconnect,
+            user_id,
+            login.username,
+            login.password.get_secret_value(),
+            mfa_codes,
+            link_states,
+            login.is_cn,
+        )
     except BaseException:
-        _link_slots.release()
+        # The attempt never started, so nothing would ever release its claim.
+        link_states.release(user_id)
         raise
-    future.add_done_callback(lambda _: _link_slots.release())
     return garmin_schema.GarminLinkStatus(status=garmin_constants.LinkStatus.PENDING)
 
 
@@ -164,7 +157,7 @@ def link_garminconnect(
                 db,
             )
             db.commit()
-    except garminconnect.GarminConnectAuthenticationError as err:
+    except garminconnect.GarminConnectAuthenticationError:
         # The library raises this for a refused password and for a refused MFA code alike.
         reason = (
             garmin_constants.LinkFailure.INCORRECT_MFA
@@ -173,7 +166,6 @@ def link_garminconnect(
         )
         logger.warning(
             "Garmin Connect refused the link attempt",
-            exc_info=err,
             extra=core_logger.context(user_id=user_id, reason=reason),
         )
         link_states.set_status(user_id, garmin_constants.LinkStatus.FAILED, reason)
@@ -223,7 +215,7 @@ def submit_mfa_code(
     mfa_code: str,
     mfa_codes: garmin_mfa_code_store.GarminMFACodeStore,
     link_states: garmin_link_state_store.GarminLinkStateStore,
-) -> garmin_schema.GarminDetail:
+) -> None:
     """Hand the user's MFA code to the login waiting for it.
 
     Args:
@@ -232,9 +224,6 @@ def submit_mfa_code(
         mfa_codes: Shared store the code lands in.
         link_states: Shared store of the link attempt's state.
 
-    Returns:
-        The acknowledgement.
-
     Raises:
         ConflictError: When no login is waiting for a code.
     """
@@ -242,4 +231,3 @@ def submit_mfa_code(
     if state is None or state.status != garmin_constants.LinkStatus.MFA_REQUIRED:
         raise core_exceptions.ConflictError("No Garmin Connect login is waiting for an MFA code")
     mfa_codes.add_code(user_id, mfa_code)
-    return garmin_schema.GarminDetail(detail="MFA code received successfully")

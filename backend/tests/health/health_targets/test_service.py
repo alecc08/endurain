@@ -16,11 +16,11 @@ class TestGetHealthTargets:
 class TestUpdateHealthTargets:
     @patch("modules.health.health_targets.service.health_targets_crud.edit_health_target")
     def test_commits_after_edit(self, mock_edit, mock_db):
-        update = health_targets_schema.HealthTargetsUpdate(id=1, user_id=1, weight=75.0)
+        update = health_targets_schema.HealthTargetsUpdate(weight=75.0)
         mock_edit.return_value = MagicMock()
 
-        result = health_targets_service.update_health_targets(update, 1, mock_db)
+        result = health_targets_service.update_health_targets(update, 1, mock_db, if_match="*")
 
         assert result is mock_edit.return_value
-        mock_edit.assert_called_once_with(update, 1, mock_db)
+        mock_edit.assert_called_once_with(update, 1, mock_db, if_match="*")
         mock_db.commit.assert_called_once()

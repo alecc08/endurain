@@ -1,10 +1,8 @@
 """Tests for user goals API endpoints."""
 
-from datetime import date
 from unittest.mock import MagicMock, patch
 
-from fastapi import HTTPException, status
-
+import core.exceptions as core_exceptions
 import modules.users.users_goals.models as user_goals_models
 import modules.users.users_goals.schema as user_goals_schema
 
@@ -14,13 +12,14 @@ class TestGetUserGoals:
     Test suite for get_user_goals endpoint.
     """
 
-    @patch("modules.users.users_goals.router.user_goals_crud.get_user_goals_by_user_id")
+    @patch("modules.users.users_goals.router.user_goals_service.list_goals")
     def test_get_user_goals_success(self, mock_get_goals, fast_api_client, fast_api_app):
         """Test successful retrieval of all user goals."""
         # Arrange
         mock_goal1 = MagicMock(spec=user_goals_models.UsersGoal)
         mock_goal1.id = 1
         mock_goal1.user_id = 1
+        mock_goal1.version = 1
         mock_goal1.interval = "weekly"
         mock_goal1.activity_type = "run"
         mock_goal1.goal_type = "calories"
@@ -44,7 +43,7 @@ class TestGetUserGoals:
         assert isinstance(data, list)
         assert len(data) == 1
 
-    @patch("modules.users.users_goals.router.user_goals_crud.get_user_goals_by_user_id")
+    @patch("modules.users.users_goals.router.user_goals_service.list_goals")
     def test_get_user_goals_empty(self, mock_get_goals, fast_api_client, fast_api_app):
         """Test retrieval when user has no goals."""
         # Arrange
@@ -66,7 +65,7 @@ class TestGetUserGoalsResults:
     Test suite for get_user_goals_results endpoint.
     """
 
-    @patch("modules.users.users_goals.router.user_goals_utils.calculate_user_goals")
+    @patch("modules.users.users_goals.router.user_goals_progress_service.get_goals_progress")
     def test_get_user_goals_results_success(self, mock_calculate, fast_api_client, fast_api_app):
         """Test successful calculation of goal progress."""
         # Arrange
@@ -92,16 +91,10 @@ class TestGetUserGoalsResults:
         mock_calculate.return_value = [mock_progress]
 
         # Act
-        with (
-            patch("modules.users.users_goals.router.users_utils.get_user_by_id_or_404") as mock_get_user,
-            patch("modules.users.users_goals.router.core_timezone.today_in", return_value=date(2026, 3, 12)),
-        ):
-            mock_get_user.return_value.first_day_of_week = "sunday"
-            mock_get_user.return_value.timezone = "UTC"
-            response = fast_api_client.get(
-                "/user_goals/results",
-                headers={"Authorization": "Bearer mock_token"},
-            )
+        response = fast_api_client.get(
+            "/user_goals/results",
+            headers={"Authorization": "Bearer mock_token"},
+        )
 
         # Assert
         assert response.status_code == 200
@@ -110,30 +103,22 @@ class TestGetUserGoalsResults:
         assert len(data) == 1
         mock_calculate.assert_called_once()
         assert mock_calculate.call_args.args[0] == 1
-        assert mock_calculate.call_args.args[1] == "2026-03-12"
-        assert mock_calculate.call_args.args[3] == "sunday"
 
-    @patch("modules.users.users_goals.router.user_goals_utils.calculate_user_goals")
+    @patch("modules.users.users_goals.router.user_goals_progress_service.get_goals_progress")
     def test_get_user_goals_results_none(self, mock_calculate, fast_api_client, fast_api_app):
-        """Test calculation returns null when no goals."""
+        """Test calculation returns an empty list when no goals."""
         # Arrange
-        mock_calculate.return_value = None
+        mock_calculate.return_value = []
 
         # Act
-        with (
-            patch("modules.users.users_goals.router.users_utils.get_user_by_id_or_404") as mock_get_user,
-            patch("modules.users.users_goals.router.core_timezone.today_in", return_value=date(2026, 3, 12)),
-        ):
-            mock_get_user.return_value.first_day_of_week = "sunday"
-            mock_get_user.return_value.timezone = "UTC"
-            response = fast_api_client.get(
-                "/user_goals/results",
-                headers={"Authorization": "Bearer mock_token"},
-            )
+        response = fast_api_client.get(
+            "/user_goals/results",
+            headers={"Authorization": "Bearer mock_token"},
+        )
 
         # Assert
         assert response.status_code == 200
-        assert response.json() is None
+        assert response.json() == []
 
 
 class TestCreateUserGoal:
@@ -141,13 +126,14 @@ class TestCreateUserGoal:
     Test suite for create_user_goal endpoint.
     """
 
-    @patch("modules.users.users_goals.router.user_goals_crud.create_user_goal")
+    @patch("modules.users.users_goals.router.user_goals_service.create_goal")
     def test_create_user_goal_success(self, mock_create, fast_api_client, fast_api_app):
         """Test successful goal creation."""
         # Arrange
         mock_created_goal = MagicMock(spec=user_goals_models.UsersGoal)
         mock_created_goal.id = 1
         mock_created_goal.user_id = 1
+        mock_created_goal.version = 1
         mock_created_goal.interval = "weekly"
         mock_created_goal.activity_type = "run"
         mock_created_goal.goal_type = "calories"
@@ -204,18 +190,15 @@ class TestUpdateUserGoal:
     Test suite for update_user_goal endpoint.
     """
 
-    @patch("core.dependencies.validate_id")
-    @patch("modules.users.users_goals.router.user_goals_crud.update_user_goal")
+    @patch("modules.users.users_goals.router.user_goals_service.update_goal")
     def test_update_user_goal_success(
         self,
         mock_update,
-        mock_validate_id,
         fast_api_client,
         fast_api_app,
     ):
         """Test successful goal update."""
         # Arrange
-        mock_validate_id.return_value = None
         mock_update.return_value = user_goals_schema.UsersGoalRead(
             id=1,
             user_id=1,
@@ -231,11 +214,9 @@ class TestUpdateUserGoal:
 
         # Act
         response = fast_api_client.put(
-            "/user_goals",
-            headers={"Authorization": "Bearer mock_token"},
+            "/user_goals/1",
+            headers={"Authorization": "Bearer mock_token", "If-Match": "*"},
             json={
-                "id": 1,
-                "user_id": 1,
                 "interval": "monthly",
                 "activity_type": "run",  # RUN
                 "goal_type": "calories",  # CALORIES
@@ -249,30 +230,22 @@ class TestUpdateUserGoal:
         assert data["id"] == 1
         assert data["goal_calories"] == 10000
 
-    @patch("modules.users.users_goals.router.user_goals_crud.update_user_goal")
-    @patch("modules.users.users_goals.router.user_goals_dependencies.validate_goal_id")
+    @patch("modules.users.users_goals.router.user_goals_service.update_goal")
     def test_update_user_goal_not_found(
         self,
-        mock_validate,
         mock_update,
         fast_api_client,
         fast_api_app,
     ):
         """Test update fails when goal not found."""
         # Arrange
-        mock_validate.return_value = None
-        mock_update.side_effect = HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User goal not found",
-        )
+        mock_update.side_effect = core_exceptions.NotFoundError("User goal not found")
 
         # Act
         response = fast_api_client.put(
-            "/user_goals",
-            headers={"Authorization": "Bearer mock_token"},
+            "/user_goals/999",
+            headers={"Authorization": "Bearer mock_token", "If-Match": "*"},
             json={
-                "id": 999,
-                "user_id": 1,
                 "interval": "weekly",
                 "activity_type": "run",
                 "goal_type": "calories",
@@ -293,18 +266,15 @@ class TestDeleteUserGoal:
     Test suite for delete_user_goal endpoint.
     """
 
-    @patch("core.dependencies.validate_id")
-    @patch("modules.users.users_goals.router.user_goals_crud.delete_user_goal")
+    @patch("modules.users.users_goals.router.user_goals_service.delete_goal")
     def test_delete_user_goal_success(
         self,
         mock_delete,
-        mock_validate_id,
         fast_api_client,
         fast_api_app,
     ):
         """Test successful goal deletion."""
         # Arrange
-        mock_validate_id.return_value = None
         mock_delete.return_value = None
 
         # Act
@@ -317,22 +287,16 @@ class TestDeleteUserGoal:
         assert response.status_code == 204
         assert response.content == b""
 
-    @patch("modules.users.users_goals.router.user_goals_crud.delete_user_goal")
-    @patch("modules.users.users_goals.router.user_goals_dependencies.validate_goal_id")
+    @patch("modules.users.users_goals.router.user_goals_service.delete_goal")
     def test_delete_user_goal_not_found(
         self,
-        mock_validate,
         mock_delete,
         fast_api_client,
         fast_api_app,
     ):
         """Test deletion fails when goal not found."""
         # Arrange
-        mock_validate.return_value = None
-        mock_delete.side_effect = HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User goal not found",
-        )
+        mock_delete.side_effect = core_exceptions.NotFoundError("User goal not found")
 
         # Act
         response = fast_api_client.delete(
@@ -342,3 +306,14 @@ class TestDeleteUserGoal:
 
         # Assert
         assert response.status_code == 404
+
+
+class TestUpdateNeedsIfMatch:
+    def test_an_update_without_if_match_is_428(self, fast_api_client):
+        response = fast_api_client.put(
+            "/user_goals/1",
+            json={"interval": "weekly", "activity_type": "run", "goal_type": "calories", "goal_calories": 5000},
+            headers={"Authorization": "Bearer mock_token"},
+        )
+
+        assert response.status_code == 428

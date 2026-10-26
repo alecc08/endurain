@@ -1,19 +1,13 @@
 """User default gear database models."""
 
-from typing import TYPE_CHECKING
-
-from sqlalchemy import ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import ForeignKey, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
 
-if TYPE_CHECKING:
-    from modules.users.users.models import Users
-
 
 class UsersDefaultGear(Base):
-    """
-    User default gear assignments for activity types.
+    """User default gear assignments for activity types.
 
     Attributes:
         id: Primary key.
@@ -38,10 +32,10 @@ class UsersDefaultGear(Base):
             activities.
         snowboard_gear_id: Default gear for snowboard activities.
         windsurf_gear_id: Default gear for windsurf activities.
-        user: Relationship to Users model.
     """
 
     __tablename__ = "users_default_gear"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_users_default_gear_user_id"),)
 
     id: Mapped[int] = mapped_column(
         primary_key=True,
@@ -144,5 +138,13 @@ class UsersDefaultGear(Base):
         comment=("Gear ID that the default windsurf activity type belongs"),
     )
 
-    # Relationships
-    users: Mapped["Users"] = relationship(back_populates="users_default_gear")
+    version: Mapped[int] = mapped_column(
+        nullable=False,
+        server_default="1",
+        default=1,
+        comment="Optimistic-concurrency counter, surfaced to clients as the ETag",
+    )
+
+    # SQLAlchemy bumps ``version`` on each ORM flush and adds it to the UPDATE's
+    # WHERE clause, raising StaleDataError when the row moved underneath.
+    __mapper_args__ = {"version_id_col": version}  # noqa: RUF012

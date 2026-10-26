@@ -488,6 +488,7 @@ def process_strava_activity(
         activity.strava_activity_id,
         activity.user_id,
         stream_data,
+        user_integrations,
     )
 
     # Create activity laps in the database

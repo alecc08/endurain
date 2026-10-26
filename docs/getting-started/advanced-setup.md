@@ -25,6 +25,7 @@ Variables marked as deprecated have moved to the admin settings. On every start,
 | BACKEND_DIR | `/app/backend` | Yes | You will only need to change this value if installing using bare metal method |
 | DATA_DIR | `/app/backend/data` | Yes | You will only need to change this value if installing using bare metal method |
 | LOGS_DIR | `/app/backend/logs` | Yes | You will only need to change this value if installing using bare metal method |
+| FILES_DIR | `$DATA_DIR/activity_files` | Yes | Directory for activity files (processed, bulk import, upload staging). You will only need to change this value if installing using bare metal method |
 | ENDURAIN_HOST | No default set | `No` | Required for internal communication and Strava. For Strava https must be used. Host or local ip (example: http://192.168.1.10:8080 or https://endurain.com) |
 | REVERSE_GEO_PROVIDER | nominatim | Yes | Deprecated in v0.21: imported into Settings > Server > Reverse geocoding on startup, removed in v0.22. Defines reverse geo provider. Expects <a href="https://geocode.maps.co/">geocode</a>, photon or nominatim. photon can be the <a href="https://photon.komoot.io">SaaS by komoot</a> or a self hosted version like a <a href="https://github.com/rtuszik/photon-docker">self hosted version</a>. Like photon, Nominatim can be the <a href="https://nominatim.openstreetmap.org/">SaaS</a> or a self hosted version |
 | PHOTON_API_HOST | photon.komoot.io | Yes | Deprecated in v0.21: imported into Settings > Server > Reverse geocoding on startup, removed in v0.22. API host for photon. By default it uses the <a href="https://photon.komoot.io">SaaS by komoot</a> |
@@ -34,7 +35,7 @@ Variables marked as deprecated have moved to the admin settings. On every start,
 | GEOCODES_MAPS_API | changeme | Yes | Deprecated in v0.21: imported into Settings > Server > Reverse geocoding on startup, removed in v0.22. <a href="https://geocode.maps.co/">Geocode maps</a> offers a free plan consisting of 1 Request/Second. Registration necessary. |
 | REVERSE_GEO_RATE_LIMIT | 1 | Yes | Deprecated in v0.21: imported into Settings > Server > Reverse geocoding on startup, removed in v0.22. Change this if you have a paid Geocode maps tier. Other providers also use this variable. Keep it as is if you use photon or Nominatim to keep 1 request per second | 
 | DB_HOST | postgres | Yes | postgres |
-| DB_PORT | 5432 | Yes | 3306 or 5432 |
+| DB_PORT | 5432 | Yes | PostgreSQL port |
 | DB_USER | endurain | Yes | N/A |
 | DB_PASSWORD | No default set | `No` | Database password. Alternatively, use `DB_PASSWORD_FILE` for Docker secrets |
 | DB_DATABASE | endurain | Yes | N/A |
@@ -60,11 +61,11 @@ Variables marked as deprecated have moved to the admin settings. On every start,
 | LOG_ACCESS | false | Yes | Set to `true` to log every API request (Uvicorn access log). Hidden by default. Applies when the container starts through the bundled `start.sh` |
 | LOG_WEBSOCKET_FRAMES | false | Yes | Set to `true` to log the websocket PING/PONG keepalive frames shown at `LOG_LEVEL=debug`. Hidden by default |
 | ALLOWED_REDIRECT_SCHEMES | `endurain` | Yes | Comma-separated list of custom URI schemes allowed as SSO redirect targets for mobile apps using the system browser (e.g., `endurain,gadgetbridge`). Defaults to `endurain` when unset. If set, only the configured schemes are allowed (no implicit merge with `endurain`). Only relative paths (e.g., `/dashboard`) are accepted when no custom scheme is used. External `http`/`https` URLs are always rejected regardless of this setting. See [Mobile SSO with PKCE](../integrate/oauth-sso-pkce.md#mobile-sso-with-pkce) |
-| TRUSTED_PROXIES | "*" | Yes | Comma-separated list of trusted proxy IPs, CIDR ranges, or hostnames for correct client IP detection when `BEHIND_PROXY` is `true`. Defaults to `["*"]` (all proxies trusted) in development and `[]` in production and demo. **Hostname support:** You can use hostnames (e.g., `proxy.internal` or Docker container names like `caddy`) which are resolved to IPs at application startup and refreshed periodically in memory. This is useful in Docker deployments where container IPs may change on restart. If a hostname cannot be resolved, a warning is logged and the entry is skipped (graceful degradation). |
+| TRUSTED_PROXIES | No default set | Yes | Comma-separated list of trusted proxy IPs, CIDR ranges, or hostnames for correct client IP detection when `BEHIND_PROXY` is `true`. Defaults to `["*"]` (all proxies trusted) in development when unset and `[]` in production and demo. **Hostname support:** You can use hostnames (e.g., `proxy.internal` or Docker container names like `caddy`) which are resolved to IPs at application startup and refreshed periodically in memory. This is useful in Docker deployments where container IPs may change on restart. If a hostname cannot be resolved, a warning is logged and the entry is skipped (graceful degradation). |
 | SSRF_ALLOWED_HOSTS | No default set | Yes | Comma-separated allowlist of exact hostnames (case-insensitive) and/or explicit IP CIDR ranges that may resolve to private/internal addresses for admin-configured outbound calls (currently OIDC discovery and JWKS fetch only). Enables self-hosted identity providers (Authentik, Pocket ID, Keycloak, ...) reachable only over a private network. Example: `auth.internal.example.com,10.10.0.0/24,fd00::/64`. Wildcards (`*`) are rejected; CIDRs must be at least `/8` for IPv4 and `/32` for IPv6. Every allowlisted outbound call is audit-logged at INFO. Does not affect other outbound calls (geocoding, etc.) |
 | CSP_ADDITIONAL_CONNECT_SRC | No default set | Yes | Comma-separated list of extra origins appended to the `Content-Security-Policy` `connect-src` directive. Set this when Endurain is behind a forward-auth reverse proxy (e.g. Pangolin) that redirects API calls to its own domain for session validation; without its origin here the browser blocks the redirect with a CSP error and the app fails to load. Example: `https://auth.example.com`. Use specific origins: overly broad values that would defeat `connect-src` are rejected at startup — the bare wildcard `*` and scheme-only sources like `https:` (host wildcards such as `https://*.example.com` are fine). Entries containing whitespace or `;` are also rejected (to prevent header injection). Default: empty (`connect-src` stays `'self'` plus the jsDelivr CDN). |
 | RATE_LIMIT_ENABLED | true | Yes | Enable or disable API rate limiting. Set to `false` to disable for development or testing. Accepted values are `true` and `false` |
-| DEPLOYMENT_PROFILE | local | No | Deployment shape selecting the backend for all shared state. `local` (default) uses in-process memory; `distributed` requires Redis and `JOBS_ENABLED=true`. A `distributed` or multi-worker deployment wired to memory is rejected at startup. |
+| DEPLOYMENT_PROFILE | local | No | Deployment shape selecting the backend for all shared state. `local` (default) uses in-process memory; `distributed` requires Redis and `JOBS_ENABLED=true`; `custom` has no defaults and every capability must be set (see [Scaling and background jobs](scaling-and-background-jobs.md)). A `distributed` or multi-worker deployment wired to memory is rejected at startup. |
 | WEB_WORKERS | 1 | No | Number of web-server worker processes. When `> 1`, shared state (Redis) is required even under the `local` profile. |
 | STATE_URI | No default set | No | Explicit override for the shared ephemeral-state backend (rate-limit counters, login/step-up lockout, pending-MFA, MFA setup secrets, Garmin MFA codes, websocket tickets). Takes precedence over `REDIS_URL`. `memory://` or `redis://…`. |
 | REDIS_URL | No default set | No | Shared Redis DSN for every Redis capability with no explicit URI. Required for `distributed` or `WEB_WORKERS > 1`. |
@@ -135,7 +136,7 @@ Table below shows the obligatory environment variables for postgres container. Y
 | POSTGRES_USER | endurain | `No` | N/A |
 | PGDATA | /var/lib/postgresql/data/pgdata | `No` | N/A |
 
-To check Python backend dependencies used, use poetry file (pyproject.toml).
+To check Python backend dependencies used, see `backend/pyproject.toml` (managed with `uv`).
 
 Frontend dependencies:
 
@@ -237,7 +238,7 @@ It is possible (v0.10.0 or higher) to personalize the login image in the login p
 
  - Set the image in the server settings zone of the settings page
  - A square image is expected. Default one uses 1000px vs 1000px
- - PNG, JPEG, GIF or WebP, up to 5 MB
+ - Up to 5 MB. The settings page accepts PNG; the API also accepts JPEG, GIF and WebP
 
 
 ## Map tile server

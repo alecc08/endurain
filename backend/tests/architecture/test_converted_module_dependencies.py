@@ -27,6 +27,7 @@ _IMPORTLINTER = pathlib.Path(".importlinter")
 #: application-wide state or wiring and are the ones to shrink, or to move into
 #: ``jasil`` when they are generic enough to be shared by other products.
 _ALLOWED_CORE: dict[str, str] = {
+    "core.attempt_state": "The claim-and-poll state of an attempt that runs off the request.",
     "core.async_bridge": "Hands a best-effort websocket push from a worker-thread subscriber to the main loop.",
     "core.calendar": "Period boundaries for activity summaries.",
     "core.cryptography": "Encrypts and decrypts the tile-provider API key at rest.",
@@ -38,6 +39,7 @@ _ALLOWED_CORE: dict[str, str] = {
     "core.geocoding": "The reverse-geocoding configuration shape the settings store and the substrate is fed.",
     "core.hashing": "Content digests for upload and media deduplication.",
     "core.i18n": "Localises the test email.",
+    "core.local_pool": "The bounded in-process pool background work runs on when no durable worker does.",
     "core.logger": "Structured logging.",
     "core.mail": "The mail configuration shape the settings store, and its validation wording.",
     "core.network": "The SSRF check on a tile server URL before it is saved.",

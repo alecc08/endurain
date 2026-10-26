@@ -1,6 +1,7 @@
 import type { Schemas } from '@/types'
 
 import { apiFetch, HttpError } from '@/services/http'
+import { ifMatchHeaders, rowVersion } from '@/services/ifMatch'
 import { todayIsoDate } from '@/utils/datetime'
 
 /** Job handle returned by the refresh endpoint; polled via `fetchIngestionJob`. */
@@ -100,7 +101,7 @@ export function mapActivity(dto: ActivityDto): Activity {
     visibility: dto.visibility ?? 0,
     isHidden: dto.is_hidden,
     gearId: dto.gear_id ?? null,
-    version: dto.version ?? null,
+    version: rowVersion(dto.version),
 
     // The UTC instant plus the recording timezone. Views localize for display
     // via `formatZonedDateTime`, so the athlete's own wall clock is shown to
@@ -769,20 +770,6 @@ export async function fetchActivityExerciseTitles(
 }
 
 /**
- * Builds the conditional-write headers for an activity mutation.
- *
- * Without `If-Match` the write is last-writer-wins: the edit form posts every
- * field it holds, so saving a copy loaded before someone else's change silently
- * reverts that change.
- *
- * @param version - The row version the caller's copy was read at.
- * @returns The headers to merge into the request, empty when no version is known.
- */
-function ifMatchHeaders(version: number | null | undefined): HeadersInit {
-  return version == null ? {} : { 'If-Match': `"${version}"` }
-}
-
-/**
  * Sets the gear associated with an activity, or clears it when `gearId` is
  * `null`, via a partial `PATCH /activities/{id}` update.
  *
@@ -859,7 +846,7 @@ export async function updateUserActivitiesVisibility(
 export async function editActivity(
   id: number,
   input: ActivityEditInput,
-  version?: number | null,
+  version: number,
 ): Promise<Activity> {
   const body: ActivityEditDto = {
     name: input.name,

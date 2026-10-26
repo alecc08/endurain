@@ -10,10 +10,10 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-import core.config as core_config
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.logger as core_logger
-import core.timezone as core_timezone
+import core.pagination as core_pagination
 import modules.health.computation as health_computation
 import modules.health.constants as health_constants
 import modules.health.health_water.crud as health_water_crud
@@ -42,11 +42,12 @@ def _since(user_id: int, interval: health_constants.Interval | None, db: Session
 def list_health_water(
     user_id: int,
     db: Session,
-    page_number: int | None = None,
-    num_records: int | None = None,
+    *,
+    page_number: int = 1,
+    num_records: int = core_pagination.DEFAULT_NUM_RECORDS,
     interval: health_constants.Interval | None = None,
-) -> health_water_schema.HealthWaterListResponse:
-    """List a user's water intake records with their total.
+) -> core_pagination.Page[health_water_schema.HealthWaterRead]:
+    """List one page of a user's water records with their total.
 
     Args:
         user_id: The records' owner.
@@ -56,40 +57,39 @@ def list_health_water(
         interval: Return only records within this interval.
 
     Returns:
-        The page of records and the total.
+        The page of records; ``total`` counts every record within the interval.
     """
     since = _since(user_id, interval, db)
-    return health_water_schema.HealthWaterListResponse(
-        total=health_water_crud.get_health_water_number_by_user_id(user_id, db, since),
-        num_records=num_records,
-        page_number=page_number,
-        records=health_water_crud.get_health_water_by_user_id(user_id, db, page_number, num_records, since),
-    )
+    total = health_water_crud.get_health_water_number_by_user_id(user_id, db, since)
+    records = health_water_crud.get_health_water_by_user_id(user_id, db, page_number, num_records, since)
+    return core_pagination.Page.build(records, total, page_number, num_records)
 
 
 def stage_edit_health_water(
-    user_id: int, health_water: health_water_schema.HealthWaterUpdate, db: Session
+    user_id: int,
+    health_water_id: int,
+    health_water: health_water_schema.HealthWaterUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_water_schema.HealthWaterRead:
-    """Stage an update to a water intake record after checking it names the caller.
+    """Stage an update to a water intake record.
 
     Args:
         user_id: The record's owner.
-        health_water: The record with its changes.
+        health_water_id: The record to change.
+        health_water: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    if health_water.user_id != user_id:
-        logger.warning(
-            "Refused to edit a water intake record of another user", extra=core_logger.context(user_id=user_id)
-        )
-        raise core_exceptions.PermissionDeniedError("Cannot edit health water intake for another user.")
-    return health_water_crud.edit_health_water(user_id, health_water, db)
+    return health_water_crud.edit_health_water(user_id, health_water_id, health_water, db, if_match=if_match)
 
 
 def stage_add_health_water(
@@ -112,8 +112,8 @@ def stage_add_health_water(
         ConflictError: If the date's record cannot be created or found.
     """
     if health_water.date is None:
-        # The request carries no timezone, so the fallback is the server's configured zone.
-        health_water.date = core_timezone.today_in(core_config.settings.TZ)
+        # The request carries no timezone, so the day is the athlete's own.
+        health_water.date = users_integration.local_today(user_id, db)
 
     existing = health_water_crud.get_health_water_by_date_and_user_id(user_id, health_water.date.isoformat(), db)
     if existing is None:
@@ -149,30 +149,43 @@ def create_health_water(
     """
     stored = stage_add_health_water(user_id, health_water, db)
     db.commit()
-    logger.info("Stored a water intake record", extra=core_logger.context(user_id=user_id))
+    logger.debug("Stored a water intake record", extra=core_logger.context(user_id=user_id))
     return stored
 
 
 def edit_health_water(
-    user_id: int, health_water: health_water_schema.HealthWaterUpdate, db: Session
+    user_id: int,
+    health_water_id: int,
+    health_water: health_water_schema.HealthWaterUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_water_schema.HealthWaterRead:
     """Update a water intake record and commit.
 
     Args:
         user_id: The record's owner.
-        health_water: The record with its changes.
+        health_water_id: The record to change.
+        health_water: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    updated = stage_edit_health_water(user_id, health_water, db)
-    db.commit()
-    logger.info("Edited a water intake record", extra=core_logger.context(user_id=user_id))
+    with core_etag.refuse_stale_write(
+        db,
+        "water intake record",
+        lambda: health_water_crud.health_water_exists(health_water_id, user_id, db),
+        "Water intake record not found",
+    ):
+        updated = stage_edit_health_water(user_id, health_water_id, health_water, db, if_match=if_match)
+        db.commit()
+    logger.debug("Edited a water intake record", extra=core_logger.context(user_id=user_id))
     return updated
 
 
@@ -189,6 +202,6 @@ def delete_health_water(user_id: int, health_water_id: int, db: Session) -> None
     """
     health_water_crud.delete_health_water(user_id, health_water_id, db)
     db.commit()
-    logger.info(
+    logger.debug(
         "Deleted a water intake record", extra=core_logger.context(user_id=user_id, health_water_id=health_water_id)
     )

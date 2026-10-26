@@ -2,6 +2,7 @@ from datetime import date as datetime_date
 from unittest.mock import ANY, patch
 
 import core.exceptions as core_exceptions
+import core.pagination as core_pagination
 import modules.health.health_weight.schema as health_weight_schema
 
 _LIST = "modules.health.health_weight.router.health_weight_service.list_health_weight"
@@ -16,8 +17,8 @@ def _record(record_id: int, day: int, weight: float) -> health_weight_schema.Hea
 class TestReadHealthWeightAll:
     @patch(_LIST)
     def test_returns_the_page_and_total(self, mock_list, fast_api_client, fast_api_app):
-        mock_list.return_value = health_weight_schema.HealthWeightListResponse(
-            total=2, records=[_record(1, 15, 75.5), _record(2, 16, 75.0)]
+        mock_list.return_value = core_pagination.Page(
+            items=[_record(1, 15, 75.5), _record(2, 16, 75.0)], total=2, page=1, num_records=25
         )
 
         response = fast_api_client.get("/health_weight", headers={"Authorization": "Bearer mock_token"})
@@ -25,22 +26,20 @@ class TestReadHealthWeightAll:
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 2
-        assert [r["weight"] for r in data["records"]] == [75.5, 75.0]
+        assert [r["weight"] for r in data["items"]] == [75.5, 75.0]
 
     @patch(_LIST)
     def test_empty(self, mock_list, fast_api_client, fast_api_app):
-        mock_list.return_value = health_weight_schema.HealthWeightListResponse(total=0, records=[])
+        mock_list.return_value = core_pagination.Page(items=[], total=0, page=1, num_records=25)
 
         response = fast_api_client.get("/health_weight", headers={"Authorization": "Bearer mock_token"})
 
         assert response.status_code == 200
-        assert response.json()["records"] == []
+        assert response.json()["items"] == []
 
     @patch(_LIST)
     def test_passes_pagination_and_interval_through(self, mock_list, fast_api_client, fast_api_app):
-        mock_list.return_value = health_weight_schema.HealthWeightListResponse(
-            total=0, num_records=10, page_number=2, records=[]
-        )
+        mock_list.return_value = core_pagination.Page(items=[], total=0, page=2, num_records=10)
 
         response = fast_api_client.get(
             "/health_weight?page_number=2&num_records=10&interval=last_30_days",
@@ -48,10 +47,10 @@ class TestReadHealthWeightAll:
         )
 
         assert response.status_code == 200
-        args = mock_list.call_args.args
-        assert args[0] == 1
-        assert args[2:4] == (2, 10)
-        assert args[4].value == "last_30_days"
+        args = mock_list.call_args
+        assert args.args[0] == 1
+        assert (args.kwargs["page_number"], args.kwargs["num_records"]) == (2, 10)
+        assert args.kwargs["interval"].value == "last_30_days"
 
 
 class TestCreateHealthWeight:
@@ -116,15 +115,13 @@ class TestEditHealthWeight:
         mock_edit.return_value = updated_weight
 
         # Act
-        response = fast_api_client.put(
-            "/health_weight",
+        response = fast_api_client.patch(
+            "/health_weight/1",
             json={
-                "id": 1,
-                "user_id": 1,
                 "date": "2024-01-15",
                 "weight": 76.0,
             },
-            headers={"Authorization": "Bearer mock_token"},
+            headers={**{"Authorization": "Bearer mock_token"}, "If-Match": "*"},
         )
 
         # Assert
@@ -141,15 +138,13 @@ class TestEditHealthWeight:
         mock_edit.side_effect = core_exceptions.NotFoundError("Health weight not found")
 
         # Act
-        response = fast_api_client.put(
-            "/health_weight",
+        response = fast_api_client.patch(
+            "/health_weight/999",
             json={
-                "id": 999,
-                "user_id": 1,
                 "date": "2024-01-15",
                 "weight": 76.0,
             },
-            headers={"Authorization": "Bearer mock_token"},
+            headers={**{"Authorization": "Bearer mock_token"}, "If-Match": "*"},
         )
 
         # Assert

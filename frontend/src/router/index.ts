@@ -60,6 +60,12 @@ const router = createRouter({
       meta: { requiresAuth: false, bare: true },
     },
     {
+      path: '/account-deleted',
+      name: 'account-deleted',
+      component: () => import('@/features/auth/views/AccountDeletedView.vue'),
+      meta: { requiresAuth: false, bare: true },
+    },
+    {
       path: '/verify-email',
       name: 'verify-email',
       component: () => import('@/features/auth/views/EmailVerificationView.vue'),

@@ -20,6 +20,7 @@ import modules.gears.model_registry as gears_model_registry
 import modules.health.model_registry as health_model_registry
 import modules.notifications.model_registry as notifications_model_registry
 import modules.server_settings.model_registry as server_settings_model_registry
+import modules.users.model_registry as users_model_registry
 
 _MODULES_DIR = Path(__file__).resolve().parents[2] / "app" / "modules"
 _APP_DIR = _MODULES_DIR.parent
@@ -135,6 +136,12 @@ def test_model_registries_collect_every_converted_model() -> None:
     assert set(health_model_registry.MODEL_MODULES) == expected_health
     assert set(notifications_model_registry.MODEL_MODULES) == {"modules.notifications.models"}
     assert set(server_settings_model_registry.MODEL_MODULES) == {"modules.server_settings.models"}
+    expected_users = {
+        f"modules.users.{package.name}.models"
+        for package in _TEMPLATE_PACKAGES
+        if package.parent.name == "users" and (package / "models.py").is_file()
+    }
+    assert set(users_model_registry.MODEL_MODULES) == expected_users
     assert (
         expected_activities
         | set(followers_model_registry.MODEL_MODULES)
@@ -142,6 +149,7 @@ def test_model_registries_collect_every_converted_model() -> None:
         | expected_health
         | set(notifications_model_registry.MODEL_MODULES)
         | set(server_settings_model_registry.MODEL_MODULES)
+        | expected_users
         == app_model_registry._CONVERTED_MODEL_MODULES
     )
 

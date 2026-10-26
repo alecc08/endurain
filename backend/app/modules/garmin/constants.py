@@ -29,6 +29,9 @@ SYNC_SOURCE_SCHEDULER = "scheduler:garmin_health_sync"
 # Longest health range one request may ask for: each day is a Garmin round trip.
 MAX_HEALTH_RANGE_DAYS = 31
 
+# Longest activity range one request may ask for; a longer history is fetched in several requests.
+MAX_ACTIVITIES_RANGE_DAYS = 366
+
 
 class SyncKind(StrEnum):
     """What a queued Garmin Connect sync pulls."""

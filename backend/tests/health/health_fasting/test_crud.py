@@ -24,6 +24,7 @@ def passthrough_serializers():
 def _row(record_id: int = 1) -> MagicMock:
     row = MagicMock(spec=health_fasting_models.HealthFasting)
     row.id = record_id
+    row.version = 1
     row.user_id = 1
     row.status = "in_progress"
     return row
@@ -138,20 +139,28 @@ class TestEditHealthFasting:
     def test_updates_the_given_fields_and_stages(self, mock_db):
         row = _row()
         _returns_one(mock_db, row)
-        update = health_fasting_schema.HealthFastingUpdate(id=1, user_id=1, notes="felt good")
+        update = health_fasting_schema.HealthFastingUpdate(notes="felt good")
 
-        health_fasting_crud.edit_health_fasting(1, update, mock_db)
+        health_fasting_crud.edit_health_fasting(1, 1, update, mock_db, if_match="*")
 
         assert row.notes == "felt good"
         mock_db.flush.assert_called_once()
         mock_db.commit.assert_not_called()
 
+    def test_a_second_active_fast_is_a_conflict(self, mock_db):
+        _returns_one(mock_db, _row())
+        mock_db.flush.side_effect = IntegrityError("constraint", None, None)
+        update = health_fasting_schema.HealthFastingUpdate(status="in_progress")
+
+        with pytest.raises(core_exceptions.ConflictError):
+            health_fasting_crud.edit_health_fasting(1, 1, update, mock_db, if_match="*")
+
     def test_unknown_record_is_not_found(self, mock_db):
         _returns_one(mock_db, None)
-        update = health_fasting_schema.HealthFastingUpdate(id=9, user_id=1, notes="x")
+        update = health_fasting_schema.HealthFastingUpdate(notes="x")
 
         with pytest.raises(core_exceptions.NotFoundError, match="Health fasting not found"):
-            health_fasting_crud.edit_health_fasting(1, update, mock_db)
+            health_fasting_crud.edit_health_fasting(1, 9, update, mock_db, if_match="*")
 
 
 class TestEndHealthFasting:

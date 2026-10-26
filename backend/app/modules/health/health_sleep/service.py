@@ -9,10 +9,9 @@ from datetime import date as date_type
 
 from sqlalchemy.orm import Session
 
-import core.config as core_config
-import core.exceptions as core_exceptions
+import core.etag as core_etag
 import core.logger as core_logger
-import core.timezone as core_timezone
+import core.pagination as core_pagination
 import modules.health.computation as health_computation
 import modules.health.constants as health_constants
 import modules.health.health_sleep.crud as health_sleep_crud
@@ -42,11 +41,12 @@ def _since(user_id: int, interval: health_constants.Interval | None, db: Session
 def list_health_sleep(
     user_id: int,
     db: Session,
-    page_number: int | None = None,
-    num_records: int | None = None,
+    *,
+    page_number: int = 1,
+    num_records: int = core_pagination.DEFAULT_NUM_RECORDS,
     interval: health_constants.Interval | None = None,
-) -> health_sleep_schema.HealthSleepListResponse:
-    """List a user's sleep records with their total.
+) -> core_pagination.Page[health_sleep_schema.HealthSleepRead]:
+    """List one page of a user's sleep records with their total.
 
     Args:
         user_id: The records' owner.
@@ -56,38 +56,39 @@ def list_health_sleep(
         interval: Return only records within this interval.
 
     Returns:
-        The page of records and the total.
+        The page of records; ``total`` counts every record within the interval.
     """
     since = _since(user_id, interval, db)
-    return health_sleep_schema.HealthSleepListResponse(
-        total=health_sleep_crud.get_health_sleep_number_by_user_id(user_id, db, since),
-        num_records=num_records,
-        page_number=page_number,
-        records=health_sleep_crud.get_health_sleep_by_user_id(user_id, db, page_number, num_records, since),
-    )
+    total = health_sleep_crud.get_health_sleep_number_by_user_id(user_id, db, since)
+    records = health_sleep_crud.get_health_sleep_by_user_id(user_id, db, page_number, num_records, since)
+    return core_pagination.Page.build(records, total, page_number, num_records)
 
 
 def stage_edit_health_sleep(
-    user_id: int, health_sleep: health_sleep_schema.HealthSleepUpdate, db: Session
+    user_id: int,
+    health_sleep_id: int,
+    health_sleep: health_sleep_schema.HealthSleepUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_sleep_schema.HealthSleepRead:
-    """Stage an update to a sleep record after checking it names the caller.
+    """Stage an update to a sleep record.
 
     Args:
         user_id: The record's owner.
-        health_sleep: The record with its changes.
+        health_sleep_id: The record to change.
+        health_sleep: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    if health_sleep.user_id != user_id:
-        logger.warning("Refused to edit a sleep record of another user", extra=core_logger.context(user_id=user_id))
-        raise core_exceptions.PermissionDeniedError("Cannot edit health sleep for another user.")
-    return health_sleep_crud.edit_health_sleep(user_id, health_sleep, db)
+    return health_sleep_crud.edit_health_sleep(user_id, health_sleep_id, health_sleep, db, if_match=if_match)
 
 
 def stage_upsert_health_sleep(
@@ -112,71 +113,78 @@ def stage_upsert_health_sleep(
         ConflictError: If the date's record cannot be created or found.
     """
     if health_sleep.date is None:
-        # The request carries no timezone, so the fallback is the server's configured zone.
-        health_sleep.date = core_timezone.today_in(core_config.settings.TZ)
+        # The request carries no timezone, so the day is the athlete's own.
+        health_sleep.date = users_integration.local_today(user_id, db)
 
-    existing = health_sleep_crud.get_health_sleep_by_date_and_user_id(user_id, health_sleep.date.isoformat(), db)
-    if existing is None:
-        try:
-            with db.begin_nested():
-                return health_sleep_crud.create_health_sleep(user_id, health_sleep, db)
-        except core_exceptions.ConflictError:
-            existing = health_sleep_crud.get_health_sleep_by_date_and_user_id(
-                user_id, health_sleep.date.isoformat(), db
-            )
-            if existing is None:
-                raise
-    return stage_edit_health_sleep(
-        user_id,
-        health_sleep_schema.HealthSleepUpdate(id=existing.id, user_id=user_id, **health_sleep.model_dump()),
-        db,
+    day = health_sleep.date.isoformat()
+    update = health_sleep_schema.HealthSleepUpdate(**health_sleep.model_dump())
+    return health_computation.upsert_for_day(
+        find=lambda: health_sleep_crud.get_health_sleep_by_date_and_user_id(user_id, day, db),
+        create=lambda: health_sleep_crud.create_health_sleep(user_id, health_sleep, db),
+        edit=lambda record_id: stage_edit_health_sleep(user_id, record_id, update, db, if_match="*"),
+        db=db,
     )
 
 
 def create_health_sleep(
     user_id: int, health_sleep: health_sleep_schema.HealthSleepCreate, db: Session
 ) -> health_sleep_schema.HealthSleepRead:
-    """Score a sleep record, then create it or update the user's record for the same date, and commit.
+    """Create a sleep record for the user's day, and commit.
 
     Args:
         user_id: The record's owner.
-        health_sleep: The record to store.
+        health_sleep: The record to create; a missing date is the user's local today.
         db: Database session.
 
     Returns:
-        The stored record.
+        The created record.
 
     Raises:
-        ConflictError: If the date's record cannot be created or found.
+        ConflictError: If the user already has a record for that date.
     """
+    if health_sleep.date is None:
+        health_sleep.date = users_integration.local_today(user_id, db)
     health_sleep_sleep_scoring.calculate_and_set_sleep_scores(health_sleep)
-    stored = stage_upsert_health_sleep(user_id, health_sleep, db)
+    created = health_sleep_crud.create_health_sleep(user_id, health_sleep, db)
     db.commit()
-    logger.info("Stored a sleep record", extra=core_logger.context(user_id=user_id))
-    return stored
+    logger.debug("Stored a sleep record", extra=core_logger.context(user_id=user_id))
+    return created
 
 
 def edit_health_sleep(
-    user_id: int, health_sleep: health_sleep_schema.HealthSleepUpdate, db: Session
+    user_id: int,
+    health_sleep_id: int,
+    health_sleep: health_sleep_schema.HealthSleepUpdate,
+    db: Session,
+    *,
+    if_match: str,
 ) -> health_sleep_schema.HealthSleepRead:
     """Score and update a sleep record, and commit.
 
     Args:
         user_id: The record's owner.
-        health_sleep: The record with its changes.
+        health_sleep_id: The record to change.
+        health_sleep: The fields to change.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated record.
 
     Raises:
-        PermissionDeniedError: If the record names another user.
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
     health_sleep_sleep_scoring.calculate_and_set_sleep_scores(health_sleep)
-    updated = stage_edit_health_sleep(user_id, health_sleep, db)
-    db.commit()
-    logger.info("Edited a sleep record", extra=core_logger.context(user_id=user_id))
+    with core_etag.refuse_stale_write(
+        db,
+        "sleep record",
+        lambda: health_sleep_crud.health_sleep_exists(health_sleep_id, user_id, db),
+        "Sleep record not found",
+    ):
+        updated = stage_edit_health_sleep(user_id, health_sleep_id, health_sleep, db, if_match=if_match)
+        db.commit()
+    logger.debug("Edited a sleep record", extra=core_logger.context(user_id=user_id))
     return updated
 
 
@@ -193,4 +201,4 @@ def delete_health_sleep(user_id: int, health_sleep_id: int, db: Session) -> None
     """
     health_sleep_crud.delete_health_sleep(user_id, health_sleep_id, db)
     db.commit()
-    logger.info("Deleted a sleep record", extra=core_logger.context(user_id=user_id, health_sleep_id=health_sleep_id))
+    logger.debug("Deleted a sleep record", extra=core_logger.context(user_id=user_id, health_sleep_id=health_sleep_id))

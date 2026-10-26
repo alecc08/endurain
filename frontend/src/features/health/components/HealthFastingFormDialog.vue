@@ -153,7 +153,7 @@ async function submitForm(formValues: FastingFormValues): Promise<void> {
     if (props.entry) {
       await updateMutation.mutateAsync({
         id: props.entry.id,
-        userId: props.entry.userId,
+        version: props.entry.version,
         input,
       })
       emit('success', t('health.fasting.form.updateSuccess'))

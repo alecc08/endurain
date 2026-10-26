@@ -16,8 +16,6 @@ from pydantic import (
     model_validator,
 )
 
-import modules.health.schema as health_schema
-
 
 class Source(Enum):
     """Enumeration of data sources for fasting records.
@@ -173,12 +171,14 @@ class HealthFastingRead(HealthFastingBase):
         ...,
         description="Foreign key reference to the user",
     )
+    version: StrictInt = Field(default=1, ge=1, description="Optimistic-concurrency counter, also sent as the ETag")
 
 
-class HealthFastingUpdate(HealthFastingRead):
-    """Schema for updating a fasting record.
+class HealthFastingUpdate(HealthFastingBase):
+    """Schema for the fields a PATCH changes on a fasting record.
 
-    Inherits from HealthFastingRead for consistency with read operations.
+    The record is named by the path, so the body carries neither an id nor an owner; only the
+    fields present are changed.
     """
 
 
@@ -210,24 +210,6 @@ class HealthFastingComplete(BaseModel):
         extra="forbid",
         validate_assignment=True,
         use_enum_values=True,
-    )
-
-
-class HealthFastingListResponse(health_schema.HealthListResponse):
-    """Response model for listing health fasting records.
-
-    Extends the base HealthListResponse to provide a typed response containing
-    a list of fasting records. This model is used when returning multiple
-    fasting entries from API endpoints.
-
-    Attributes:
-        records: A list of HealthFastingRead objects representing individual
-        fasting records.
-    """
-
-    records: list[HealthFastingRead] = Field(
-        ...,
-        description="List of fasting records",
     )
 
 

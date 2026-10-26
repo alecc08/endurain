@@ -6,6 +6,7 @@ The module's own application layer; what other modules may consume lives in
 
 from sqlalchemy.orm import Session
 
+import core.etag as core_etag
 import core.logger as core_logger
 import modules.health.health_targets.crud as health_targets_crud
 import modules.health.health_targets.schema as health_targets_schema
@@ -30,6 +31,8 @@ def update_health_targets(
     health_targets: health_targets_schema.HealthTargetsUpdate,
     user_id: int,
     db: Session,
+    *,
+    if_match: str,
 ) -> health_targets_schema.HealthTargetsRead:
     """Update a user's health targets and commit.
 
@@ -37,14 +40,22 @@ def update_health_targets(
         health_targets: The fields to update.
         user_id: The targets' owner.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The updated targets.
 
     Raises:
         NotFoundError: If the user has no targets.
+        PreconditionFailedError: If the targets changed since the client read them.
     """
-    updated = health_targets_crud.edit_health_target(health_targets, user_id, db)
-    db.commit()
-    logger.info("Updated health targets", extra=core_logger.context(user_id=user_id))
+    with core_etag.refuse_stale_write(
+        db,
+        "health targets",
+        lambda: health_targets_crud.health_targets_exist(user_id, db),
+        "Health targets not found",
+    ):
+        updated = health_targets_crud.edit_health_target(health_targets, user_id, db, if_match=if_match)
+        db.commit()
+    logger.debug("Updated health targets", extra=core_logger.context(user_id=user_id))
     return updated

@@ -6,8 +6,8 @@ import pytest
 from jasil.backends.state_memory import MemoryState
 from jasil.providers import StateBackendUnavailableError
 
+import core.attempt_state as core_attempt_state
 import modules.garmin.constants as garmin_constants
-import modules.garmin.state_store as garmin_state_store
 import modules.garmin.sync_state_store as sync_state_store
 
 Kind = garmin_constants.SyncKind
@@ -64,8 +64,8 @@ def test_an_unavailable_backend_fails_a_read_and_a_begin_but_not_a_recorded_outc
         getattr(state, method).side_effect = StateBackendUnavailableError("down")
     store = sync_state_store.GarminSyncStateStore(state=state)
 
-    with pytest.raises(garmin_state_store.GarminStateUnavailableError):
+    with pytest.raises(core_attempt_state.StateUnavailableError):
         store.begin(1, Kind.GEAR)
-    with pytest.raises(garmin_state_store.GarminStateUnavailableError):
+    with pytest.raises(core_attempt_state.StateUnavailableError):
         store.get(1, Kind.GEAR)
     store.set_status(1, Kind.GEAR, Status.COMPLETED)

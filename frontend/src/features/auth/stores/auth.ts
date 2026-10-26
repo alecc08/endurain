@@ -230,6 +230,7 @@ export const useAuthStore = defineStore('auth', () => {
     verifyMfa,
     restoreSession,
     handleSessionExpired,
+    clearLocalSession,
     logout,
   }
 })

@@ -15,6 +15,7 @@ from jasil.backends.storage_local import LocalStorage
 from tests._helpers.db import create_sqlite_session_factory, ensure_user
 
 import core.exceptions as core_exceptions
+import core.local_pool as core_local_pool
 import modules.activities.activity_ingestion.bulk_import_service as bulk
 import modules.activities.activity_ingestion.constants as ingestion_constants
 import modules.activities.activity_ingestion.contracts as ingestion_contracts
@@ -374,6 +375,23 @@ class TestFromFolder:
 
         with factory() as db:
             assert db.query(ingestion_models.ActivityIngestionJob).count() == 0
+
+    def test_a_full_pool_closes_the_folder_job_so_the_user_can_try_again(self, tmp_path, factory, storage):
+        folder = self._folder(tmp_path, {"a.fit": b"1"})
+        with (
+            patch.object(
+                bulk.activity_ingestion_dispatch_service.activity_ingestion_background,
+                "submit",
+                side_effect=core_local_pool.PoolFullError("full"),
+            ),
+            pytest.raises(core_local_pool.PoolFullError),
+        ):
+            bulk.start_from_directory(_USER, "generic", storage, factory())
+
+        with factory() as db:
+            row = db.query(ingestion_models.ActivityIngestionJob).one()
+        assert (row.status, row.error_code) == ("failed", "processing_failed")
+        assert (folder / "a.fit").exists()
 
     def test_the_folder_is_packed_staged_and_only_then_consumed(self, tmp_path, factory, storage, pipeline):
         folder = self._folder(tmp_path, {"a.fit": b"1", "sub/b.gpx": b"2", "notes.txt": b"n"})

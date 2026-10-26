@@ -3,8 +3,14 @@ import type { Schemas } from '@/types'
 /** Raw `UsersRead` payload as returned by the backend (snake_case wire shape). */
 export type UserDto = Schemas['UsersRead']
 
+/** `UsersEdit` payload: the body of an administrative edit of a user. */
+export type UserEditDto = Schemas['UsersEdit']
+
+/** Raw `UserPublicRead` payload: what any signed-in or anonymous viewer may learn about a user. */
+export type PublicUserDto = Schemas['UserPublicRead']
+
 /** Raw paginated users list payload. */
-export type UsersListResponseDto = Schemas['UsersListResponse']
+export type UsersListResponseDto = Schemas['Page_UsersRead_']
 
 /** User access tier, mirrored from the backend enum (`regular` | `admin`). */
 export type UserAccessType = Schemas['UserAccessType']
@@ -40,6 +46,8 @@ export type UserAccessType = Schemas['UserAccessType']
  */
 export interface ManagedUser {
   id: number
+  /** The row version, sent back in `If-Match` so an edit of a stale copy is refused. */
+  version: number
   name: string
   username: string
   email: string
@@ -114,6 +122,8 @@ export interface UsersListParams extends UserFilters {
   page: number
   /** Page size (records per page). */
   numRecords: number
+  /** Keep only users whose username contains this text. */
+  username?: string
 }
 
 /**

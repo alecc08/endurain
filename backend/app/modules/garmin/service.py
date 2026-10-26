@@ -96,7 +96,7 @@ def get_user_garminconnect_session(user_id: int, db: Session) -> GarminSession |
         return None
 
     if user_integrations is None:
-        logger.info(
+        logger.debug(
             "Garmin Connect not linked",
             extra=core_logger.context(user_id=user_id),
         )
@@ -167,7 +167,7 @@ def save_refreshed_token(user_id: int, session: GarminSession) -> None:
         with core_database.SessionLocal() as db:
             if user_integrations_integration.replace_garminconnect_token_if_token(user_id, session.token, token, db):
                 db.commit()
-                logger.info("Garmin Connect token refreshed", extra=core_logger.context(user_id=user_id))
+                logger.debug("Garmin Connect token refreshed", extra=core_logger.context(user_id=user_id))
     except Exception as err:
         logger.error(
             "Failed to store the refreshed Garmin Connect token",

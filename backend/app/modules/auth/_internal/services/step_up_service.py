@@ -11,7 +11,7 @@ import core.logger as core_logger
 import modules.auth._internal.security_stores as auth_security_stores
 import modules.auth.credentials.crud as auth_credentials_crud
 import modules.auth.mfa.service as mfa_service
-import modules.users.users.utils as users_utils
+import modules.users.users.integration_service as users_integration
 
 logger = core_logger.get_logger(__name__)
 
@@ -106,7 +106,7 @@ def verify_step_up_credentials(
         )
 
     # Guard: ensure the user exists (raises 404 otherwise).
-    users_utils.get_user_by_id_or_404(user_id, db)
+    users_integration.require_user(user_id, db)
 
     credential = auth_credentials_crud.get_credential(user_id, db)
     if credential is not None:

@@ -93,14 +93,12 @@ class TestSignupEndpoint:
     """Tests for POST /sign-up/sign-up/request."""
 
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_verification_email")
-    @patch("modules.auth.sign_up_tokens.router.users_utils.create_user_default_data")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.create_signup_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.create_signup_user")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_signup_success_no_verification_no_approval(
         self,
         mock_settings,
         mock_create_user,
-        mock_create_default,
         mock_send_email,
         signup_client,
     ) -> None:
@@ -114,7 +112,6 @@ class TestSignupEndpoint:
             signup_require_admin_approval=False,
         )
         mock_create_user.return_value = MagicMock(id=1)
-        mock_create_default.return_value = None
 
         response = signup_client.post(
             "/sign-up/sign-up/request",
@@ -135,14 +132,12 @@ class TestSignupEndpoint:
         assert data["admin_approval_required"] is None
 
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_verification_email")
-    @patch("modules.auth.sign_up_tokens.router.users_utils.create_user_default_data")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.create_signup_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.create_signup_user")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_signup_success_email_verification_required(
         self,
         mock_settings,
         mock_create_user,
-        mock_create_default,
         mock_send_email,
         signup_client,
     ) -> None:
@@ -156,7 +151,6 @@ class TestSignupEndpoint:
             signup_require_admin_approval=False,
         )
         mock_create_user.return_value = MagicMock(id=2)
-        mock_create_default.return_value = None
         mock_send_email.return_value = True
 
         response = signup_client.post(
@@ -219,7 +213,7 @@ class TestSignupEndpoint:
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
-    @patch("modules.auth.sign_up_tokens.router.users_crud.create_signup_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.create_signup_user")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_signup_duplicate_user_propagates_conflict(
         self,
@@ -255,14 +249,12 @@ class TestSignupEndpoint:
         assert response.status_code == status.HTTP_409_CONFLICT
 
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_verification_email")
-    @patch("modules.auth.sign_up_tokens.router.users_utils.create_user_default_data")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.create_signup_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.create_signup_user")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_signup_admin_approval_required_returns_flag(
         self,
         mock_settings,
         mock_create_user,
-        mock_create_default,
         mock_send_email,
         signup_client,
     ) -> None:
@@ -276,7 +268,6 @@ class TestSignupEndpoint:
             signup_require_admin_approval=True,
         )
         mock_create_user.return_value = MagicMock(id=4)
-        mock_create_default.return_value = None
 
         response = signup_client.post(
             "/sign-up/sign-up/request",
@@ -294,14 +285,12 @@ class TestSignupEndpoint:
         assert data["admin_approval_required"] is True
 
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_verification_email")
-    @patch("modules.auth.sign_up_tokens.router.users_utils.create_user_default_data")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.create_signup_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.create_signup_user")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_signup_propagates_503_when_request_verification_email_raises(
         self,
         mock_settings,
         mock_create_user,
-        mock_create_default,
         mock_send_email,
         signup_client,
     ) -> None:
@@ -316,7 +305,6 @@ class TestSignupEndpoint:
             signup_require_admin_approval=False,
         )
         mock_create_user.return_value = MagicMock(id=5)
-        mock_create_default.return_value = None
         mock_send_email.side_effect = HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Email service is not configured",
@@ -346,8 +334,8 @@ class TestVerifyEmailEndpoint:
 
     @patch("modules.auth.sign_up_tokens.router.notifications_integration.create_admin_sign_up_approval_notifications")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_admin_approval_emails")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.get_user_by_id")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.verify_user_email")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.get_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.stage_email_verification")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.use_sign_up_token")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_verify_email_success_no_admin_approval(
@@ -371,7 +359,7 @@ class TestVerifyEmailEndpoint:
         )
         mock_use_token.return_value = 10
         mock_verify_email.return_value = None
-        mock_get_user.return_value = MagicMock(id=10)
+        mock_get_user.return_value = MagicMock(id=10, active=False)
         mock_send_admin_email.return_value = None
         mock_notify.return_value = []
         mock_email_service.return_value = True
@@ -413,19 +401,63 @@ class TestVerifyEmailEndpoint:
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
+    @patch("modules.auth.sign_up_tokens.router.notifications_integration.create_admin_sign_up_approval_notifications")
+    @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_admin_approval_emails")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.get_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.stage_email_verification")
+    @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.use_sign_up_token")
+    @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
+    def test_verify_email_of_an_active_account_skips_the_sign_up_flow(
+        self,
+        mock_settings,
+        mock_use_token,
+        mock_verify_email,
+        mock_get_user,
+        mock_send_admin_email,
+        mock_notify,
+        signup_client,
+    ) -> None:
+        """
+        An already active account confirming a changed address is verified without asking an
+        admin to approve it, and without needing the sign-up policy to require verification.
+        """
+        mock_settings.return_value = MagicMock(
+            signup_require_email_verification=False,
+            signup_require_admin_approval=True,
+        )
+        mock_use_token.return_value = 10
+        mock_get_user.return_value = MagicMock(id=10, active=True)
+
+        response = signup_client.post(
+            "/sign-up/sign-up/confirm",
+            json={"token": "valid-verification-token"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["admin_approval_required"] is None
+        mock_verify_email.assert_called_once()
+        mock_send_admin_email.assert_not_called()
+        mock_notify.assert_not_called()
+
+    @patch("modules.auth.sign_up_tokens.router.users_integration.get_user")
+    @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.use_sign_up_token")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_verify_email_not_enabled_returns_412(
         self,
         mock_settings,
+        mock_use_token,
+        mock_get_user,
         signup_client,
     ) -> None:
         """
-        Returns 412 when email verification is not enabled on
+        Returns 412 when a sign-up is verified but email verification is not enabled on
         the server.
         """
         mock_settings.return_value = MagicMock(
             signup_require_email_verification=False,
         )
+        mock_use_token.return_value = 10
+        mock_get_user.return_value = MagicMock(id=10, active=False)
 
         response = signup_client.post(
             "/sign-up/sign-up/confirm",
@@ -456,8 +488,8 @@ class TestVerifyEmailEndpoint:
 
     @patch("modules.auth.sign_up_tokens.router.notifications_integration.create_admin_sign_up_approval_notifications")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_admin_approval_emails")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.get_user_by_id")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.verify_user_email")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.get_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.stage_email_verification")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.use_sign_up_token")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_verify_email_with_admin_approval_sets_flag(
@@ -481,7 +513,7 @@ class TestVerifyEmailEndpoint:
         )
         mock_use_token.return_value = 11
         mock_verify_email.return_value = None
-        mock_get_user.return_value = MagicMock(id=11)
+        mock_get_user.return_value = MagicMock(id=11, active=False)
         mock_send_admin_email.return_value = None
         mock_notify.return_value = []
         mock_email_service.return_value = True
@@ -495,7 +527,8 @@ class TestVerifyEmailEndpoint:
         data = response.json()
         assert data["admin_approval_required"] is True
 
-    @patch("modules.auth.sign_up_tokens.router.users_crud.verify_user_email")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.get_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.stage_email_verification")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.use_sign_up_token")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_verify_email_skips_notifications_when_email_not_configured(
@@ -503,6 +536,7 @@ class TestVerifyEmailEndpoint:
         mock_settings,
         mock_use_token,
         mock_verify_email,
+        mock_get_user,
         signup_client,
         mock_email_service,
     ) -> None:
@@ -520,6 +554,7 @@ class TestVerifyEmailEndpoint:
         )
         mock_use_token.return_value = 20
         mock_verify_email.return_value = None
+        mock_get_user.return_value = MagicMock(id=20, active=False)
         mock_email_service.return_value = False
 
         response = signup_client.post(
@@ -533,8 +568,8 @@ class TestVerifyEmailEndpoint:
         assert data["admin_approval_required"] is None
 
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_admin_approval_emails")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.get_user_by_id")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.verify_user_email")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.get_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.stage_email_verification")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.use_sign_up_token")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_verify_email_returns_500_when_get_user_by_id_returns_none(
@@ -571,8 +606,8 @@ class TestVerifyEmailEndpoint:
 
     @patch("modules.auth.sign_up_tokens.router.notifications_integration.create_admin_sign_up_approval_notifications")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_admin_approval_emails")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.get_user_by_id")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.verify_user_email")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.get_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.stage_email_verification")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.use_sign_up_token")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_verify_email_returns_500_when_notification_raises_http500(
@@ -595,7 +630,7 @@ class TestVerifyEmailEndpoint:
         )
         mock_use_token.return_value = 30
         mock_verify_email.return_value = None
-        mock_get_user.return_value = MagicMock(id=30)
+        mock_get_user.return_value = MagicMock(id=30, active=False)
         mock_send_admin_email.return_value = None
         mock_email_service.return_value = True
         mock_notify.side_effect = HTTPException(
@@ -612,8 +647,8 @@ class TestVerifyEmailEndpoint:
 
     @patch("modules.auth.sign_up_tokens.router.notifications_integration.create_admin_sign_up_approval_notifications")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.request_sign_up_admin_approval_emails")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.get_user_by_id")
-    @patch("modules.auth.sign_up_tokens.router.users_crud.verify_user_email")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.get_user")
+    @patch("modules.auth.sign_up_tokens.router.users_integration.stage_email_verification")
     @patch("modules.auth.sign_up_tokens.router.sign_up_tokens_utils.use_sign_up_token")
     @patch("modules.auth.sign_up_tokens.router.server_settings_integration.get_server_settings")
     def test_verify_email_returns_500_when_notification_raises_runtime(
@@ -639,7 +674,7 @@ class TestVerifyEmailEndpoint:
         )
         mock_use_token.return_value = 31
         mock_verify_email.return_value = None
-        mock_get_user.return_value = MagicMock(id=31)
+        mock_get_user.return_value = MagicMock(id=31, active=False)
         mock_send_admin_email.return_value = None
         mock_email_service.return_value = True
         mock_notify.side_effect = RuntimeError("WebSocket broadcast failed")

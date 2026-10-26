@@ -9,6 +9,7 @@ import type {
 
 import { resolveAvatarUrl } from '@/features/auth/services/mappers'
 import { apiFetch } from '@/services/http'
+import { ifMatchHeaders, rowVersion } from '@/services/ifMatch'
 
 /**
  * Maps the privacy subset of a `/profile` payload to {@link PrivacySettings},
@@ -20,6 +21,7 @@ import { apiFetch } from '@/services/http'
  */
 export function mapPrivacySettings(dto: ProfileDto): PrivacySettings {
   return {
+    version: rowVersion(dto.privacy_settings_version),
     defaultActivityVisibility:
       (dto.default_activity_visibility as PrivacySettings['defaultActivityVisibility'] | null) ??
       'public',
@@ -48,6 +50,7 @@ export function mapPrivacySettings(dto: ProfileDto): PrivacySettings {
 export function mapProfileDetails(dto: ProfileDto): ProfileDetails {
   return {
     id: dto.id,
+    version: rowVersion(dto.version),
     name: dto.name,
     username: dto.username,
     email: dto.email,
@@ -87,13 +90,13 @@ export async function fetchProfile(signal?: AbortSignal): Promise<ProfileDetails
  * Updates the authenticated user's editable identity fields.
  *
  * @param input - The clean profile edit input.
- * @throws {HttpError} When the request fails (e.g. duplicate username/email).
+ * @param version - The profile version the form was loaded at, for `If-Match`.
+ * @throws {HttpError} When the request fails (e.g. duplicate username/email), including 412 when stale.
  */
-export async function updateProfile(input: ProfileEditInput): Promise<void> {
+export async function updateProfile(input: ProfileEditInput, version: number): Promise<void> {
   const payload: ProfileUpdateDto = {
     name: input.name,
     username: input.username,
-    email: input.email,
     city: input.city,
     birthdate: input.birthdate,
     gender: input.gender,
@@ -106,7 +109,8 @@ export async function updateProfile(input: ProfileEditInput): Promise<void> {
     timezone: input.timezone,
   }
   await apiFetch('/profile', {
-    method: 'PUT',
+    method: 'PATCH',
+    headers: ifMatchHeaders(version),
     body: JSON.stringify(payload),
     responseType: 'void',
   })
@@ -115,8 +119,8 @@ export async function updateProfile(input: ProfileEditInput): Promise<void> {
 /**
  * Updates the authenticated user's privacy settings.
  *
- * @param privacy - The clean privacy settings.
- * @throws {HttpError} When the request fails.
+ * @param privacy - The clean privacy settings, carrying the version they were loaded at.
+ * @throws {HttpError} When the request fails, including 412 when stale.
  */
 export async function updatePrivacySettings(privacy: PrivacySettings): Promise<void> {
   const payload: PrivacyUpdateDto = {
@@ -135,7 +139,8 @@ export async function updatePrivacySettings(privacy: PrivacySettings): Promise<v
     hide_activity_gear: privacy.hideGear,
   }
   await apiFetch('/profile/privacy', {
-    method: 'PUT',
+    method: 'PATCH',
+    headers: ifMatchHeaders(privacy.version),
     body: JSON.stringify(payload),
     responseType: 'void',
   })
@@ -161,5 +166,5 @@ export async function uploadProfilePhoto(file: File): Promise<void> {
  * @throws {HttpError} When the request fails.
  */
 export async function deleteProfilePhoto(): Promise<void> {
-  await apiFetch('/profile/photo', { method: 'PUT', responseType: 'void' })
+  await apiFetch('/profile/photo', { method: 'DELETE', responseType: 'void' })
 }

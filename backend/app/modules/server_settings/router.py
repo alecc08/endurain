@@ -6,7 +6,6 @@ import jasil.providers as platform_providers
 from fastapi import (
     APIRouter,
     Depends,
-    Header,
     Request,
     Response,
     Security,
@@ -19,8 +18,11 @@ import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
+import modules.server_settings.login_photo_service as server_settings_login_photo_service
+import modules.server_settings.mail_service as server_settings_mail_service
 import modules.server_settings.schema as server_settings_schema
 import modules.server_settings.service as server_settings_service
+import modules.server_settings.tile_service as server_settings_tile_service
 import modules.users.users.integration_service as users_integration
 
 # Define the API router
@@ -67,7 +69,7 @@ def edit_server_settings(
     server_settings_attributes: server_settings_schema.ServerSettingsEdit,
     db: core_dependencies.DbSession,
     response: Response,
-    if_match: Annotated[str | None, Header(alias=core_etag.IF_MATCH_HEADER)] = None,
+    if_match: core_dependencies.IfMatch,
 ) -> server_settings_schema.ServerSettingsAdminRead:
     """Update server settings.
 
@@ -81,14 +83,14 @@ def edit_server_settings(
         server_settings_attributes: Settings to update.
         db: Database session.
         response: The response, which carries the new ETag.
-        if_match: The ``If-Match`` precondition, or None.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         Updated server settings configuration, without the tile API key.
     """
     updated = server_settings_service.edit_server_settings(server_settings_attributes, db, if_match=if_match)
     # This process applies the new CSP tile domains at once; the other processes poll for them.
-    request.app.state.allowed_tile_domains = server_settings_service.allowed_tile_domains_for_url(
+    request.app.state.allowed_tile_domains = server_settings_tile_service.allowed_tile_domains_for_url(
         updated.tileserver_url
     )
     response.headers["ETag"] = core_etag.format_etag(updated.version)
@@ -97,8 +99,8 @@ def edit_server_settings(
 
 @router.post(
     "/login-photo",
-    response_model=dict[str, str],
-    status_code=status.HTTP_201_CREATED,
+    response_model=None,
+    status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.UPLOAD)
@@ -107,7 +109,7 @@ def upload_login_photo(
     file: UploadFile,
     storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
-) -> dict[str, str]:
+) -> None:
     """Upload custom login page photo.
 
     Requires admin authentication with server_settings:write scope.
@@ -121,7 +123,7 @@ def upload_login_photo(
     Returns:
         A confirmation message.
     """
-    server_settings_service.upload_login_photo(file, storage, db)
+    server_settings_login_photo_service.upload_login_photo(file, storage, db)
 
     return {"message": "Login photo uploaded successfully."}
 
@@ -147,7 +149,7 @@ def delete_login_photo(
         storage: The platform storage provider.
         db: Database session.
     """
-    server_settings_service.delete_login_photo(storage, db)
+    server_settings_login_photo_service.delete_login_photo(storage, db)
 
 
 @router.get(
@@ -169,7 +171,7 @@ def read_email_status(
     Returns:
         Whether email is configured and, when not, the reasons (setting names only).
     """
-    return server_settings_service.get_email_status(db)
+    return server_settings_mail_service.get_email_status(db)
 
 
 @router.get(
@@ -194,7 +196,7 @@ def read_mail_settings(
         The mail settings. The password is never returned, only whether one is stored;
         ``env_managed`` names the fields an environment variable currently sets.
     """
-    mail_settings = server_settings_service.get_mail_settings_for_admin(db)
+    mail_settings = server_settings_mail_service.get_mail_settings_for_admin(db)
     response.headers["ETag"] = core_etag.format_etag(mail_settings.version)
     return mail_settings
 
@@ -211,7 +213,7 @@ def edit_mail_settings(
     mail_settings_attributes: server_settings_schema.MailSettingsEdit,
     db: core_dependencies.DbSession,
     response: Response,
-    if_match: Annotated[str | None, Header(alias=core_etag.IF_MATCH_HEADER)] = None,
+    if_match: core_dependencies.IfMatch,
 ) -> server_settings_schema.MailSettingsAdminRead:
     """Update the mail server settings.
 
@@ -225,7 +227,7 @@ def edit_mail_settings(
         mail_settings_attributes: Settings to update.
         db: Database session.
         response: The response, which carries the new ETag.
-        if_match: The ``If-Match`` precondition, or None.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         Updated mail settings, without the password.
@@ -235,15 +237,15 @@ def edit_mail_settings(
         ConflictError: 409 if a field is set by an environment variable.
         PreconditionFailedError: 412 if the settings changed since the client read them.
     """
-    updated = server_settings_service.edit_mail_settings(mail_settings_attributes, db, if_match=if_match)
+    updated = server_settings_mail_service.edit_mail_settings(mail_settings_attributes, db, if_match=if_match)
     response.headers["ETag"] = core_etag.format_etag(updated.version)
     return updated
 
 
 @router.post(
     "/email/test",
-    response_model=dict[str, str],
-    status_code=status.HTTP_200_OK,
+    response_model=None,
+    status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
@@ -255,7 +257,7 @@ def send_test_email(
         Depends(core_dependencies.get_mail),
     ],
     db: core_dependencies.DbSession,
-) -> dict[str, str]:
+) -> None:
     """Send a test email to the requesting admin.
 
     Requires admin authentication with server_settings:write scope. The recipient
@@ -267,9 +269,6 @@ def send_test_email(
         mail: The platform mail provider.
         db: Database session.
 
-    Returns:
-        A confirmation message naming the recipient address.
-
     Raises:
         ServiceUnavailableError: 503 if email is not configured.
         UpstreamError: 502 if the mail server did not accept the message.
@@ -277,5 +276,4 @@ def send_test_email(
     admin = users_integration.get_user(token_user_id, db)
     if admin is None:
         raise core_exceptions.NotFoundError("User not found")
-    server_settings_service.send_test_email(admin, mail, db)
-    return {"message": f"Test email sent to {admin.email}."}
+    server_settings_mail_service.send_test_email(admin, mail, db)

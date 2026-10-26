@@ -2,11 +2,13 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import ChangeEmailCard from '@/features/security/components/ChangeEmailCard.vue'
 import ChangePasswordCard from '@/features/security/components/ChangePasswordCard.vue'
 import LinkedAccountsCard from '@/features/security/components/LinkedAccountsCard.vue'
 import MfaCard from '@/features/security/components/MfaCard.vue'
 import SessionsCard from '@/features/security/components/SessionsCard.vue'
 import ApiKeysCard from '@/features/security/components/ApiKeysCard.vue'
+import DeleteAccountCard from '@/features/security/components/DeleteAccountCard.vue'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ErrorState } from '@/components/ui/error-state'
@@ -81,6 +83,11 @@ const mfaEnabled = computed(() => mfaStatusQuery.data.value?.enabled ?? false)
 
     <!-- Loaded -->
     <template v-else-if="profile">
+      <ChangeEmailCard
+        :email="profile.email"
+        :has-local-password="profile.hasLocalPassword"
+        :mfa-enabled="mfaEnabled"
+      />
       <ChangePasswordCard
         v-if="profile.hasLocalPassword"
         :mfa-enabled="mfaEnabled"
@@ -93,6 +100,11 @@ const mfaEnabled = computed(() => mfaStatusQuery.data.value?.enabled ?? false)
       />
       <SessionsCard />
       <ApiKeysCard :has-local-password="profile.hasLocalPassword" :mfa-enabled="mfaEnabled" />
+      <DeleteAccountCard
+        :username="profile.username"
+        :has-local-password="profile.hasLocalPassword"
+        :mfa-enabled="mfaEnabled"
+      />
     </template>
   </div>
 </template>

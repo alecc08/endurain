@@ -13,6 +13,7 @@ import modules.health.health_weight.schema as health_weight_schema
 def _row(record_id: int = 1, user_id: int = 1, weight: float = 75.0) -> MagicMock:
     row = MagicMock(spec=health_weight_models.HealthWeight)
     row.id = record_id
+    row.version = 1
     row.user_id = user_id
     row.date = datetime_date(2024, 1, 15)
     row.weight = weight
@@ -126,9 +127,9 @@ class TestEditHealthWeight:
     def test_updates_the_given_fields_and_stages(self, mock_db):
         row = _row()
         _returns_one(mock_db, row)
-        update = health_weight_schema.HealthWeightUpdate(id=1, user_id=1, date=datetime_date(2024, 1, 15), weight=80.0)
+        update = health_weight_schema.HealthWeightUpdate(date=datetime_date(2024, 1, 15), weight=80.0)
 
-        health_weight_crud.edit_health_weight(1, update, mock_db)
+        health_weight_crud.edit_health_weight(1, 1, update, mock_db, if_match="*")
 
         assert row.weight == 80.0
         mock_db.flush.assert_called_once()
@@ -136,10 +137,10 @@ class TestEditHealthWeight:
 
     def test_unknown_record_is_not_found(self, mock_db):
         _returns_one(mock_db, None)
-        update = health_weight_schema.HealthWeightUpdate(id=9, user_id=1, date=datetime_date(2024, 1, 15), weight=80.0)
+        update = health_weight_schema.HealthWeightUpdate(date=datetime_date(2024, 1, 15), weight=80.0)
 
         with pytest.raises(core_exceptions.NotFoundError, match="Health weight not found"):
-            health_weight_crud.edit_health_weight(1, update, mock_db)
+            health_weight_crud.edit_health_weight(1, 9, update, mock_db, if_match="*")
 
 
 class TestDeleteHealthWeight:

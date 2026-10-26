@@ -17,6 +17,7 @@ import pytest
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
+import core.exceptions as core_exceptions
 import modules.health.health_sleep.models as sleep_models
 import modules.health.health_steps.models as steps_models
 import modules.health.health_steps.schema as steps_schema
@@ -62,13 +63,31 @@ def _run_concurrently(factory, work) -> list:
     return outcomes
 
 
-def test_concurrent_steps_for_one_day_leave_one_record(factory):
+def test_concurrent_steps_creates_for_one_day_leave_one_record_and_conflict_the_rest(factory):
     outcomes = _run_concurrently(
         factory,
         lambda index, db: steps_service.create_health_steps(
             1, steps_schema.HealthStepsCreate(date=_DAY, steps=1000 + index), db
         ),
     )
+
+    errors = [outcome for outcome in outcomes if isinstance(outcome, Exception)]
+    assert len(outcomes) == _THREADS
+    assert len(outcomes) - len(errors) == 1
+    assert all(isinstance(error, core_exceptions.ConflictError) for error in errors)
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(steps_models.HealthSteps)) == 1
+
+
+def test_concurrent_steps_upserts_for_one_day_leave_one_record(factory):
+    def upsert(index, db):
+        stored = steps_service.stage_upsert_health_steps(
+            1, steps_schema.HealthStepsCreate(date=_DAY, steps=1000 + index), db
+        )
+        db.commit()
+        return stored
+
+    outcomes = _run_concurrently(factory, upsert)
 
     assert len(outcomes) == _THREADS
     assert not [outcome for outcome in outcomes if isinstance(outcome, Exception)]

@@ -26,6 +26,7 @@ vi.mock('@/services/http', () => ({
 function makeProfileDto(overrides: Partial<ProfileDto> = {}): ProfileDto {
   return {
     id: 5,
+    version: 6,
     name: 'Ada Lovelace',
     username: 'ada',
     email: 'ada@example.com',
@@ -132,7 +133,6 @@ describe('profile service requests', () => {
     const input: ProfileEditInput = {
       name: 'Ada L',
       username: 'ada',
-      email: 'ada@example.com',
       city: 'Paris',
       birthdate: '1990-01-01',
       gender: 'female',
@@ -145,13 +145,15 @@ describe('profile service requests', () => {
       timezone: 'America/Los_Angeles',
     }
 
-    await updateProfile(input)
+    await updateProfile(input, 6)
 
-    expect(apiFetch).toHaveBeenCalledWith('/profile', expect.objectContaining({ method: 'PUT' }))
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/profile',
+      expect.objectContaining({ method: 'PATCH', headers: { 'If-Match': '"6"' } }),
+    )
     expect(JSON.parse(body as string)).toEqual({
       name: 'Ada L',
       username: 'ada',
-      email: 'ada@example.com',
       city: 'Paris',
       birthdate: '1990-01-01',
       gender: 'female',
@@ -165,13 +167,14 @@ describe('profile service requests', () => {
     })
   })
 
-  it('updatePrivacySettings PUTs the snake-cased privacy fields', async () => {
+  it('updatePrivacySettings PATCHes the snake-cased privacy fields', async () => {
     let body: unknown
     vi.mocked(apiFetch).mockImplementation((_path, init) => {
       body = init?.body
       return Promise.resolve(undefined)
     })
     const privacy: PrivacySettings = {
+      version: 2,
       defaultActivityVisibility: 'private',
       hideStartTime: true,
       hideLocation: true,
@@ -191,7 +194,7 @@ describe('profile service requests', () => {
 
     expect(apiFetch).toHaveBeenCalledWith(
       '/profile/privacy',
-      expect.objectContaining({ method: 'PUT' }),
+      expect.objectContaining({ method: 'PATCH', headers: { 'If-Match': '"2"' } }),
     )
     const parsed = JSON.parse(body as string) as Record<string, unknown>
     expect(parsed.default_activity_visibility).toBe('private')
@@ -220,13 +223,13 @@ describe('profile service requests', () => {
     expect((uploaded as File).name).toBe('me.png')
   })
 
-  it('deleteProfilePhoto issues a PUT to /profile/photo', async () => {
+  it('deleteProfilePhoto issues a DELETE to /profile/photo', async () => {
     vi.mocked(apiFetch).mockResolvedValue(undefined)
 
     await deleteProfilePhoto()
 
     expect(apiFetch).toHaveBeenCalledWith('/profile/photo', {
-      method: 'PUT',
+      method: 'DELETE',
       responseType: 'void',
     })
   })

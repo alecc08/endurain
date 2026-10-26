@@ -28,7 +28,7 @@ import modules.auth.mfa.backup_codes.schema as mfa_backup_codes_schema
 import modules.auth.mfa.crud as mfa_crud
 import modules.auth.mfa.schema as mfa_schema
 import modules.auth.mfa.service as mfa_service
-import modules.users.users.crud as users_crud
+import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
 from modules.auth.mfa.setup_store import MFASecretStoreBackend
 
@@ -191,7 +191,7 @@ def generate_backup_codes(
     db: Session,
 ) -> mfa_backup_codes_schema.MFABackupCodesResponse:
     """Generate new backup codes for an MFA-enabled account."""
-    user = users_crud.get_user_by_id(token_user_id, db)
+    user = users_integration.get_user(token_user_id, db)
 
     if not user:
         raise HTTPException(

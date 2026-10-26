@@ -946,7 +946,6 @@
       "invalidType": "Kies een .zip-archief.",
       "exportSuccess": "Export gereed, je download begint binnenkort",
       "exportError": "Gegevens konden niet worden geëxporteerd. Probeer het opnieuw.",
-      "importSuccess": "Gegevens geïmporteerd",
       "importError": "Archief kon niet worden geïmporteerd. Controleer het bestand en probeer het opnieuw."
     }
   }

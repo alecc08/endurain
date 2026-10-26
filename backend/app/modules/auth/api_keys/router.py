@@ -12,7 +12,7 @@ import modules.auth.api_keys.schema as api_keys_schema
 import modules.auth.api_keys.utils as api_keys_utils
 import modules.auth.dependencies as auth_dependencies
 import modules.auth.identity_service as auth_identity_service
-import modules.users.users.crud as users_crud
+import modules.users.users.integration_service as users_integration
 
 # Define the API router
 router = APIRouter()
@@ -92,7 +92,7 @@ async def create_user_api_key(
         HTTPException: 400 if scopes are not supported for API keys.
         HTTPException: 404 if the user is not found.
     """
-    db_user = users_crud.get_user_by_id(token_user_id, db)
+    db_user = users_integration.get_user(token_user_id, db)
     if db_user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

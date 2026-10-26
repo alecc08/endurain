@@ -409,7 +409,7 @@ class TestGenerateBackupCodes:
         user = MagicMock()
         user.id = 7
         with (
-            patch("modules.auth._internal.services.mfa_workflow.users_crud.get_user_by_id", return_value=user),
+            patch("modules.auth._internal.services.mfa_workflow.users_integration.get_user", return_value=user),
             patch(
                 "modules.auth._internal.services.mfa_workflow.mfa_service.is_mfa_enabled_for_user",
                 return_value=True,
@@ -445,7 +445,7 @@ class TestGenerateBackupCodes:
 
     def test_user_not_found_raises_404(self, mock_db, identity_service, step_up_store):
         with (
-            patch("modules.auth._internal.services.mfa_workflow.users_crud.get_user_by_id", return_value=None),
+            patch("modules.auth._internal.services.mfa_workflow.users_integration.get_user", return_value=None),
             patch(
                 "modules.auth._internal.services.mfa_workflow.step_up_service.verify_step_up_credentials"
             ) as mock_verify,
@@ -465,7 +465,7 @@ class TestGenerateBackupCodes:
     def test_mfa_disabled_raises_400(self, mock_db, identity_service, step_up_store):
         user = MagicMock()
         with (
-            patch("modules.auth._internal.services.mfa_workflow.users_crud.get_user_by_id", return_value=user),
+            patch("modules.auth._internal.services.mfa_workflow.users_integration.get_user", return_value=user),
             patch(
                 "modules.auth._internal.services.mfa_workflow.mfa_service.is_mfa_enabled_for_user",
                 return_value=False,
@@ -490,7 +490,7 @@ class TestGenerateBackupCodes:
         user = MagicMock()
         user.id = 7
         with (
-            patch("modules.auth._internal.services.mfa_workflow.users_crud.get_user_by_id", return_value=user),
+            patch("modules.auth._internal.services.mfa_workflow.users_integration.get_user", return_value=user),
             patch(
                 "modules.auth._internal.services.mfa_workflow.mfa_service.is_mfa_enabled_for_user",
                 return_value=True,

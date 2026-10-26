@@ -193,6 +193,7 @@ def get_user_gear(user_id: int) -> bool:
             logger.info("Garmin Connect unlinked during the gear sync", extra=core_logger.context(user_id=user_id))
             return False
         user_integrations_integration.set_garminconnect_sync_gear(user_id, True, db)
+        db.commit()
         logger.info(
             "Will parse current activities and set gear if applicable",
             extra=core_logger.context(user_id=user_id),

@@ -24,6 +24,7 @@ def passthrough_serializers():
 def _row(record_id: int = 1, seconds: int = 28800) -> MagicMock:
     row = MagicMock(spec=health_sleep_models.HealthSleep)
     row.id = record_id
+    row.version = 1
     row.user_id = 1
     row.total_sleep_seconds = seconds
     return row
@@ -105,11 +106,9 @@ class TestEditHealthSleep:
     def test_updates_the_given_fields_and_stages(self, mock_db):
         row = _row()
         _returns_one(mock_db, row)
-        update = health_sleep_schema.HealthSleepUpdate(
-            id=1, user_id=1, date=datetime_date(2024, 1, 15), total_sleep_seconds=32400
-        )
+        update = health_sleep_schema.HealthSleepUpdate(date=datetime_date(2024, 1, 15), total_sleep_seconds=32400)
 
-        health_sleep_crud.edit_health_sleep(1, update, mock_db)
+        health_sleep_crud.edit_health_sleep(1, 1, update, mock_db, if_match="*")
 
         assert row.total_sleep_seconds == 32400
         mock_db.flush.assert_called_once()
@@ -117,12 +116,10 @@ class TestEditHealthSleep:
 
     def test_unknown_record_is_not_found(self, mock_db):
         _returns_one(mock_db, None)
-        update = health_sleep_schema.HealthSleepUpdate(
-            id=9, user_id=1, date=datetime_date(2024, 1, 15), total_sleep_seconds=32400
-        )
+        update = health_sleep_schema.HealthSleepUpdate(date=datetime_date(2024, 1, 15), total_sleep_seconds=32400)
 
         with pytest.raises(core_exceptions.NotFoundError, match="Health sleep not found"):
-            health_sleep_crud.edit_health_sleep(1, update, mock_db)
+            health_sleep_crud.edit_health_sleep(1, 9, update, mock_db, if_match="*")
 
 
 class TestDeleteHealthSleep:

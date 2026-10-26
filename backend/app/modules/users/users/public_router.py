@@ -1,14 +1,10 @@
 """Public user router for unauthenticated user info access."""
 
-from collections.abc import Callable
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, status
 
 import core.dependencies as core_dependencies
-import modules.users.users.crud as users_crud
-import modules.users.users.dependencies as users_dependencies
 import modules.users.users.schema as users_schema
+import modules.users.users.service as users_service
 
 # Define the API router
 router = APIRouter()
@@ -17,22 +13,22 @@ router = APIRouter()
 @router.get(
     "/id/{user_id}",
     status_code=status.HTTP_200_OK,
-    response_model=users_schema.UsersRead | None,
+    response_model=users_schema.UserPublicRead,
 )
 def read_users_id(
-    user_id: int,
-    _validate_id: Annotated[Callable, Depends(users_dependencies.validate_user_id)],
+    user_id: core_dependencies.PositiveId,
     db: core_dependencies.DbSession,
-) -> users_schema.UsersRead | None:
-    """
-    Get public user info by ID.
+) -> users_schema.UserPublicRead:
+    """Get public user info by ID.
 
     Args:
         user_id: The user ID to retrieve.
-        _validate_id: User ID validation dependency.
         db: Database session dependency.
 
     Returns:
         User data if found and public sharing enabled.
+
+    Raises:
+        NotFoundError: If the user does not exist or public sharing is off.
     """
-    return users_crud.get_user_by_id(user_id, db, public_check=True)
+    return users_service.get_public_user(user_id, db)

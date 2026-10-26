@@ -4,8 +4,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import core.exceptions as core_exceptions
+import core.pagination as core_pagination
 from modules.health.health_fasting.schema import (
-    HealthFastingListResponse,
     HealthFastingRead,
     HealthFastingStatsResponse,
 )
@@ -17,7 +17,6 @@ _START = {"fast_start_time": "2024-01-15T08:00:00Z"}
 
 def _build_app(mock_db):
     import core.database as core_db
-    import core.dependencies as core_deps
     import modules.auth.dependencies as auth_deps
     import modules.health.health_fasting.router as router
 
@@ -33,7 +32,6 @@ def _build_app(mock_db):
 
     app.dependency_overrides[auth_deps.check_scopes] = _mock
     app.dependency_overrides[auth_deps.get_sub_from_access_token] = _uid
-    app.dependency_overrides[core_deps.validate_pagination_values_on_query] = _mock
     app.dependency_overrides[core_db.get_db] = lambda: mock_db
     return app
 
@@ -45,7 +43,9 @@ def _client(mock_db) -> TestClient:
 class TestReadHealthFastingAllPagination:
     @patch(f"{_SERVICE}.list_health_fasting")
     def test_list_success(self, mock_list, mock_db):
-        mock_list.return_value = HealthFastingListResponse(total=1, records=[HealthFastingRead(id=1, user_id=1)])
+        mock_list.return_value = core_pagination.Page(
+            items=[HealthFastingRead(id=1, user_id=1)], total=1, page=1, num_records=25
+        )
 
         response = _client(mock_db).get("/health_fasting", headers=_HEADERS)
 
@@ -54,14 +54,14 @@ class TestReadHealthFastingAllPagination:
 
     @patch(f"{_SERVICE}.list_health_fasting")
     def test_passes_pagination_and_interval_through(self, mock_list, mock_db):
-        mock_list.return_value = HealthFastingListResponse(total=0, records=[])
+        mock_list.return_value = core_pagination.Page(items=[], total=0, page=1, num_records=25)
 
         _client(mock_db).get("/health_fasting?page_number=2&num_records=10&interval=last_30_days", headers=_HEADERS)
 
-        args = mock_list.call_args.args
-        assert args[0] == 1
-        assert args[2:4] == (2, 10)
-        assert args[4].value == "last_30_days"
+        args = mock_list.call_args
+        assert args.args[0] == 1
+        assert (args.kwargs["page_number"], args.kwargs["num_records"]) == (2, 10)
+        assert args.kwargs["interval"].value == "last_30_days"
 
 
 class TestReadActiveFasting:
@@ -136,17 +136,9 @@ class TestEditHealthFasting:
     def test_edit_success(self, mock_edit, mock_db):
         mock_edit.return_value = HealthFastingRead(id=1, user_id=1)
 
-        response = _client(mock_db).put("/health_fasting", json={"id": 1, "user_id": 1}, headers=_HEADERS)
+        response = _client(mock_db).patch("/health_fasting/1", json={}, headers={**_HEADERS, "If-Match": "*"})
 
         assert response.status_code == 200
-
-    @patch(f"{_SERVICE}.edit_health_fasting")
-    def test_another_users_record_is_403(self, mock_edit, mock_db):
-        mock_edit.side_effect = core_exceptions.PermissionDeniedError("Cannot edit fasting record for another user.")
-
-        response = _client(mock_db).put("/health_fasting", json={"id": 1, "user_id": 2}, headers=_HEADERS)
-
-        assert response.status_code == 403
 
 
 class TestCompleteHealthFasting:
@@ -189,3 +181,27 @@ class TestDeleteHealthFasting:
         mock_delete.side_effect = core_exceptions.NotFoundError("Health fasting not found")
 
         assert _client(mock_db).delete("/health_fasting/9", headers=_HEADERS).status_code == 404
+
+
+class TestReadSendsTheETag:
+    @patch(f"{_SERVICE}.get_health_fasting")
+    def test_a_record_read_by_id_carries_its_version(self, mock_get, mock_db):
+        mock_get.return_value = HealthFastingRead(id=1, user_id=1, version=5)
+
+        response = _client(mock_db).get("/health_fasting/1", headers=_HEADERS)
+
+        assert response.headers["ETag"] == '"5"'
+
+    @patch(f"{_SERVICE}.get_active_fasting")
+    def test_the_active_fast_carries_its_version(self, mock_active, mock_db):
+        mock_active.return_value = HealthFastingRead(id=1, user_id=1, version=3)
+
+        response = _client(mock_db).get("/health_fasting/active", headers=_HEADERS)
+
+        assert response.headers["ETag"] == '"3"'
+
+    @patch(f"{_SERVICE}.get_active_fasting", return_value=None)
+    def test_no_active_fast_has_no_tag(self, _active, mock_db):
+        response = _client(mock_db).get("/health_fasting/active", headers=_HEADERS)
+
+        assert "ETag" not in response.headers

@@ -13,7 +13,7 @@ import modules.gears.gear.integration_service as gears_integration
 import modules.gears.gear.schema as gears_schema
 import modules.strava.athlete_utils as strava_athlete_utils
 import modules.strava.utils as strava_utils
-import modules.users.users_integrations.crud as user_integrations_crud
+import modules.users.users_integrations.integration_service as user_integrations_integration
 from core.database import SessionLocal
 
 logger = core_logger.get_logger(__name__)
@@ -159,7 +159,8 @@ def get_user_gear(user_id: int):
         strava_client = strava_utils.create_strava_client(user_integrations)
 
         # Set the user's gear to sync to True
-        user_integrations_crud.set_user_strava_sync_gear(user_id, True, db)
+        user_integrations_integration.set_strava_sync_gear(user_id, True, db)
+        db.commit()
 
         # Fetch Strava gear
         num_strava_gear_processed = fetch_and_process_gear(strava_client, user_id, db)

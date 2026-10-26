@@ -213,7 +213,7 @@ describe('gear service requests', () => {
   it('leaves the fields the backend cannot clear out of a partial update', async () => {
     vi.mocked(apiFetch).mockResolvedValue(gearDto)
 
-    await updateGear(5, { ...gearInput, createdAt: null, initialKms: null })
+    await updateGear(5, { ...gearInput, createdAt: null, initialKms: null }, 3)
 
     const body = JSON.parse(vi.mocked(apiFetch).mock.calls[0]![1]!.body as string)
     expect(body).not.toHaveProperty('created_at')

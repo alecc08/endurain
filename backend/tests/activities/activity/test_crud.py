@@ -315,7 +315,7 @@ class TestEditActivity:
             id: int = 1
             name: str = "U"
 
-        r = crud.edit_activity(user_id=1, activity_id=1, activity_attributes=A(), db=mock_db)
+        r = crud.edit_activity(user_id=1, activity_id=1, activity_attributes=A(), db=mock_db, if_match="*")
         assert r is not None
 
     def test_stale_if_match_is_refused_before_anything_is_written(self, mock_db):
@@ -346,7 +346,7 @@ class TestEditActivity:
             name: str = "U"
 
         with pytest.raises(core_exceptions.NotFoundError) as e:
-            crud.edit_activity(user_id=1, activity_id=999, activity_attributes=A(), db=mock_db)
+            crud.edit_activity(user_id=1, activity_id=999, activity_attributes=A(), db=mock_db, if_match="*")
         assert e.value.status_code == 404
 
     @patch("modules.activities.activity.crud.activity_serializers.to_read_schema")
@@ -362,7 +362,7 @@ class TestEditActivity:
         setup_mock_execute(mock_db, return_one_or_none=db_act)
 
         attrs = s.ActivityEdit(name="test", activity_type=1, description="desc", private_notes="notes")
-        crud.edit_activity(user_id=1, activity_id=1, activity_attributes=attrs, db=mock_db)
+        crud.edit_activity(user_id=1, activity_id=1, activity_attributes=attrs, db=mock_db, if_match="*")
         assert mock_sanitize.call_count == 2
 
     def test_stale_flush_reaches_the_service_layer(self, mock_db):
@@ -380,6 +380,7 @@ class TestEditActivity:
                 activity_id=1,
                 activity_attributes=schema.ActivityEdit(name="Updated"),
                 db=mock_db,
+                if_match="*",
             )
 
         mock_db.rollback.assert_not_called()

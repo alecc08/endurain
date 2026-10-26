@@ -110,22 +110,18 @@ If you do not get any errors, continue to next step.
 On distributions with SELinux enforcing (check with `getenforce`), Docker bind-mounted directories inherit the host's SELinux context instead of the `container_file_t` context that containers require. This can cause permission errors like:
 
 ```
-redis  | find: .: Permission denied
 endurain-postgres | mkdir: cannot create directory '/var/lib/postgresql/data/pgdata': Permission denied
 ```
 
-The example docker-compose files include `:Z` and `:z` flags on all bind-mounted volumes to handle this automatically:
+The example `docker-compose.yml.example` includes the `:Z` flag on all bind-mounted volumes to handle this automatically. `:Z` (private) labels the volume so only the mounting container can access it, which fits postgres, the backend data and the logs, where a single container owns each volume.
 
-- **`:Z`** (private) — labels the volume so only the mounting container can access it. Used for postgres, redis, backend data, and logs where a single container owns the volume.
-- **`:z`** (shared) — labels the volume so multiple containers can share it. Used in the multiple-backends example for shared data and logs.
+> **Note for Debian, Ubuntu, and other non-SELinux distributions:** This flag is silently ignored by Docker and has no effect. No action is required on your part.
 
-> **Note for Debian, Ubuntu, and other non-SELinux distributions:** These flags are silently ignored by Docker and have no effect. No action is required on your part.
-
-If you are using the provided docker-compose files as-is, these flags should resolve SELinux permission errors automatically. If you have customized your volume structure or added new bind-mounted volumes, you may need to apply the `container_file_t` context manually:
+If you are using the provided docker-compose file as-is, the flag should resolve SELinux permission errors automatically. If you have customized your volume structure or added new bind-mounted volumes (for example a Redis volume when you scale out), you may need to apply the `container_file_t` context manually:
 
 ```bash
 sudo chcon -Rt container_file_t <host_path>/postgres
-sudo chcon -Rt container_file_t <host_path>/redis
+sudo chcon -Rt container_file_t <host_path>/backend
 ```
 
 Replace `<host_path>` with the actual path on your host machine (e.g., `/opt/endurain`, `/var/opt/endurain`, or a custom location you chose). The same principle applies to any bind-mounted volume that a container needs to write to.

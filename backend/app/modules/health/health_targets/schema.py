@@ -50,15 +50,17 @@ class HealthTargetsRead(HealthTargetsBase):
     Attributes:
         id: Unique identifier for the health target record.
         user_id: Foreign key reference to the user.
+        version: Optimistic-concurrency counter, also sent as the ETag.
     """
 
     id: StrictInt = Field(..., description="Unique identifier for the health target")
     user_id: StrictInt = Field(..., description="Foreign key reference to the user")
+    version: StrictInt = Field(default=1, ge=1, description="Optimistic-concurrency counter, also sent as the ETag")
 
 
-class HealthTargetsUpdate(HealthTargetsRead):
-    """Schema for updating health targets.
+class HealthTargetsUpdate(HealthTargetsBase):
+    """Schema for the fields a PATCH changes on a user's health targets.
 
-    Inherits all validation from HealthTargetsRead.
-    All fields are optional for partial updates.
+    The targets belong to the caller, so the body carries neither an id nor an owner; only the
+    fields present are changed.
     """

@@ -30,6 +30,7 @@ CONVERTED_MODULES: tuple[str, ...] = (
     "health",
     "notifications",
     "server_settings",
+    "users",
     "websocket",
 )
 
@@ -40,7 +41,6 @@ CONVERTED_MODULES: tuple[str, ...] = (
 UNCONVERTED_MODULES: tuple[str, ...] = (
     "auth",
     "strava",
-    "users",
 )
 
 #: Every role, longest first so ``integration_service`` is not read as

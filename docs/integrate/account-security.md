@@ -8,7 +8,8 @@ Certain sensitive account operations require the user to re-prove possession of 
 
 | Operation | Endpoint |
 | --------- | -------- |
-| Change own password | `PUT /profile/password` |
+| Change own password | `POST /profile/password/change` |
+| Change own email | `POST /profile/email/change` |
 | Enable MFA | `PUT /profile/mfa/enable` |
 | Disable MFA | `PUT /profile/mfa/disable` |
 | Regenerate MFA backup codes | `POST /profile/mfa/backup-codes` |
@@ -170,6 +171,9 @@ X-Client-Type: web|mobile
 ```
 
 ### Error Handling
+
+The bodies below show only the `detail` member. Every error is an RFC 9457 problem document with more members (`type`, `title`, `status`, `request_id`); see [Errors, concurrency and rate limits](errors-and-limits.md).
+
 - **No pending MFA login**: HTTP 400 Bad Request
 
 ```json

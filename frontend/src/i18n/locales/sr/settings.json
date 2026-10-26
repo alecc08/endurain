@@ -946,7 +946,6 @@
       "invalidType": "Izaberite .zip arhivu.",
       "exportSuccess": "Izvoz je spreman, vaše preuzimanje treba uskoro da počne",
       "exportError": "Nije moguće izvesti vaše podatke. Pokušajte ponovo.",
-      "importSuccess": "Podaci su uvezeni",
       "importError": "Nije moguće uvesti arhivu. Proverite datoteku i pokušajte ponovo."
     }
   }

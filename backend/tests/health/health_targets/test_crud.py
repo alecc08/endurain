@@ -23,6 +23,7 @@ class TestGetHealthTargetsByUserId:
         mock_targets = MagicMock(spec=health_targets_models.HealthTargets)
         mock_targets.id = 1
         mock_targets.user_id = user_id
+        mock_targets.version = 1
         mock_targets.weight = None
         mock_targets.steps = None
         mock_targets.sleep = None
@@ -73,6 +74,7 @@ class TestCreateHealthTargets:
         mock_db_targets = MagicMock(spec=health_targets_models.HealthTargets)
         mock_db_targets.id = 1
         mock_db_targets.user_id = user_id
+        mock_db_targets.version = 1
         mock_db_targets.weight = None
         mock_db_targets.steps = None
         mock_db_targets.sleep = None
@@ -127,11 +129,12 @@ class TestEditHealthTarget:
         """
         # Arrange
         user_id = 1
-        health_target = health_targets_schema.HealthTargetsUpdate(
-            id=1, user_id=user_id, weight=75.0, steps=10000, sleep=28800
-        )
+        health_target = health_targets_schema.HealthTargetsUpdate(weight=75.0, steps=10000, sleep=28800)
 
         mock_db_target = MagicMock(spec=health_targets_models.HealthTargets)
+        mock_db_target.version = 1
+        mock_db_target.id = 1
+        mock_db_target.user_id = 1
         mock_db_target.fasting = None
         mock_db_target.water_ml = None
         mock_db_target.poop_count = None
@@ -140,7 +143,7 @@ class TestEditHealthTarget:
         mock_db.execute.return_value = mock_result
 
         # Act
-        result = health_targets_crud.edit_health_target(health_target, user_id, mock_db)
+        result = health_targets_crud.edit_health_target(health_target, user_id, mock_db, if_match="*")
 
         # Assert
         assert result is not None
@@ -152,7 +155,7 @@ class TestEditHealthTarget:
         """
         # Arrange
         user_id = 1
-        health_target = health_targets_schema.HealthTargetsUpdate(id=999, user_id=user_id, weight=75.0, steps=10000)
+        health_target = health_targets_schema.HealthTargetsUpdate(weight=75.0, steps=10000)
 
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
@@ -160,7 +163,7 @@ class TestEditHealthTarget:
 
         # Act & Assert
         with pytest.raises(core_exceptions.NotFoundError, match="Health targets not found"):
-            health_targets_crud.edit_health_target(health_target, user_id, mock_db)
+            health_targets_crud.edit_health_target(health_target, user_id, mock_db, if_match="*")
 
     def test_edit_health_target_update_multiple_fields(self, mock_db):
         """
@@ -169,14 +172,15 @@ class TestEditHealthTarget:
         # Arrange
         user_id = 1
         health_target = health_targets_schema.HealthTargetsUpdate(
-            id=1,
-            user_id=user_id,
             weight=80.0,
             steps=12000,
             sleep=32400,
         )
 
         mock_db_target = MagicMock(spec=health_targets_models.HealthTargets)
+        mock_db_target.version = 1
+        mock_db_target.id = 1
+        mock_db_target.user_id = 1
         mock_db_target.fasting = None
         mock_db_target.water_ml = None
         mock_db_target.poop_count = None
@@ -185,7 +189,7 @@ class TestEditHealthTarget:
         mock_db.execute.return_value = mock_result
 
         # Act
-        health_targets_crud.edit_health_target(health_target, user_id, mock_db)
+        health_targets_crud.edit_health_target(health_target, user_id, mock_db, if_match="*")
 
         # Assert
         mock_db.flush.assert_called_once()
@@ -196,9 +200,12 @@ class TestEditHealthTarget:
         """
         # Arrange
         user_id = 1
-        health_target = health_targets_schema.HealthTargetsUpdate(id=1, user_id=user_id, weight=75.0)
+        health_target = health_targets_schema.HealthTargetsUpdate(weight=75.0)
 
         mock_db_target = MagicMock(spec=health_targets_models.HealthTargets)
+        mock_db_target.version = 1
+        mock_db_target.id = 1
+        mock_db_target.user_id = 1
         mock_db_target.steps = None
         mock_db_target.sleep = None
         mock_db_target.fasting = None
@@ -209,7 +216,7 @@ class TestEditHealthTarget:
         mock_db.execute.return_value = mock_result
 
         # Act
-        health_targets_crud.edit_health_target(health_target, user_id, mock_db)
+        health_targets_crud.edit_health_target(health_target, user_id, mock_db, if_match="*")
 
         # Assert
         mock_db.flush.assert_called_once()
@@ -220,9 +227,12 @@ class TestEditHealthTarget:
         """
         # Arrange
         user_id = 1
-        health_target = health_targets_schema.HealthTargetsUpdate(id=1, user_id=user_id, weight=None, steps=None)
+        health_target = health_targets_schema.HealthTargetsUpdate(weight=None, steps=None)
 
         mock_db_target = MagicMock(spec=health_targets_models.HealthTargets)
+        mock_db_target.version = 1
+        mock_db_target.id = 1
+        mock_db_target.user_id = 1
         mock_db_target.sleep = None
         mock_db_target.fasting = None
         mock_db_target.water_ml = None
@@ -232,7 +242,7 @@ class TestEditHealthTarget:
         mock_db.execute.return_value = mock_result
 
         # Act
-        health_targets_crud.edit_health_target(health_target, user_id, mock_db)
+        health_targets_crud.edit_health_target(health_target, user_id, mock_db, if_match="*")
 
         # Assert
         mock_db.flush.assert_called_once()

@@ -14,8 +14,8 @@ import modules.auth.password_policy as auth_password_policy
 import modules.auth.sessions.crud as auth_sessions_crud
 import modules.auth.sessions.schema as auth_sessions_schema
 import modules.server_settings.integration_service as server_settings_integration
+import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
-import modules.users.users.utils as users_utils
 
 logger = core_logger.get_logger(__name__)
 
@@ -118,7 +118,7 @@ def change_own_password(
     )
 
     server_settings = server_settings_integration.get_server_settings(db)
-    db_user = users_utils.get_user_by_id_or_404(user_id, db)
+    db_user = users_integration.require_user(user_id, db)
     access_type = users_schema.normalize_access_type(db_user.access_type)
     hashed_password = auth_password_policy.validate_and_hash_for_user(
         identity_service,
@@ -127,6 +127,7 @@ def change_own_password(
         new_password,
     )
     identity_service.set_local_password_hash(user_id, hashed_password)
+    db.commit()
     auth_security_stores.clear_pending_mfa_for_user(user_id)
 
     if revoke_other_sessions:
@@ -162,7 +163,7 @@ def change_managed_user_password(
         HTTPException: If password persistence fails.
     """
     server_settings = server_settings_integration.get_server_settings(db)
-    db_user = users_utils.get_user_by_id_or_404(user_id, db)
+    db_user = users_integration.require_user(user_id, db)
     access_type = users_schema.normalize_access_type(db_user.access_type)
     hashed_password = auth_password_policy.validate_and_hash_for_user(
         identity_service,
@@ -171,5 +172,6 @@ def change_managed_user_password(
         new_password,
     )
     identity_service.set_local_password_hash(user_id, hashed_password)
+    db.commit()
     auth_sessions_crud.delete_sessions_by_user(user_id, db)
     auth_security_stores.clear_pending_mfa_for_user(user_id)
