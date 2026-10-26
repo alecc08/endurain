@@ -1,6 +1,6 @@
 """FastAPI router for the consolidated daily health dashboard."""
 
-from fastapi import APIRouter, Request, Security, status
+from fastapi import APIRouter, Request, Security
 
 import core.dependencies as core_dependencies
 import core.rate_limit as core_rate_limit
@@ -14,7 +14,6 @@ router = APIRouter()
 @router.get(
     "/stats/daily",
     response_model=health_dashboard_schema.HealthDashboardResponse,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:read"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.EXPENSIVE_READ)

@@ -336,6 +336,7 @@ router.include_router(
     strava_router.router,
     prefix=core_config.ROOT_PATH + "/strava",
     tags=["strava"],
+    dependencies=[Depends(auth_dependencies.validate_access_token)],
 )
 router.include_router(
     user_default_gear_router.router,

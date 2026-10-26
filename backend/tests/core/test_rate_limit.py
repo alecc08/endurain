@@ -180,9 +180,10 @@ class TestRateLimitExceededHandler:
             rate_limit_exceeded_handler(request, exc)
 
         assert len(mock_log.method_calls) == 1
-        call_args = mock_log.warning.call_args[0]
-        assert "Rate limit exceeded" in call_args[0]
-        assert "10.0.0.1" in call_args[0]
+        assert mock_log.warning.call_args[0] == ("Rate limit exceeded",)
+        fields = mock_log.warning.call_args.kwargs["extra"]
+        assert fields["caller"] == "10.0.0.1"
+        assert (fields["method"], fields["path"]) == ("GET", "/api/v1/test")
 
     def test_header_injection_failure_caught(self):
         from core.rate_limit import rate_limit_exceeded_handler

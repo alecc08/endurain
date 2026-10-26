@@ -85,6 +85,21 @@ class TestRouteConventions:
             offenders
         )
 
+    def test_the_default_200_is_not_repeated(self):
+        """A route answers 200 by default, so ``status_code=200`` only says what FastAPI already does.
+
+        Other codes (201, 202, 204) are the information a ``status_code`` carries; a repeated 200 hides them.
+        """
+        offenders = [
+            f"{path.relative_to(_ROOT).as_posix()}::{function.name}"
+            for path, function in _router_functions()
+            for _, call in _route_decorators(function)
+            for keyword in call.keywords
+            if keyword.arg == "status_code" and ast.unparse(keyword.value) in {"200", "status.HTTP_200_OK"}
+        ]
+
+        assert offenders == [], "Remove the default status_code=200 from:\n  " + "\n  ".join(offenders)
+
     def test_every_write_route_is_rate_limited(self):
         """Reads rely on the global default; a write, upload or sync names its own tier.
 

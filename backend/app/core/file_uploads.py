@@ -223,7 +223,7 @@ async def validate_upload(file: UploadFile, *, kind: UploadKind) -> None:
     try:
         await validator(file)
     except FileSecurityError as err:
-        logger.warning(f"Upload validation failed: kind={kind.value} type={type(err).__name__}", exc_info=err)
+        logger.warning("Upload validation failed", exc_info=err, extra=core_logger.context(kind=kind.value))
         raise _to_domain_error(err) from err
 
 
@@ -409,13 +409,13 @@ async def save_file(
         async with aiofiles.open(file_path, "wb") as save_file:
             await save_file.write(content)
 
-        logger.debug(f"File saved successfully: {file_path}")
+        logger.debug("File saved successfully", extra=core_logger.context(file_name=os.path.basename(file_path)))
 
         return str(file_path)
     except core_exceptions.DomainError:
         raise
     except Exception as err:
-        logger.error(f"Error in save_file: {type(err).__name__}", exc_info=err)
+        logger.error("Error in save_file", exc_info=err)
 
         # Remove the file if it was created
         if file_path and await aiofiles.os.path.exists(file_path):
@@ -584,7 +584,7 @@ async def save_validated_upload(
     except core_exceptions.DomainError:
         raise
     except Exception as err:
-        logger.error(f"Error in save_validated_upload: {type(err).__name__}", exc_info=err)
+        logger.error("Error in save_validated_upload", exc_info=err)
         raise core_exceptions.ProcessingError("Failed to save file") from err
 
 
@@ -671,7 +671,7 @@ def save_validated_upload_sync(
     except core_exceptions.DomainError:
         raise
     except Exception as err:
-        logger.error(f"Error in save_validated_upload_sync: {type(err).__name__}", exc_info=err)
+        logger.error("Error in save_validated_upload_sync", exc_info=err)
         raise core_exceptions.ProcessingError("Failed to save file") from err
 
 
@@ -737,11 +737,19 @@ async def delete_files_by_pattern(directory: str, pattern: str) -> None:
                 if await aiofiles.os.path.exists(file_path):
                     await aiofiles.os.remove(file_path)
 
-                logger.debug(f"File deleted successfully: {file_path}")
+                logger.debug(
+                    "File deleted successfully", extra=core_logger.context(file_name=os.path.basename(file_path))
+                )
             except OSError as err:
-                logger.warning(f"Failed to delete file {file_path}: {err}", exc_info=err)
+                logger.warning(
+                    "Failed to delete a file",
+                    exc_info=err,
+                    extra=core_logger.context(file_name=os.path.basename(file_path)),
+                )
     except Exception as err:
-        logger.error(f"Error deleting files matching pattern {pattern}: {err}", exc_info=err)
+        logger.error(
+            "Error deleting files matching a pattern", exc_info=err, extra=core_logger.context(pattern=pattern)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -810,7 +818,7 @@ async def save_validated_bytes(
     except core_exceptions.DomainError:
         raise
     except Exception as err:
-        logger.error(f"save_validated_bytes failed: {type(err).__name__}", exc_info=err)
+        logger.error("save_validated_bytes failed", exc_info=err)
         raise core_exceptions.ProcessingError("Failed to save file") from err
 
 
@@ -1101,7 +1109,7 @@ async def extract_validated_zip(
     except core_exceptions.DomainError:
         raise
     except (zipfile.BadZipFile, OSError) as err:
-        logger.error(f"extract_validated_zip failed: {type(err).__name__}", exc_info=err)
+        logger.error("extract_validated_zip failed", exc_info=err)
         raise core_exceptions.InvalidInputError("Failed to extract archive") from err
 
     try:
@@ -1117,7 +1125,10 @@ async def extract_validated_zip(
                 except core_exceptions.DomainError:
                     with contextlib.suppress(OSError):
                         staged_entry.unlink(missing_ok=True)
-                    logger.warning(f"extract_validated_zip dropped invalid entry: {final_entry.name}")
+                    logger.warning(
+                        "extract_validated_zip dropped an invalid entry",
+                        extra=core_logger.context(entry=final_entry.name),
+                    )
                     continue
                 kept.append((staged_entry, final_entry))
             extracted = kept
@@ -1131,7 +1142,7 @@ async def extract_validated_zip(
         except core_exceptions.DomainError:
             raise
         except OSError as err:
-            logger.error(f"extract_validated_zip promotion failed: {type(err).__name__}", exc_info=err)
+            logger.error("extract_validated_zip promotion failed", exc_info=err)
             raise core_exceptions.ProcessingError("Failed to promote extracted files") from err
     finally:
         if staging_dir is not None:
@@ -1237,7 +1248,7 @@ def move_within(
     except core_exceptions.DomainError:
         raise
     except (OSError, shutil.Error) as err:
-        logger.error(f"move_within failed: {type(err).__name__}", exc_info=err)
+        logger.error("move_within failed", exc_info=err)
         raise core_exceptions.ProcessingError("Failed to move file") from err
 
 
@@ -1272,7 +1283,7 @@ def safe_remove_within(
     except FileNotFoundError:
         return False
     except OSError as err:
-        logger.warning(f"safe_remove_within failed for {target.name}: {type(err).__name__}", exc_info=err)
+        logger.warning("safe_remove_within failed", exc_info=err, extra=core_logger.context(file_name=target.name))
         return False
 
 
@@ -1318,7 +1329,11 @@ def remove_files(file_paths: Iterable[str | os.PathLike]) -> None:
             if os.path.isfile(file_path):
                 os.remove(file_path)
         except OSError as err:
-            logger.warning(f"Failed to clean up file {os.fspath(file_path)}: {err}", exc_info=err)
+            logger.warning(
+                "Failed to clean up a file",
+                exc_info=err,
+                extra=core_logger.context(file_name=os.path.basename(file_path)),
+            )
 
 
 def decompress_gzip(file_path: str | os.PathLike) -> tuple[str, str]:

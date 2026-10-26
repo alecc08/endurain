@@ -19,7 +19,6 @@ router = APIRouter()
 @router.get(
     "",
     response_model=list[user_goals_schema.UsersGoalRead],
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
 def get_user_goals(
@@ -62,7 +61,6 @@ def get_user_goals(
 @router.get(
     "/results",
     response_model=list[user_goals_schema.UsersGoalProgress],
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.EXPENSIVE_READ)
@@ -113,7 +111,6 @@ def create_user_goal(
 
 @router.put(
     "/{goal_id}",
-    status_code=status.HTTP_200_OK,
     response_model=user_goals_schema.UsersGoalRead,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )

@@ -413,12 +413,10 @@ def run_refresh_job(job_id: str, storage: platform_providers.StorageProvider) ->
 
 # One scheduler replica enqueues the periodic refreshes; the jobs themselves are
 # claimed by any worker.
-_REFRESH_FANOUT_LOCK_NAME = "activity_ingestion_scheduled_refresh"
 _REFRESH_FANOUT_BATCH_SIZE = 200
 
 
 def enqueue_scheduled_refreshes(
-    lock: platform_providers.LockProvider,
     storage: platform_providers.StorageProvider,
 ) -> int:
     """Queue one refresh job per user who has linked a provider.
@@ -433,29 +431,24 @@ def enqueue_scheduled_refreshes(
     default window overlaps the next run, so a skipped user loses nothing.
 
     Args:
-        lock: The platform lock provider.
         storage: The blob-storage provider handed to the in-process fallback.
 
     Returns:
         The number of refresh jobs queued.
     """
     queued = 0
-    with lock.try_acquire(_REFRESH_FANOUT_LOCK_NAME) as acquired:
-        if not acquired:
-            logger.debug("Scheduled refresh: another replica holds the fan-out lock; skipping")
-            return 0
-        seen: set[int] = set()
-        for provider in activity_ingestion_provider_registry.registered():
-            after_id = 0
-            while True:
-                user_ids = provider.linked_user_ids(after_id, _REFRESH_FANOUT_BATCH_SIZE)
-                if not user_ids:
-                    break
-                after_id = user_ids[-1]
-                fresh = [user_id for user_id in user_ids if user_id not in seen]
-                seen.update(fresh)
-                if fresh:
-                    queued += _queue_refresh_batch(fresh, storage)
+    seen: set[int] = set()
+    for provider in activity_ingestion_provider_registry.registered():
+        after_id = 0
+        while True:
+            user_ids = provider.linked_user_ids(after_id, _REFRESH_FANOUT_BATCH_SIZE)
+            if not user_ids:
+                break
+            after_id = user_ids[-1]
+            fresh = [user_id for user_id in user_ids if user_id not in seen]
+            seen.update(fresh)
+            if fresh:
+                queued += _queue_refresh_batch(fresh, storage)
 
     if queued:
         logger.info("Scheduled refresh queued provider syncs", extra=core_logger.context(queued=queued))
@@ -514,12 +507,10 @@ def _dispatch_refresh_jobs(
 
 
 # One scheduler replica releases deferred refreshes; the jobs themselves are claimed by any worker.
-_DEFERRED_REDISPATCH_LOCK_NAME = "activity_ingestion_deferred_refresh"
 _DEFERRED_REDISPATCH_BATCH_SIZE = 200
 
 
 def redispatch_deferred_refreshes(
-    lock: platform_providers.LockProvider,
     storage: platform_providers.StorageProvider,
 ) -> int:
     """Queue again the refreshes whose provider rate limit has cleared.
@@ -531,26 +522,21 @@ def redispatch_deferred_refreshes(
     failed by the stale-job sweep, and the scheduled refresh covers the window again.
 
     Args:
-        lock: The platform lock provider.
         storage: The blob-storage provider handed to the in-process fallback.
 
     Returns:
         The number of refresh jobs queued again.
     """
     released = 0
-    with lock.try_acquire(_DEFERRED_REDISPATCH_LOCK_NAME) as acquired:
-        if not acquired:
-            logger.debug("Deferred refreshes: another replica holds the lock; skipping")
-            return 0
-        while True:
-            with core_database.SessionLocal() as db:
-                jobs = activity_ingestion_crud.release_due_deferred_jobs(_DEFERRED_REDISPATCH_BATCH_SIZE, db)
-                if not jobs:
-                    break
-                _dispatch_refresh_jobs(jobs, storage, db)
-            released += len(jobs)
-            if len(jobs) < _DEFERRED_REDISPATCH_BATCH_SIZE:
+    while True:
+        with core_database.SessionLocal() as db:
+            jobs = activity_ingestion_crud.release_due_deferred_jobs(_DEFERRED_REDISPATCH_BATCH_SIZE, db)
+            if not jobs:
                 break
+            _dispatch_refresh_jobs(jobs, storage, db)
+        released += len(jobs)
+        if len(jobs) < _DEFERRED_REDISPATCH_BATCH_SIZE:
+            break
     if released:
         logger.info("Deferred provider refreshes queued again", extra=core_logger.context(count=released))
     return released
@@ -759,11 +745,9 @@ def fail_ingestion_job(
 
 # Single-runner lock name: the deletes are idempotent, but the lock keeps the
 # work from being duplicated across replicas.
-_PRUNE_LOCK_NAME = "activity_ingestion_jobs_prune"
 
 
 def prune_expired_ingestion_jobs(
-    lock: platform_providers.LockProvider,
     clock: platform_providers.ClockProvider,
 ) -> None:
     """Prune finished upload jobs older than the durable-job retention window.
@@ -782,21 +766,16 @@ def prune_expired_ingestion_jobs(
     poller and the staged blob.
 
     Args:
-        lock: The platform lock provider.
         clock: The platform clock provider.
     """
     retention_days = core_config.settings.JOBS_RETENTION_DAYS
     if retention_days <= 0:
         return
 
-    with lock.try_acquire(_PRUNE_LOCK_NAME) as acquired:
-        if not acquired:
-            logger.debug("Ingestion job prune: another replica holds the lock; skipping")
-            return
-        cutoff = clock.now() - timedelta(days=retention_days)
-        with core_database.SessionLocal() as db:
-            deleted = activity_ingestion_crud.delete_jobs_before(cutoff, db)
-            db.commit()
+    cutoff = clock.now() - timedelta(days=retention_days)
+    with core_database.SessionLocal() as db:
+        deleted = activity_ingestion_crud.delete_jobs_before(cutoff, db)
+        db.commit()
 
     if deleted:
         logger.info(
@@ -813,11 +792,15 @@ def prune_expired_ingestion_jobs(
 # for hours, and a durable job can sit out its retries and backoff. A job that
 # was in fact still queued and runs later overwrites this outcome with its own.
 _STALE_JOB_AGE = timedelta(hours=24)
-_STALE_LOCK_NAME = "activity_ingestion_jobs_fail_stale"
+
+#: Stale jobs failed per transaction, so one pass over a long backlog never holds them all at once.
+_STALE_JOB_BATCH_SIZE = 200
+
+#: Job ids named in the pass's log line; the count says how many there were.
+_STALE_JOB_LOGGED_IDS = 50
 
 
 def fail_stale_ingestion_jobs(
-    lock: platform_providers.LockProvider,
     clock: platform_providers.ClockProvider,
     storage: platform_providers.StorageProvider,
 ) -> None:
@@ -828,33 +811,38 @@ def fail_stale_ingestion_jobs(
     upload would stay in storage.
 
     Args:
-        lock: The platform lock provider.
         clock: The platform clock provider.
         storage: The blob-storage provider the uploads were staged in.
     """
-    with lock.try_acquire(_STALE_LOCK_NAME) as acquired:
-        if not acquired:
-            logger.debug("Stale ingestion jobs: another replica holds the lock; skipping")
-            return
+    failed_count = 0
+    failed_ids: list[str] = []
+    cutoff = clock.now() - _STALE_JOB_AGE
+    while True:
         with core_database.SessionLocal() as db:
             failed = activity_ingestion_crud.fail_jobs_idle_since(
-                clock.now() - _STALE_JOB_AGE,
+                cutoff,
                 activity_ingestion_constants.IngestionJobErrorCode.PROCESSING_FAILED,
+                _STALE_JOB_BATCH_SIZE,
                 db,
             )
             db.commit()
 
-    # After the rows are terminal, matching ``fail_ingestion_job``.
-    for _job_id, staged_key in failed:
-        if staged_key is not None:
-            activity_ingestion_upload_entry_service.discard_staged_upload(staged_key, storage)
+        # After the rows are terminal, matching ``fail_ingestion_job``.
+        for job_id, staged_key in failed:
+            if staged_key is not None:
+                activity_ingestion_upload_entry_service.discard_staged_upload(staged_key, storage)
+            if len(failed_ids) < _STALE_JOB_LOGGED_IDS:
+                failed_ids.append(job_id)
+        failed_count += len(failed)
+        if len(failed) < _STALE_JOB_BATCH_SIZE:
+            break
 
-    if failed:
+    if failed_count:
         logger.warning(
             "Failed ingestion jobs that stopped progressing",
             extra=core_logger.context(
-                failed=len(failed),
-                job_ids=[job_id for job_id, _ in failed],
+                failed=failed_count,
+                job_ids=failed_ids,
                 idle_hours=_STALE_JOB_AGE.total_seconds() / 3600,
             ),
         )
@@ -868,7 +856,6 @@ def fail_stale_ingestion_jobs(
 # a day.
 _STAGED_UPLOAD_MIN_AGE = timedelta(days=2)
 _STAGED_BLOB_BATCH_SIZE = 500
-_STAGED_SWEEP_LOCK_NAME = "activity_ingestion_staged_blob_sweep"
 
 
 def _aged_keys(storage: platform_providers.StorageProvider, area: str, prefix: str, older_than: float) -> Iterator[str]:
@@ -886,7 +873,6 @@ def _aged_keys(storage: platform_providers.StorageProvider, area: str, prefix: s
 
 
 def sweep_stale_staged_blobs(
-    lock: platform_providers.LockProvider,
     clock: platform_providers.ClockProvider,
     storage: platform_providers.StorageProvider,
 ) -> int:
@@ -896,7 +882,6 @@ def sweep_stale_staged_blobs(
     outcome and deleting it, or a failed delete, leaves one that no row names.
 
     Args:
-        lock: The platform lock provider.
         clock: The platform clock provider.
         storage: The blob-storage provider.
 
@@ -904,22 +889,18 @@ def sweep_stale_staged_blobs(
         The number of blobs deleted.
     """
     removed = 0
-    with lock.try_acquire(_STAGED_SWEEP_LOCK_NAME) as acquired:
-        if not acquired:
-            logger.debug("Staged blob sweep: another replica holds the lock; skipping")
-            return 0
-        prefix = activity_ingestion_upload_entry_service.UPLOAD_STAGING_KEY_PREFIX
-        area = activity_ingestion_upload_entry_service.UPLOAD_STAGING_STORAGE_AREA
-        upload_keys = _aged_keys(storage, area, prefix, (clock.now() - _STAGED_UPLOAD_MIN_AGE).timestamp())
-        with core_database.SessionLocal() as db:
-            for batch in batched(upload_keys, _STAGED_BLOB_BATCH_SIZE, strict=False):
-                referenced = activity_ingestion_crud.get_referenced_staged_keys(
-                    [key.removeprefix(prefix) for key in batch], db
-                )
-                for key in batch:
-                    if key.removeprefix(prefix) not in referenced:
-                        storage.delete(area, key)
-                        removed += 1
+    prefix = activity_ingestion_upload_entry_service.UPLOAD_STAGING_KEY_PREFIX
+    area = activity_ingestion_upload_entry_service.UPLOAD_STAGING_STORAGE_AREA
+    upload_keys = _aged_keys(storage, area, prefix, (clock.now() - _STAGED_UPLOAD_MIN_AGE).timestamp())
+    with core_database.SessionLocal() as db:
+        for batch in batched(upload_keys, _STAGED_BLOB_BATCH_SIZE, strict=False):
+            referenced = activity_ingestion_crud.get_referenced_staged_keys(
+                [key.removeprefix(prefix) for key in batch], db
+            )
+            for key in batch:
+                if key.removeprefix(prefix) not in referenced:
+                    storage.delete(area, key)
+                    removed += 1
 
     if removed:
         logger.info("Removed stale staged ingestion blobs", extra=core_logger.context(removed=removed))

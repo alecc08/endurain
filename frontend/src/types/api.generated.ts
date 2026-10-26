@@ -1733,6 +1733,7 @@ export interface paths {
          * @description Retrieve the user's health dashboard for today.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         token_user_id: The ID of the authenticated user extracted from the
          *             access token.
          *         db: Database session for executing queries.
@@ -2487,6 +2488,7 @@ export interface paths {
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
+         *         response: The response, which carries the user's new ETag.
          *         user_attributtes: Allow-listed profile updates.
          *         token_user_id: User ID from access token.
          *         db: Database session.
@@ -2864,6 +2866,7 @@ export interface paths {
          * @description Calculate and retrieve goal progress for authenticated user.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         token_user_id: User ID from access token.
          *         db: Database session dependency.
          *
@@ -3532,6 +3535,7 @@ export interface paths {
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
+         *         response: The response, which carries the settings' new ETag.
          *         user_privacy_settings: New privacy settings.
          *         token_user_id: User ID from access token.
          *         db: Database session.
@@ -3937,7 +3941,7 @@ export interface paths {
          * @description Get public server settings (unauthenticated).
          *
          *     Protection Mechanisms:
-         *     - Rate limiting: the application's default per-IP limit applies.
+         *     - Rate limiting: the PUBLIC_READ per-IP limit applies.
          *
          *     Returns only the public subset of server configuration
          *     (sensitive signup approval/verification settings excluded).
@@ -4003,7 +4007,7 @@ export interface paths {
          * @description Retrieve available tile map templates for server settings (unauthenticated).
          *
          *     Protection Mechanisms:
-         *     - Rate limiting: the application's default per-IP limit applies.
+         *     - Rate limiting: the PUBLIC_READ per-IP limit applies.
          *
          *     This endpoint returns a list of all available tile map templates that can be
          *     used for configuring map display options in server settings.
@@ -4032,6 +4036,7 @@ export interface paths {
          * @description Get public user info by ID.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: The user ID to retrieve.
          *         db: Database session dependency.
          *
@@ -4579,7 +4584,7 @@ export interface paths {
         put?: never;
         /**
          * Import Bikes From Strava Export
-         * @description Create the bikes listed in an uploaded Strava ``bikes.csv``.
+         * @description Create the bikes listed in an uploaded Strava ``bikes.csv`` and report how many.
          */
         post: operations["import_bikes_from_strava_export_api_v1_strava_import_bikes_post"];
         delete?: never;
@@ -4599,7 +4604,7 @@ export interface paths {
         put?: never;
         /**
          * Import Shoes From Strava Export
-         * @description Create the shoes listed in an uploaded Strava ``shoes.csv``.
+         * @description Create the shoes listed in an uploaded Strava ``shoes.csv`` and report how many.
          */
         post: operations["import_shoes_from_strava_export_api_v1_strava_import_shoes_post"];
         delete?: never;
@@ -5102,6 +5107,7 @@ export interface paths {
          * @description Serve a user's profile photo when the signed token is valid.
          *
          *     Args:
+         *         request: The incoming request, read by the rate limiter.
          *         user_id: The user whose photo to serve.
          *         storage: The platform storage provider.
          *         db: Database session dependency.
@@ -10353,6 +10359,17 @@ export interface components {
         StravaDetail: {
             /** Detail */
             detail: string;
+        };
+        /**
+         * StravaGearImportResult
+         * @description What a Strava gear CSV import created.
+         *
+         *     Attributes:
+         *         imported: How many gear entries the upload produced.
+         */
+        StravaGearImportResult: {
+            /** Imported */
+            imported: number;
         };
         /**
          * StravaLinkRequest
@@ -19455,7 +19472,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["StravaGearImportResult"];
                 };
             };
             /** @description Validation Error */
@@ -19497,7 +19514,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["StravaGearImportResult"];
                 };
             };
             /** @description Validation Error */

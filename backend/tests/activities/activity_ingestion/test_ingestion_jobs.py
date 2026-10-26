@@ -330,9 +330,8 @@ class TestFailUploadJob:
 
 
 class TestPruneExpiredUploadJobs:
-    def _platform(self, acquired: bool = True) -> MagicMock:
+    def _platform(self) -> MagicMock:
         platform = MagicMock()
-        platform.lock.try_acquire.return_value.__enter__.return_value = acquired
         platform.clock.now.return_value = datetime(2026, 7, 28, tzinfo=UTC)
         return platform
 
@@ -344,37 +343,52 @@ class TestPruneExpiredUploadJobs:
         ):
             platform = self._platform()
             session_local.return_value.__enter__.return_value = MagicMock()
-            ingestion_jobs.prune_expired_ingestion_jobs(platform.lock, platform.clock)
+            ingestion_jobs.prune_expired_ingestion_jobs(platform.clock)
 
         # The cutoff is the window applied to the platform clock, not wall time.
         assert delete.call_args.args[0] == datetime(2026, 4, 29, tzinfo=UTC)
 
     def test_is_inert_when_retention_is_disabled(self):
         platform = self._platform()
-        with patch.object(ingestion_jobs.core_config.settings, "JOBS_RETENTION_DAYS", 0):
-            ingestion_jobs.prune_expired_ingestion_jobs(platform.lock, platform.clock)
-
-        platform.lock.try_acquire.assert_not_called()
-
-    def test_skips_when_another_replica_holds_the_lock(self):
-        platform = self._platform(acquired=False)
         with (
-            patch.object(ingestion_jobs.core_config.settings, "JOBS_RETENTION_DAYS", 90),
-            patch.object(ingestion_jobs.activity_ingestion_crud, "delete_jobs_before") as delete,
+            patch.object(ingestion_jobs.core_config.settings, "JOBS_RETENTION_DAYS", 0),
+            patch.object(ingestion_jobs.core_database, "SessionLocal") as session_local,
         ):
-            ingestion_jobs.prune_expired_ingestion_jobs(platform.lock, platform.clock)
+            ingestion_jobs.prune_expired_ingestion_jobs(platform.clock)
 
-        delete.assert_not_called()
+        session_local.assert_not_called()
 
 
 class TestFailStaleIngestionJobs:
-    def test_skips_when_another_replica_holds_the_lock(self):
+    def test_a_backlog_larger_than_one_batch_is_failed_a_batch_per_transaction(self):
+        batch = ingestion_jobs._STALE_JOB_BATCH_SIZE
+        full = [(f"job-{i}", None) for i in range(batch)]
+        last = [("job-last", "staged.gpx")]
         platform = MagicMock()
-        platform.lock.try_acquire.return_value.__enter__.return_value = False
-        with patch.object(ingestion_jobs.activity_ingestion_crud, "fail_jobs_idle_since") as fail:
-            ingestion_jobs.fail_stale_ingestion_jobs(platform.lock, platform.clock, platform.storage)
+        sessions = MagicMock()
+        with (
+            patch.object(ingestion_jobs.core_database, "SessionLocal", sessions),
+            patch.object(
+                ingestion_jobs.activity_ingestion_crud, "fail_jobs_idle_since", side_effect=[full, last]
+            ) as fail,
+            patch.object(ingestion_jobs.activity_ingestion_upload_entry_service, "discard_staged_upload") as discard,
+        ):
+            ingestion_jobs.fail_stale_ingestion_jobs(platform.clock, platform.storage)
 
-        fail.assert_not_called()
+        assert fail.call_count == 2
+        assert all(call.args[2] == batch for call in fail.call_args_list)
+        assert sessions.return_value.__enter__.return_value.commit.call_count == 2
+        discard.assert_called_once_with("staged.gpx", platform.storage)
+
+    def test_a_single_short_batch_ends_the_pass(self):
+        platform = MagicMock()
+        with (
+            patch.object(ingestion_jobs.core_database, "SessionLocal"),
+            patch.object(ingestion_jobs.activity_ingestion_crud, "fail_jobs_idle_since", return_value=[]) as fail,
+        ):
+            ingestion_jobs.fail_stale_ingestion_jobs(platform.clock, platform.storage)
+
+        fail.assert_called_once()
 
     def test_runs_on_the_schedule(self):
         import modules.activities.activity_ingestion.scheduled_jobs as scheduled_jobs

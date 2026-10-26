@@ -51,7 +51,9 @@ def _reencode_to_webp(source: Path) -> bytes | None:
             resized.save(buffer, "WEBP", quality=_WEBP_QUALITY, method=_WEBP_METHOD)
             return buffer.getvalue()
     except (OSError, ValueError) as err:
-        logger.warning(f"Migration 8 - could not re-encode {source}: {err}")
+        logger.warning(
+            "Migration 8 - could not re-encode a file", exc_info=err, extra=core_logger.context(source=str(source))
+        )
         return None
 
 

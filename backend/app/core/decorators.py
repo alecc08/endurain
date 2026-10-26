@@ -48,7 +48,7 @@ def _rollback_session(func_name: str, db_session: Session | None) -> None:
         try:
             db_session.rollback()
         except Exception as rollback_err:
-            logger.error(f"Rollback failed in {func_name}: {type(rollback_err).__name__}", exc_info=rollback_err)
+            logger.error("Rollback failed", exc_info=rollback_err, extra=core_logger.context(function=func_name))
 
 
 def _handle_db_error(db_err: SQLAlchemyError, func_name: str, db_session: Session | None) -> NoReturn:
@@ -74,7 +74,7 @@ def _handle_db_error(db_err: SQLAlchemyError, func_name: str, db_session: Sessio
     # Log only the exception class name — SQLAlchemy error strings
     # frequently embed the offending SQL statement and parameter values,
     # which can leak PII / credentials into logs (OWASP A09).
-    logger.error(f"Database error in {func_name}: {type(db_err).__name__}", exc_info=db_err)
+    logger.error("Database error", exc_info=db_err, extra=core_logger.context(function=func_name))
 
     raise core_exceptions.ProcessingError("Database error occurred") from db_err
 

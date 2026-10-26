@@ -110,3 +110,51 @@ class TestRuntimeModuleRegistry:
         registry = _register_durable_handlers()
         for subscriber_id in registry.subscriber_ids():
             assert registry.get(subscriber_id) is not None
+
+
+class TestConfigureApplication:
+    """The API and the standalone worker install the same seams through one call."""
+
+    def test_installs_contributors_erasers_and_providers_together(self):
+        from unittest.mock import patch
+
+        with (
+            patch.object(runtime_module_registry, "configure_activity_contributors") as activity,
+            patch.object(runtime_module_registry, "configure_gear_contributors") as gear,
+            patch.object(runtime_module_registry, "configure_user_contributors") as users,
+            patch.object(runtime_module_registry.strava_integration, "register_activity_provider") as strava,
+            patch.object(runtime_module_registry.garmin_integration, "register_activity_provider") as garmin,
+        ):
+            runtime_module_registry.configure_application()
+
+        for installed in (activity, gear, users, strava, garmin):
+            installed.assert_called_once_with()
+
+
+class TestDeferredSubscriptions:
+    """The in-process facade is a full event bus, so a module's registration needs no cast."""
+
+    def test_publish_start_and_stop_reach_the_wrapped_bus(self):
+        bus = MagicMock()
+        facade = runtime_module_registry._DeferredSubscriptions(bus)
+        event = MagicMock()
+
+        facade.publish(event)
+        facade.start()
+        facade.stop()
+
+        bus.publish.assert_called_once_with(event)
+        bus.start.assert_called_once_with()
+        bus.stop.assert_called_once_with()
+
+    def test_a_subscriber_is_handed_to_the_bus_under_its_own_name(self):
+        bus = MagicMock()
+
+        def handler(event):
+            return None
+
+        runtime_module_registry._DeferredSubscriptions(bus).subscribe("x.y", handler)
+
+        event_type, deferred = bus.subscribe.call_args.args
+        assert event_type == "x.y"
+        assert deferred.__name__ == "handler"

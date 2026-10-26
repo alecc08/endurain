@@ -511,6 +511,55 @@ def get_user_activities_per_timeframe(
     )
 
 
+def sum_user_activities_per_timeframe_and_activity_types(
+    user_id: int,
+    activity_types: list[int],
+    start: datetime,
+    end: datetime,
+    db: Session,
+    *,
+    exclude_hidden: bool = False,
+) -> activity_contracts.ActivityTotals:
+    """Add up a user's own activities within a date range by types, in the database.
+
+    Matches the same activities as :func:`get_user_activities_per_timeframe_and_activity_types`
+    for an owner, without loading them.
+
+    Args:
+        user_id: Owner user ID.
+        activity_types: Activity types to include.
+        start: Inclusive start datetime.
+        end: Inclusive end datetime.
+        db: Database session.
+        exclude_hidden: When True, hidden activities are excluded.
+
+    Returns:
+        The count and the sums; all zero when nothing matches.
+    """
+    activity = activity_models.Activity
+    stmt = select(
+        func.count(),
+        func.coalesce(func.sum(activity.calories), 0),
+        func.coalesce(func.sum(activity.distance), 0),
+        func.coalesce(func.sum(activity.elevation_gain), 0),
+        func.coalesce(func.sum(activity.total_elapsed_time), 0),
+    ).where(
+        activity.user_id == user_id,
+        activity.activity_type.in_(activity_types),
+        *activity_query.local_date_range_conditions(start.date(), end.date(), end_exclusive=False),
+    )
+    if exclude_hidden:
+        stmt = stmt.where(activity.is_hidden.is_(False))
+    count, calories, distance, elevation_gain, elapsed_time = db.execute(stmt).one()
+    return activity_contracts.ActivityTotals(
+        count=count,
+        calories=float(calories),
+        distance=float(distance),
+        elevation_gain=float(elevation_gain),
+        elapsed_time=float(elapsed_time),
+    )
+
+
 def get_user_activities_per_timeframe_and_activity_types(
     user_id: int,
     activity_types: list[int],

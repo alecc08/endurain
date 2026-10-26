@@ -26,8 +26,6 @@ import core.logger as core_logger
 import core.platform_settings as core_platform_settings
 import model_registry as orm_model_registry
 import module_registry as runtime_module_registry
-import modules.garmin.integration_service as garmin_integration
-import modules.strava.integration_service as strava_integration
 
 logger = core_logger.get_logger(__name__)
 
@@ -36,7 +34,7 @@ def _install_signal_handlers(stop: threading.Event) -> None:
     """Set the stop event on SIGTERM/SIGINT for graceful shutdown."""
 
     def _handle(signum: int, _frame: FrameType | None) -> None:
-        logger.info(f"Worker received signal {signum}; shutting down", extra=core_logger.context(console=True))
+        logger.info("Worker received a signal; shutting down", extra=core_logger.context(console=True, signal=signum))
         stop.set()
 
     signal.signal(signal.SIGTERM, _handle)
@@ -53,7 +51,10 @@ def run_worker_process(stop: threading.Event | None = None) -> None:
     Returns:
         None.
     """
-    logger.info(f"Durable job worker starting - {core_config.API_VERSION}", extra=core_logger.context(console=True))
+    logger.info(
+        "Durable job worker starting",
+        extra=core_logger.context(console=True, version=core_config.API_VERSION),
+    )
     if not core_config.settings.JOBS_ENABLED:
         logger.info(
             "JOBS_ENABLED is false; the worker has nothing to do. Exiting.", extra=core_logger.context(console=True)
@@ -76,15 +77,8 @@ def run_worker_process(stop: threading.Event | None = None) -> None:
     # as main.startup_event (app module_registry) so the two entrypoints
     # cannot drift — a handler registered in one but not the other would leave its
     # jobs unresolvable (and dead-lettered) on a dedicated worker.
-    runtime_module_registry.configure_activity_contributors()
-    runtime_module_registry.configure_gear_contributors()
-    runtime_module_registry.configure_user_contributors()
+    runtime_module_registry.configure_application()
     runtime_module_registry.register_durable_handlers(jobs_registry.registry)
-    # Same reason, for the refresh job: it pulls from whichever providers are
-    # registered, and a provider registered in the API but not here would make a
-    # refresh claimed by this worker silently return nothing.
-    strava_integration.register_activity_provider()
-    garmin_integration.register_activity_provider()
     stop = stop or threading.Event()
     _install_signal_handlers(stop)
     try:

@@ -133,7 +133,7 @@ class TestSetActivitiesGear:
         activities = [SimpleNamespace(id=10, strava_gear_id="a"), SimpleNamespace(id=11, strava_gear_id=None)]
         gears = [SimpleNamespace(id=5, strava_gear_id="a")]
         with (
-            patch.object(gear_utils.activity_integration, "list_user_activities", return_value=activities),
+            patch.object(gear_utils.activity_integration, "list_user_activities_page", side_effect=[activities, []]),
             patch.object(gear_utils.gears_integration, "get_gear_user", return_value=gears),
             patch.object(gear_utils.activity_integration, "bulk_set_activities_gear") as bulk,
         ):
@@ -143,10 +143,45 @@ class TestSetActivitiesGear:
         bulk.assert_called_once_with(7, {10: 5}, db)
         db.commit.assert_not_called()
 
-    def test_a_user_without_gear_is_left_alone(self):
+    def test_a_long_history_is_read_a_page_at_a_time_and_every_page_is_matched(self):
+        size = gear_utils._ACTIVITY_PAGE_SIZE
+        first = [SimpleNamespace(id=i, strava_gear_id="a") for i in range(size)]
+        second = [SimpleNamespace(id=size, strava_gear_id="a")]
+        gears = [SimpleNamespace(id=5, strava_gear_id="a")]
         with (
-            patch.object(gear_utils.activity_integration, "list_user_activities", return_value=[object()]),
+            patch.object(
+                gear_utils.activity_integration, "list_user_activities_page", side_effect=[first, second]
+            ) as listing,
+            patch.object(gear_utils.gears_integration, "get_gear_user", return_value=gears),
+            patch.object(gear_utils.activity_integration, "bulk_set_activities_gear") as bulk,
+        ):
+            assigned = gear_utils.set_activities_gear(7, MagicMock())
+
+        assert assigned == size + 1
+        assert [c.kwargs["page_number"] for c in listing.call_args_list] == [1, 2]
+        assert all(c.kwargs["num_records"] == size for c in listing.call_args_list)
+        assert len(bulk.call_args.args[1]) == size + 1
+
+    def test_a_user_without_gear_reads_no_activities(self):
+        with (
+            patch.object(gear_utils.activity_integration, "list_user_activities_page") as listing,
             patch.object(gear_utils.gears_integration, "get_gear_user", return_value=[]),
+            patch.object(gear_utils.activity_integration, "bulk_set_activities_gear") as bulk,
+        ):
+            assert gear_utils.set_activities_gear(7, MagicMock()) == 0
+
+        listing.assert_not_called()
+        bulk.assert_not_called()
+
+    def test_no_matching_activity_writes_nothing(self):
+        gears = [SimpleNamespace(id=5, strava_gear_id="a")]
+        with (
+            patch.object(
+                gear_utils.activity_integration,
+                "list_user_activities_page",
+                side_effect=[[SimpleNamespace(id=1, strava_gear_id="zzz")]],
+            ),
+            patch.object(gear_utils.gears_integration, "get_gear_user", return_value=gears),
             patch.object(gear_utils.activity_integration, "bulk_set_activities_gear") as bulk,
         ):
             assert gear_utils.set_activities_gear(7, MagicMock()) == 0

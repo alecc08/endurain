@@ -67,6 +67,10 @@ def _call_strava(call, description: str, client_id: str, user_id: int, user_inte
     return result
 
 
+#: Activities read per page when matching a user's history to their gear.
+_ACTIVITY_PAGE_SIZE = 200
+
+
 def match_gear_for_activity(
     activity: activity_schema.ActivityRead,
     gears: list[gears_schema.GearRead],
@@ -90,19 +94,25 @@ def set_activities_gear(user_id: int, db: Session) -> int:
     Returns:
         The number of activities that were given gear.
     """
-    activities = activity_integration.list_user_activities(user_id, db)
-    if not activities:
-        return 0
-
     gears = gears_integration.get_gear_user(user_id, db)
     if not gears:
         return 0
 
+    # A page at a time, so a long history is never held in memory; only the matched ids are kept.
     gear_assignments: dict[int, int | None] = {}
-    for activity in activities:
-        matched_gear_id = match_gear_for_activity(activity, gears)
-        if matched_gear_id is not None:
-            gear_assignments[activity.id] = matched_gear_id
+    page_number = 1
+    while page := activity_integration.list_user_activities_page(
+        user_id, db, page_number=page_number, num_records=_ACTIVITY_PAGE_SIZE
+    ):
+        for activity in page:
+            matched_gear_id = match_gear_for_activity(activity, gears)
+            if matched_gear_id is not None:
+                gear_assignments[activity.id] = matched_gear_id
+        if len(page) < _ACTIVITY_PAGE_SIZE:
+            break
+        page_number += 1
+    if not gear_assignments:
+        return 0
 
     activity_integration.bulk_set_activities_gear(user_id, gear_assignments, db)
     logger.debug("Strava activities gear set", extra=core_logger.context(user_id=user_id, count=len(gear_assignments)))

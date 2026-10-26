@@ -60,19 +60,6 @@ def get_activity_by_garminconnect_id(
     return activity_crud.get_activity_by_garminconnect_id_from_user_id(garminconnect_activity_id, user_id, db)
 
 
-def list_user_activities(user_id: int, db: Session) -> list[activity_schema.ActivityRead]:
-    """Return all of a user's activities (used by provider gear reconciliation).
-
-    Args:
-        user_id: The owning user id.
-        db: Database session.
-
-    Returns:
-        The user's activities (empty when they have none).
-    """
-    return activity_crud.get_user_activities(user_id, db, user_is_owner=True)
-
-
 def list_user_activities_with_garminconnect_gear(
     user_id: int,
     db: Session,
@@ -201,7 +188,7 @@ def list_user_activities_page(
     )
 
 
-def list_user_activities_in_timeframe_by_types(
+def total_user_activities_in_timeframe_by_types(
     user_id: int,
     activity_types: list[int],
     start: datetime,
@@ -209,11 +196,12 @@ def list_user_activities_in_timeframe_by_types(
     db: Session,
     *,
     exclude_hidden: bool = True,
-) -> list[activity_schema.ActivityRead]:
-    """Return a user's own activities of the given types within a window.
+) -> activity_contracts.ActivityTotals:
+    """Add up a user's own activities of the given types within a window.
 
     Used by goal progress. Hidden activities are excluded by default so a
     duplicate import from a second source cannot count twice towards a goal.
+    The database does the summing, so the cost does not grow with the activities.
 
     Args:
         user_id: The owning user id.
@@ -224,15 +212,14 @@ def list_user_activities_in_timeframe_by_types(
         exclude_hidden: Whether to skip activities marked hidden.
 
     Returns:
-        The matching activities, empty when there are none.
+        The count and the sums; all zero when there are none.
     """
-    return activity_crud.get_user_activities_per_timeframe_and_activity_types(
+    return activity_crud.sum_user_activities_per_timeframe_and_activity_types(
         user_id,
         activity_types,
         start,
         end,
         db,
-        user_is_owner=True,
         exclude_hidden=exclude_hidden,
     )
 

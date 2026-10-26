@@ -23,7 +23,6 @@ router = APIRouter()
 
 @router.get(
     "",
-    status_code=status.HTTP_200_OK,
     response_model=core_pagination.Page[users_schema.UsersRead],
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read_all"])],
 )
@@ -91,7 +90,6 @@ def read_users_all_pagination(
 
 @router.get(
     "/username/contains/{username}",
-    status_code=status.HTTP_200_OK,
     response_model=list[users_schema.UserPublicRead],
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read"])],
 )
@@ -113,7 +111,6 @@ def read_users_contain_username(
 
 @router.get(
     "/username/{username}",
-    status_code=status.HTTP_200_OK,
     response_model=users_schema.UsersRead,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read_all"])],
 )
@@ -142,7 +139,6 @@ def read_users_username(
 
 @router.get(
     "/email/{email}",
-    status_code=status.HTTP_200_OK,
     response_model=users_schema.UsersRead,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read_all"])],
 )
@@ -171,7 +167,6 @@ def read_users_email(
 
 @router.get(
     "/id/{user_id}",
-    status_code=status.HTTP_200_OK,
     response_model=users_schema.UserPublicRead,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read"])],
 )
@@ -196,7 +191,6 @@ def read_users_id(
 
 @router.get(
     "/{user_id}",
-    status_code=status.HTTP_200_OK,
     response_model=users_schema.UsersRead,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read_all"])],
 )
@@ -285,7 +279,6 @@ def upload_user_image(
 
 @router.put(
     "/{user_id}",
-    status_code=status.HTTP_200_OK,
     response_model=users_schema.UsersRead,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:write"])],
 )
@@ -452,7 +445,6 @@ def delete_user(
 
 @router.get(
     "/{user_id}/deletion",
-    status_code=status.HTTP_200_OK,
     response_model=users_schema.UserDeletionStatus,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read_all"])],
 )
@@ -477,7 +469,6 @@ def read_user_deletion_status(
 
 @router.get(
     "/{user_id}/identity-providers",
-    status_code=status.HTTP_200_OK,
     response_model=list[auth_identity_links_schema.UsersIdentityProviderResponse],
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read_all"])],
 )

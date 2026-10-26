@@ -1,6 +1,6 @@
 """Public user router for unauthenticated user info access."""
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Request
 
 import core.dependencies as core_dependencies
 import core.rate_limit as core_rate_limit
@@ -13,7 +13,6 @@ router = APIRouter()
 
 @router.get(
     "/id/{user_id}",
-    status_code=status.HTTP_200_OK,
     response_model=users_schema.UserPublicRead,
 )
 @core_rate_limit.limiter.limit(core_rate_limit.PUBLIC_READ)

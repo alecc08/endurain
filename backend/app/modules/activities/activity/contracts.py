@@ -30,6 +30,27 @@ import modules.activities.activity.schema as activity_schema
 
 
 @dataclass(frozen=True)
+class ActivityTotals:
+    """What a set of activities adds up to.
+
+    Summed by the database, so a reader that only needs totals (goal progress) never loads the rows.
+
+    Attributes:
+        count: How many activities matched.
+        calories: Sum of their calories; activities without a value count as zero.
+        distance: Sum of their distance, in meters.
+        elevation_gain: Sum of their elevation gain, in meters.
+        elapsed_time: Sum of their elapsed time, in seconds.
+    """
+
+    count: int = 0
+    calories: float = 0
+    distance: float = 0
+    elevation_gain: float = 0
+    elapsed_time: float = 0
+
+
+@dataclass(frozen=True)
 class ActivityThumbnailRef:
     """Lightweight activity reference for thumbnail maintenance.
 

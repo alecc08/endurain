@@ -393,7 +393,8 @@ class TestEditUser:
 
     @patch("modules.users.users_profile.router.users_integration.edit_profile")
     def test_success(self, mock_edit, profile_client):
-        """Happy path: update profile."""
+        """Happy path: update profile, answering with the version the edit produced."""
+        mock_edit.return_value = MagicMock(version=3)
         response = profile_client.patch(
             PREFIX,
             json={"name": "Updated Name"},
@@ -401,6 +402,7 @@ class TestEditUser:
         )
 
         assert response.status_code == 204
+        assert response.headers["ETag"] == '"3"'
         mock_edit.assert_called_once()
 
 
@@ -452,7 +454,8 @@ class TestEditProfilePrivacySettings:
 
     @patch("modules.users.users_profile.service.users_privacy_settings_integration.edit_privacy_settings")
     def test_success(self, mock_edit, profile_client):
-        """Happy path: update privacy settings."""
+        """Happy path: update privacy settings, answering with the version the edit produced."""
+        mock_edit.return_value = MagicMock(version=5)
         response = profile_client.patch(
             PREFIX + "/privacy",
             json={"default_activity_visibility": "followers"},
@@ -460,6 +463,7 @@ class TestEditProfilePrivacySettings:
         )
 
         assert response.status_code == 204
+        assert response.headers["ETag"] == '"5"'
 
 
 # ===================================================================

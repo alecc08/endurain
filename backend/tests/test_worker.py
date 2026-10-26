@@ -42,14 +42,10 @@ class TestRunWorkerProcess:
         # Every activity durable handler must be registered via the shared surface
         # so the worker can resolve any claimed job — the SAME call main.startup_event
         # makes, so the two entrypoints cannot drift.
-        module_registry.configure_activity_contributors.assert_called_once_with()
+        module_registry.configure_application.assert_called_once_with()
         module_registry.register_durable_handlers.assert_called_once_with(jobs_registry.registry)
-        module_registry.configure_gear_contributors.assert_called_once_with()
-        module_registry.configure_user_contributors.assert_called_once_with()
-        assert module_registry.method_calls[1:5] == [
-            call.configure_activity_contributors(),
-            call.configure_gear_contributors(),
-            call.configure_user_contributors(),
+        assert module_registry.method_calls[1:3] == [
+            call.configure_application(),
             call.register_durable_handlers(jobs_registry.registry),
         ]
         install_signals.assert_called_once_with(stop)

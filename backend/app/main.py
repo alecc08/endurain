@@ -75,7 +75,7 @@ def _safe_run[T, **P](
     try:
         return func(*args, **kwargs)
     except Exception as err:
-        logger.error(f"Startup task '{label}' failed: {type(err).__name__}", exc_info=err)
+        logger.error("Startup task failed", exc_info=err, extra=core_logger.context(task=label))
         return None
 
 
@@ -89,7 +89,7 @@ async def _safe_run_async[T, **P](
     try:
         return await coro_func(*args, **kwargs)
     except Exception as err:
-        logger.error(f"Startup task '{label}' failed: {type(err).__name__}", exc_info=err)
+        logger.error("Startup task failed", exc_info=err, extra=core_logger.context(task=label))
         return None
 
 
@@ -126,9 +126,9 @@ def _init_allowed_tile_domains(fastapi_app: FastAPI) -> None:
     try:
         fastapi_app.state.allowed_tile_domains = _read_allowed_tile_domains()
         allowed_tile_domains = fastapi_app.state.allowed_tile_domains
-        logger.info(f"Allowed tile domains: {allowed_tile_domains}", extra=core_logger.context(console=True))
+        logger.info("Allowed tile domains", extra=core_logger.context(console=True, domains=allowed_tile_domains))
     except Exception as err:
-        logger.error(f"Error initializing tile domains, using defaults: {type(err).__name__}", exc_info=err)
+        logger.error("Error initializing tile domains, using defaults", exc_info=err)
         # Fallback to built-in providers so CSP
         # remains restrictive but functional.
         fastapi_app.state.allowed_tile_domains = server_settings_constants.DEFAULT_ALLOWED_TILE_DOMAINS.copy()
@@ -163,7 +163,7 @@ async def startup_event(fastapi_app: FastAPI) -> None:
     failure cannot prevent the backend from serving
     requests.
     """
-    logger.info(f"Backend startup event - {core_config.API_VERSION}", extra=core_logger.context(console=True))
+    logger.info("Backend startup event", extra=core_logger.context(console=True, version=core_config.API_VERSION))
 
     # Install the host's configuration and correlation source before anything
     # reads them. The substrate logs its own capability report as it builds.
@@ -193,15 +193,9 @@ async def startup_event(fastapi_app: FastAPI) -> None:
     # jobs are off, retryable per-subscriber when on). Each durable subscriber that
     # writes durable derived state declares a reconciliation net (scheduled backfill)
     # in that module.
-    runtime_module_registry.configure_activity_contributors()
-    runtime_module_registry.configure_gear_contributors()
-    runtime_module_registry.configure_user_contributors()
+    runtime_module_registry.configure_application()
     runtime_module_registry.register_bus_subscribers(platform.events)
     runtime_module_registry.register_durable_handlers(jobs_registry.registry)
-    # Providers register themselves with ingestion; ingestion imports none of
-    # them. Must also happen in worker.py, where refresh jobs are claimed.
-    strava_integration.register_activity_provider()
-    garmin_integration.register_activity_provider()
 
     # Phase 1: critical pre-flight tasks. Every migration step runs under one lock, and
     # nothing consumes events or hints until the schema is current.

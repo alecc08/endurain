@@ -125,7 +125,7 @@ def process_migration_2(db: Session) -> None:
                 data_to_update = health_weight_schema.HealthWeightUpdate.model_validate(data)
                 health_weight_migration.edit_health_weight(data.user_id, data.id, data_to_update, db)
 
-                logger.info(f"Migration 2 - Processed BMI: {data.id}", extra=core_logger.context(console=True))
+                logger.info("Migration 2 - Processed BMI", extra=core_logger.context(console=True, record_id=data.id))
 
             except Exception as err:
                 health_weight_processed_with_no_errors = False

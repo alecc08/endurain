@@ -182,7 +182,10 @@ def rate_limit_exceeded_handler(
         JSON response with 429 status and rate-limit
         headers attached when available.
     """
-    logger.warning(f"Rate limit exceeded: {_get_rate_limit_key(request)} on {request.method} {request.url.path}")
+    logger.warning(
+        "Rate limit exceeded",
+        extra=core_logger.context(caller=_get_rate_limit_key(request), method=request.method, path=request.url.path),
+    )
     response = core_exceptions.build_problem_response(
         request=request,
         status_code=429,
@@ -201,5 +204,5 @@ def rate_limit_exceeded_handler(
     except Exception as header_err:
         # Headers are informational — never let a missing attribute break the
         # 429 response itself.
-        logger.debug(f"Failed to set rate-limit headers: {header_err}")
+        logger.debug("Failed to set rate-limit headers", exc_info=header_err)
     return response

@@ -876,16 +876,18 @@ def read_secret(
 
             # Security: Validate file path to prevent path traversal
             if not _is_safe_path(file_path):
-                logger.error(f"Unsafe file path detected for {file_env_var}", extra=core_logger.context(console=True))
+                logger.error(
+                    "Unsafe secret file path detected", extra=core_logger.context(console=True, env_var=file_env_var)
+                )
                 raise OSError(f"Unsafe file path for {file_env_var}")
 
             # Check if file exists and is readable
             if not file_path.exists():
-                logger.error(f"Secret file not found for {file_env_var}", extra=core_logger.context(console=True))
+                logger.error("Secret file not found", extra=core_logger.context(console=True, env_var=file_env_var))
                 raise OSError(f"Secret file not found for {file_env_var}")
 
             if not file_path.is_file():
-                logger.error(f"Secret path is not a file for {file_env_var}", extra=core_logger.context(console=True))
+                logger.error("Secret path is not a file", extra=core_logger.context(console=True, env_var=file_env_var))
                 raise OSError(f"Secret path is not a file for {file_env_var}")
 
             # Security: Check file permissions (should not be world-readable)
@@ -897,7 +899,7 @@ def read_secret(
 
             # Security: limit file size to prevent memory exhaustion.
             if file_stat.st_size > 65536:  # 64KB
-                logger.error(f"Secret file too large for {file_env_var}", extra=core_logger.context(console=True))
+                logger.error("Secret file too large", extra=core_logger.context(console=True, env_var=file_env_var))
                 raise OSError(f"Secret file too large for {file_env_var}")
 
             # Read the secret file
@@ -911,7 +913,9 @@ def read_secret(
                     )
                     return content
                 else:
-                    logger.warning(f"Secret file is empty for {file_env_var}", extra=core_logger.context(console=True))
+                    logger.warning(
+                        "Secret file is empty", extra=core_logger.context(console=True, env_var=file_env_var)
+                    )
 
         except (OSError, UnicodeDecodeError) as e:
             # Log error without exposing file path details

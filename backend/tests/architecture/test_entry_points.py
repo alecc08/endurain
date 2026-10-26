@@ -1,4 +1,4 @@
-"""Every process that serves requests or runs jobs installs the same contributor readers."""
+"""Every process that serves requests or runs jobs installs the same contributors and providers."""
 
 import ast
 import pathlib
@@ -7,18 +7,42 @@ import pytest
 
 _APP_ROOT = pathlib.Path(__file__).resolve().parents[2] / "app"
 _ENTRY_POINTS = ("main.py", "worker.py")
-_REQUIRED_CALLS = ("configure_activity_contributors", "configure_gear_contributors", "configure_user_contributors")
+_SHARED_SETUP = "configure_application"
+_REQUIRED_CALLS = (
+    "configure_activity_contributors",
+    "configure_gear_contributors",
+    "configure_user_contributors",
+    "register_activity_provider",
+)
 
 
-def _called_names(path: pathlib.Path) -> set[str]:
-    tree = ast.parse(path.read_text())
+def _called_names(node: ast.AST) -> set[str]:
     return {
-        node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-    }
+        child.func.attr
+        for child in ast.walk(node)
+        if isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute)
+    } | {child.func.id for child in ast.walk(node) if isinstance(child, ast.Call) and isinstance(child.func, ast.Name)}
 
 
 @pytest.mark.parametrize("entry_point", _ENTRY_POINTS)
-def test_entry_point_installs_every_contributor_registry(entry_point):
-    missing = set(_REQUIRED_CALLS) - _called_names(_APP_ROOT / entry_point)
+def test_entry_point_runs_the_shared_setup(entry_point):
+    called = _called_names(ast.parse((_APP_ROOT / entry_point).read_text()))
 
-    assert not missing, f"{entry_point} does not call {sorted(missing)}; its requests or jobs would fail at runtime"
+    assert _SHARED_SETUP in called, f"{entry_point} does not call {_SHARED_SETUP}(); its requests or jobs would fail"
+
+
+def test_the_shared_setup_installs_every_contributor_and_provider():
+    tree = ast.parse((_APP_ROOT / "module_registry.py").read_text())
+    setup = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == _SHARED_SETUP)
+
+    missing = set(_REQUIRED_CALLS) - _called_names(setup)
+
+    assert not missing, f"{_SHARED_SETUP} does not call {sorted(missing)}"
+
+
+@pytest.mark.parametrize("entry_point", _ENTRY_POINTS)
+def test_entry_point_does_not_install_pieces_of_the_setup_itself(entry_point):
+    """A piece installed by hand in one entry point is how the two drift apart again."""
+    called = _called_names(ast.parse((_APP_ROOT / entry_point).read_text()))
+
+    assert not set(_REQUIRED_CALLS) & called

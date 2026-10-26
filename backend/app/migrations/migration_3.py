@@ -495,7 +495,10 @@ def process_strava_activity(
     # Create activity laps in the database
     activity_laps_crud.create_activity_laps(laps or [], activity.id, db)
 
-    logger.info(f"Migration 3 - Strava activity {activity.id} file processed.", extra=core_logger.context(console=True))
+    logger.info(
+        "Migration 3 - Strava activity file processed",
+        extra=core_logger.context(console=True, activity_id=activity.id),
+    )
 
     # Return true if the activity was processed successfully
     return True
@@ -570,4 +573,4 @@ def store_data_in_db(
     if sets_to_store:
         activity_sets_migration_service.create_activity_sets(sets_to_store, activity.id, db)
 
-    logger.info(f"Migration 3 - Activity {activity.id} processed.", extra=core_logger.context(console=True))
+    logger.info("Migration 3 - Activity processed", extra=core_logger.context(console=True, activity_id=activity.id))

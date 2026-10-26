@@ -24,7 +24,6 @@ router = APIRouter()
 @router.get(
     "",
     response_model=core_pagination.Page[health_fasting_schema.HealthFastingRead],
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:read"])],
 )
 def read_health_fasting_all_pagination(
@@ -58,7 +57,6 @@ def read_health_fasting_all_pagination(
 @router.get(
     "/active",
     response_model=health_fasting_schema.HealthFastingRead | None,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:read"])],
 )
 def read_active_fasting(
@@ -85,7 +83,6 @@ def read_active_fasting(
 @router.get(
     "/stats",
     response_model=health_fasting_schema.HealthFastingStatsResponse,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:read"])],
 )
 def read_fasting_stats(
@@ -107,7 +104,6 @@ def read_fasting_stats(
 @router.get(
     "/{health_fasting_id}",
     response_model=health_fasting_schema.HealthFastingRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:read"])],
 )
 def read_health_fasting_by_id(
@@ -168,7 +164,6 @@ def create_health_fasting(
 @router.patch(
     "/{health_fasting_id}",
     response_model=health_fasting_schema.HealthFastingRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
@@ -205,7 +200,6 @@ def edit_health_fasting(
 @router.post(
     "/{health_fasting_id}/complete",
     response_model=health_fasting_schema.HealthFastingRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)

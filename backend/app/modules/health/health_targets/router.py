@@ -1,6 +1,6 @@
 """FastAPI router for health targets endpoints."""
 
-from fastapi import APIRouter, Request, Response, Security, status
+from fastapi import APIRouter, Request, Response, Security
 
 import core.dependencies as core_dependencies
 import core.etag as core_etag
@@ -16,7 +16,6 @@ router = APIRouter()
 @router.get(
     "",
     response_model=health_targets_schema.HealthTargetsRead | None,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:read"])],
 )
 def read_health_targets_all(
@@ -49,7 +48,6 @@ def read_health_targets_all(
 @router.patch(
     "",
     response_model=health_targets_schema.HealthTargetsRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)

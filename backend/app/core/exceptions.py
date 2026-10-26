@@ -327,11 +327,12 @@ async def domain_error_handler(request: Request, exc: DomainError) -> JSONRespon
         method=request.method,
         status_code=exc.status_code,
         error=type(exc).__name__,
+        detail=exc.detail,
     )
     if exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
-        logger.error(f"Unhandled domain error on {request.method} {request.url.path}", exc_info=exc, extra=log_context)
+        logger.error("Unhandled domain error", exc_info=exc, extra=log_context)
     else:
-        logger.debug(f"Domain error on {request.method} {request.url.path}: {exc.detail}", extra=log_context)
+        logger.debug("Domain error", extra=log_context)
 
     return build_problem_response(
         request=request,

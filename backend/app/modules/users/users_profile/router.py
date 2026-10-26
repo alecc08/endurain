@@ -38,7 +38,6 @@ router = APIRouter()
 
 @router.get(
     "",
-    status_code=status.HTTP_200_OK,
     response_model=users_schema.UsersMe,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
@@ -109,6 +108,7 @@ def upload_profile_image(
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_user(
     request: Request,
+    response: Response,
     user_attributtes: users_schema.ProfileUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
@@ -124,12 +124,14 @@ def edit_user(
 
     Args:
         request: The incoming request, read by the rate limiter.
+        response: The response, which carries the user's new ETag.
         user_attributtes: Allow-listed profile updates.
         token_user_id: User ID from access token.
         db: Database session.
         if_match: The ``If-Match`` precondition, the ``version`` the client read.
     """
-    profile_service.edit_profile(token_user_id, user_attributtes, db, if_match=if_match)
+    version = profile_service.edit_profile(token_user_id, user_attributtes, db, if_match=if_match)
+    response.headers["ETag"] = core_etag.format_etag(version)
 
 
 @router.post(
@@ -185,6 +187,7 @@ def edit_profile_email(
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
 def edit_profile_privacy_settings(
     request: Request,
+    response: Response,
     user_privacy_settings: users_privacy_settings_schema.UsersPrivacySettingsUpdate,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
@@ -194,12 +197,14 @@ def edit_profile_privacy_settings(
 
     Args:
         request: The incoming request, read by the rate limiter.
+        response: The response, which carries the settings' new ETag.
         user_privacy_settings: New privacy settings.
         token_user_id: User ID from access token.
         db: Database session.
         if_match: The ``If-Match`` precondition, the ``privacy_settings_version`` the client read.
     """
-    profile_service.edit_privacy_settings(token_user_id, user_privacy_settings, db, if_match=if_match)
+    version = profile_service.edit_privacy_settings(token_user_id, user_privacy_settings, db, if_match=if_match)
+    response.headers["ETag"] = core_etag.format_etag(version)
 
 
 @router.post(
@@ -377,7 +382,6 @@ def export_profile_data(
 
 @router.get(
     "/export",
-    status_code=status.HTTP_200_OK,
     response_model=profile_schema.ProfileExportStatus,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
@@ -400,7 +404,6 @@ def read_profile_export_status(
 
 @router.get(
     "/export/download",
-    status_code=status.HTTP_200_OK,
     response_class=StreamingResponse,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
@@ -476,7 +479,6 @@ def import_profile_data(
 
 @router.get(
     "/import",
-    status_code=status.HTTP_200_OK,
     response_model=profile_schema.ProfileImportStatus,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )

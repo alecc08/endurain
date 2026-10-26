@@ -32,7 +32,6 @@ router = APIRouter()
 @router.get(
     "",
     response_model=core_pagination.Page[health_poop_schema.HealthPoopRead],
-    status_code=status.HTTP_200_OK,
     dependencies=[
         Security(
             auth_dependencies.check_scopes,
@@ -71,7 +70,6 @@ def read_health_poop_all_pagination(
 @router.get(
     "/{health_poop_id}",
     response_model=health_poop_schema.HealthPoopRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[
         Security(
             auth_dependencies.check_scopes,
@@ -142,7 +140,6 @@ def create_health_poop(
 @router.patch(
     "/{health_poop_id}",
     response_model=health_poop_schema.HealthPoopRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[
         Security(
             auth_dependencies.check_scopes,

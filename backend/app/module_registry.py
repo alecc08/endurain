@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import jasil.settings as jasil_settings
+from jasil.events import Event
 from jasil.jobs.reconciliation import DurableSubscriberNet
 from jasil.jobs.registry import JobHandlerRegistry
 from jasil.providers import EventBusProvider, RealtimeProvider
@@ -38,6 +39,7 @@ import modules.activities.activity_workout_steps.integration_service as activity
 import modules.activities.contributor_registry as activities_contributor_registry
 import modules.auth.password_reset_tokens.subscriber_registry as password_reset_tokens_subscriber_registry
 import modules.auth.sign_up_tokens.subscriber_registry as sign_up_tokens_subscriber_registry
+import modules.garmin.integration_service as garmin_integration
 import modules.garmin.scheduled_jobs as garmin_scheduled_jobs
 import modules.garmin.subscriber_registry as garmin_subscriber_registry
 import modules.gears.contributor_registry as gears_contributor_registry
@@ -46,6 +48,7 @@ import modules.gears.gear_components.integration_service as gear_components_inte
 import modules.notifications.scheduled_jobs as notifications_scheduled_jobs
 import modules.notifications.subscriber_registry as notifications_subscriber_registry
 import modules.server_settings.integration_service as server_settings_integration
+import modules.strava.integration_service as strava_integration
 import modules.strava.subscriber_registry as strava_subscriber_registry
 import modules.users.contributor_registry as users_contributor_registry
 import modules.users.contributors as users_contributors
@@ -78,12 +81,29 @@ class _DeferredSubscriptions:
     The in-process bus calls subscribers inline, so a request that publishes
     would wait for every subscriber (map tiles, storage deletes, notifications).
     Handlers registered through this facade are queued instead, and run with the
-    publisher's context so the request id still correlates their logs. Only
-    ``subscribe`` is exposed: that is all a module's registration needs.
+    publisher's context so the request id still correlates their logs. Everything but
+    ``subscribe`` is the wrapped bus's own, so the facade is an ``EventBusProvider`` wherever
+    a module's registration expects one.
     """
 
     def __init__(self, events: EventBusProvider) -> None:
         self._events = events
+
+    def publish(self, event: Event) -> None:
+        """Publish an event on the wrapped bus.
+
+        Args:
+            event: The event to publish.
+        """
+        self._events.publish(event)
+
+    def start(self) -> None:
+        """Start the wrapped bus."""
+        self._events.start()
+
+    def stop(self) -> None:
+        """Stop the wrapped bus."""
+        self._events.stop()
 
     def subscribe(self, event_type: str, handler: Callable) -> None:
         """Subscribe a handler that runs off the publishing thread.
@@ -286,6 +306,21 @@ def configure_gear_contributors() -> None:
     )
 
 
+def configure_application() -> None:
+    """Install everything the API and the standalone worker both need before they run work.
+
+    The contributors and erasers the namespaces ask composition for, and the activity providers
+    ingestion pulls from. A job claimed by the worker resolves the same seams a request does, so a
+    registration made by one entrypoint and not the other would silently do nothing wherever it runs;
+    one call from both is what keeps them from drifting.
+    """
+    configure_activity_contributors()
+    configure_gear_contributors()
+    configure_user_contributors()
+    strava_integration.register_activity_provider()
+    garmin_integration.register_activity_provider()
+
+
 def configure_user_contributors() -> None:
     """Install the erasures the users namespace asks the activities and profile modules to answer."""
     users_contributor_registry.register(
@@ -308,7 +343,7 @@ def register_bus_subscribers(events: EventBusProvider) -> None:
     target = _DeferredSubscriptions(events) if in_process else events
     for module in MODULES:
         if module.register_bus is not None:
-            module.register_bus(target)  # type: ignore[arg-type]
+            module.register_bus(target)
 
 
 def register_realtime_subscribers(realtime: RealtimeProvider) -> None:

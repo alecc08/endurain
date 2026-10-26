@@ -151,9 +151,10 @@ class TestAddSchedulerJob:
                 pass
 
             add_scheduler_job(dummy, "interval", 60, [], "failing job")
-            mock_log.error.assert_any_call(
-                "Failed to add scheduler job to failing job: ValueError", exc_info=mock_scheduler.add_job.side_effect
-            )
+            args, kwargs = mock_log.error.call_args
+            assert args == ("Failed to add a scheduler job",)
+            assert kwargs["exc_info"] is mock_scheduler.add_job.side_effect
+            assert kwargs["extra"]["description"] == "failing job"
 
 
 class TestLockedSchedulerJobs:

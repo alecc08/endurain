@@ -310,6 +310,22 @@ class TestReadUserDeletionStatus:
         assert client.get("/users/1/deletion").status_code == 404
 
 
+class TestLookupPathParametersAreBounded:
+    """A lookup key longer than the column can hold is refused before it reaches the database."""
+
+    @pytest.mark.parametrize("path", ["/users/username/{}", "/users/email/{}", "/users/username/contains/{}"])
+    def test_a_value_longer_than_the_column_is_refused(self, client, path):
+        assert client.get(path.format("a" * 251)).status_code == 422
+
+    @pytest.mark.parametrize("path", ["/users/username/{}", "/users/email/{}"])
+    def test_a_value_at_the_limit_reaches_the_service(self, client, path):
+        with (
+            patch(f"{_SERVICE}.require_user_by_username", return_value=_user(1)),
+            patch(f"{_SERVICE}.require_user_by_email", return_value=_user(1)),
+        ):
+            assert client.get(path.format("a" * 250)).status_code == 200
+
+
 class TestReadScopes:
     """Which scope each read route demands: the full record is admin-only."""
 

@@ -578,13 +578,16 @@ def mark_failed(
 def fail_jobs_idle_since(
     cutoff: datetime,
     error_code: activity_ingestion_constants.IngestionJobErrorCode,
+    limit: int,
     db: Session,
 ) -> list[tuple[str, str | None]]:
-    """Stage the failure of non-terminal jobs that have not changed state since a cutoff.
+    """Stage the failure of up to ``limit`` non-terminal jobs that have not changed state since a cutoff.
 
     Args:
         cutoff: Pending or processing jobs last updated before this are failed; deferred ones are not.
         error_code: Sanitized failure reason shown to the owner.
+        limit: The most jobs to fail in one call; a failed job no longer matches, so the caller repeats
+            until fewer than ``limit`` come back.
         db: Database session.
 
     Returns:
@@ -600,7 +603,7 @@ def fail_jobs_idle_since(
     )
     # Rows a worker is writing right now are skipped: they are not idle, and
     # failing them would overwrite the outcome the worker is about to commit.
-    stmt = stmt.with_for_update(skip_locked=True)
+    stmt = stmt.limit(limit).with_for_update(skip_locked=True)
     now = datetime.now(UTC)
     failed: list[tuple[str, str | None]] = []
     for orm_job in db.scalars(stmt).all():

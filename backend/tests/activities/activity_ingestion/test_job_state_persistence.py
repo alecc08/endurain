@@ -206,8 +206,6 @@ class TestDeferredRefresh:
 
     def test_a_job_whose_wait_is_over_is_queued_again_locally(self, factory):
         _add_job(factory, kind="refresh", staged_key=None, status="deferred", retry_after=_now() - timedelta(minutes=1))
-        lock = MagicMock()
-        lock.try_acquire.return_value.__enter__.return_value = True
 
         with (
             patch.object(ingestion_jobs.core_config.settings, "JOBS_ENABLED", False),
@@ -216,7 +214,7 @@ class TestDeferredRefresh:
                 ingestion_jobs.activity_ingestion_dispatch_service.activity_ingestion_background, "submit"
             ) as submit,
         ):
-            released = ingestion_jobs.redispatch_deferred_refreshes(lock, "storage")
+            released = ingestion_jobs.redispatch_deferred_refreshes("storage")
 
         job = _read_job(factory)
         assert released == 1
@@ -225,8 +223,6 @@ class TestDeferredRefresh:
 
     def test_a_job_whose_wait_is_over_is_published_to_a_worker_when_durable(self, factory):
         _add_job(factory, kind="refresh", staged_key=None, status="deferred", retry_after=_now() - timedelta(minutes=1))
-        lock = MagicMock()
-        lock.try_acquire.return_value.__enter__.return_value = True
 
         with (
             patch.object(ingestion_jobs.core_config.settings, "JOBS_ENABLED", True),
@@ -236,7 +232,7 @@ class TestDeferredRefresh:
                 ingestion_jobs.activity_ingestion_dispatch_service.activity_ingestion_background, "submit"
             ) as submit,
         ):
-            ingestion_jobs.redispatch_deferred_refreshes(lock, "storage")
+            ingestion_jobs.redispatch_deferred_refreshes("storage")
 
         assert publish.call_args.args[0] == [("job-1", 7)]
         submit.assert_not_called()
@@ -244,8 +240,6 @@ class TestDeferredRefresh:
     def test_a_job_still_waiting_is_left_alone(self, factory):
         retry_at = _now() + timedelta(hours=1)
         _add_job(factory, kind="refresh", staged_key=None, status="deferred", retry_after=retry_at)
-        lock = MagicMock()
-        lock.try_acquire.return_value.__enter__.return_value = True
 
         with (
             patch.object(ingestion_jobs.core_config.settings, "JOBS_ENABLED", False),
@@ -254,20 +248,10 @@ class TestDeferredRefresh:
                 ingestion_jobs.activity_ingestion_dispatch_service.activity_ingestion_background, "submit"
             ) as submit,
         ):
-            assert ingestion_jobs.redispatch_deferred_refreshes(lock, "storage") == 0
+            assert ingestion_jobs.redispatch_deferred_refreshes("storage") == 0
 
         assert _read_job(factory).status == "deferred"
         submit.assert_not_called()
-
-    def test_another_replica_holding_the_lock_queues_nothing(self, factory):
-        _add_job(factory, kind="refresh", staged_key=None, status="deferred", retry_after=_now() - timedelta(minutes=1))
-        lock = MagicMock()
-        lock.try_acquire.return_value.__enter__.return_value = False
-
-        with patch.object(ingestion_jobs.core_database, "SessionLocal", factory):
-            assert ingestion_jobs.redispatch_deferred_refreshes(lock, "storage") == 0
-
-        assert _read_job(factory).status == "deferred"
 
     def test_the_stale_job_sweep_does_not_fail_a_job_that_is_waiting_on_purpose(self, factory):
         long_ago = _now() - timedelta(days=3)
@@ -280,11 +264,10 @@ class TestDeferredRefresh:
             retry_after=_now() + timedelta(hours=1),
         )
         platform = MagicMock()
-        platform.lock.try_acquire.return_value.__enter__.return_value = True
         platform.clock.now.return_value = _now()
 
         with patch.object(ingestion_jobs.core_database, "SessionLocal", factory):
-            ingestion_jobs.fail_stale_ingestion_jobs(platform.lock, platform.clock, MagicMock())
+            ingestion_jobs.fail_stale_ingestion_jobs(platform.clock, MagicMock())
 
         assert _read_job(factory).status == "deferred"
 
@@ -304,13 +287,12 @@ class TestPrune:
         _add_job(factory, id="fresh", status="pending")
 
         platform = MagicMock()
-        platform.lock.try_acquire.return_value.__enter__.return_value = True
         platform.clock.now.return_value = datetime.now(UTC)
         with (
             patch.object(ingestion_jobs.core_config.settings, "JOBS_RETENTION_DAYS", 90),
             patch.object(ingestion_jobs.core_database, "SessionLocal", factory),
         ):
-            ingestion_jobs.prune_expired_ingestion_jobs(platform.lock, platform.clock)
+            ingestion_jobs.prune_expired_ingestion_jobs(platform.clock)
 
         assert _read_job(factory, "old") is None
         assert _read_job(factory, "fresh") is not None
@@ -381,7 +363,6 @@ class TestFailStaleJobs:
     @staticmethod
     def _run(factory) -> list[str]:
         platform = MagicMock()
-        platform.lock.try_acquire.return_value.__enter__.return_value = True
         platform.clock.now.return_value = datetime.now(UTC)
         discarded: list[str] = []
         with (
@@ -392,7 +373,7 @@ class TestFailStaleJobs:
                 side_effect=lambda key, _storage: discarded.append(key),
             ),
         ):
-            ingestion_jobs.fail_stale_ingestion_jobs(platform.lock, platform.clock, platform.storage)
+            ingestion_jobs.fail_stale_ingestion_jobs(platform.clock, platform.storage)
         return discarded
 
     def test_an_idle_upload_is_failed_and_its_blob_dropped(self, factory):
@@ -440,7 +421,6 @@ class TestSweepStaleStagedBlobs:
 
     def _run(self, factory, objects: dict[tuple[str, str], float]) -> list[tuple[str, str]]:
         platform = MagicMock()
-        platform.lock.try_acquire.return_value.__enter__.return_value = True
         platform.clock.now.return_value = self._NOW
         deleted: list[tuple[str, str]] = []
 
@@ -450,7 +430,7 @@ class TestSweepStaleStagedBlobs:
         platform.storage.iter_objects.side_effect = iter_objects
         platform.storage.delete.side_effect = lambda area, key: deleted.append((area, key))
         with patch.object(ingestion_jobs.core_database, "SessionLocal", factory):
-            ingestion_jobs.sweep_stale_staged_blobs(platform.lock, platform.clock, platform.storage)
+            ingestion_jobs.sweep_stale_staged_blobs(platform.clock, platform.storage)
         return deleted
 
     def _age(self, days: float) -> float:

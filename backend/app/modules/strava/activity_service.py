@@ -76,7 +76,9 @@ def fetch_and_process_activities(
         raise core_exceptions.DependencyFailedError("Not able to fetch Strava activities") from err
 
     if not strava_activities:
-        logger.info("No new Strava activities found", extra=core_logger.context(user_id=user_id, start_date=start_date))
+        logger.debug(
+            "No new Strava activities found", extra=core_logger.context(user_id=user_id, start_date=start_date)
+        )
         return None
 
     with SessionLocal() as db:
@@ -704,7 +706,7 @@ def get_user_strava_activities_by_dates(
         user_integrations = strava_client_service.fetch_user_integrations_and_validate_token(user_id, db)
 
     if user_integrations is None:
-        logger.info("Strava not linked", extra=core_logger.context(user_id=user_id))
+        logger.debug("Strava not linked", extra=core_logger.context(user_id=user_id))
         return None
 
     logger.info("Started Strava activities processing", extra=core_logger.context(user_id=user_id))

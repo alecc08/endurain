@@ -32,7 +32,6 @@ router = APIRouter()
 @router.get(
     "",
     response_model=server_settings_schema.ServerSettingsAdminRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:read"])],
 )
 def read_server_settings(
@@ -60,7 +59,6 @@ def read_server_settings(
 @router.put(
     "",
     response_model=server_settings_schema.ServerSettingsAdminRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
@@ -155,7 +153,6 @@ def delete_login_photo(
 @router.get(
     "/email",
     response_model=server_settings_schema.EmailStatus,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:read"])],
 )
 def read_email_status(
@@ -177,7 +174,6 @@ def read_email_status(
 @router.get(
     "/email/settings",
     response_model=server_settings_schema.MailSettingsAdminRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:read"])],
 )
 def read_mail_settings(
@@ -204,7 +200,6 @@ def read_mail_settings(
 @router.put(
     "/email/settings",
     response_model=server_settings_schema.MailSettingsAdminRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)

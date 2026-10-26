@@ -190,7 +190,7 @@ def fetch_and_process_activities_by_dates(
         raise garmin_service.rate_limit_error(err, user_id, rate_limits) from err
 
     if garmin_activities is None:
-        logger.info(
+        logger.debug(
             "No new Garmin Connect activities found",
             extra=core_logger.context(user_id=user_id, start_date=start_date.date(), end_date=end_date.date()),
         )

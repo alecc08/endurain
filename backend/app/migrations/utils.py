@@ -63,7 +63,7 @@ async def check_migrations_not_executed(
         return
 
     for migration in migrations_not_executed:
-        logger.info(f"Migration not executed: {migration.name} - Migration will be executed")
+        logger.info("Migration not executed; it will be executed", extra=core_logger.context(migration=migration.name))
 
         if migration.id in _SYNC_MIGRATIONS:
             await asyncio.to_thread(_SYNC_MIGRATIONS[migration.id], db)

@@ -17,7 +17,6 @@ router = APIRouter()
 @router.get(
     "/status",
     response_model=logs_schema.LogsStatus,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:logs"])],
 )
 def read_logs_status() -> logs_schema.LogsStatus:
@@ -34,7 +33,6 @@ def read_logs_status() -> logs_schema.LogsStatus:
 @router.get(
     "",
     response_model=logs_schema.LogPage,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:logs"])],
 )
 def read_logs(
@@ -69,7 +67,6 @@ def read_logs(
 @router.get(
     "/download",
     response_class=FileResponse,
-    status_code=status.HTTP_200_OK,
     responses={status.HTTP_200_OK: {"content": {"text/plain": {}}, "description": "The current log file"}},
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["server_settings:logs"])],
 )

@@ -114,9 +114,9 @@ def calculate_goal_progress_by_activity_type(
         # Get activity types based on goal.activity_type
         activity_types = _ACTIVITY_TYPE_MAP.get(goal.activity_type, _DEFAULT_ACTIVITY_TYPES)
 
-        # Fetch all activities in a single query (exclude hidden to avoid
+        # Summed by the database in a single query (exclude hidden to avoid
         # counting duplicate imports from multiple sources)
-        activities = activity_integration.list_user_activities_in_timeframe_by_types(
+        totals = activity_integration.total_user_activities_in_timeframe_by_types(
             goal.user_id,
             activity_types,
             start_date,
@@ -133,25 +133,25 @@ def calculate_goal_progress_by_activity_type(
         total_elevation = 0
         total_duration: float = 0
 
-        if activities:
+        if totals.count:
             if goal.goal_type == user_goals_schema.GoalType.CALORIES:
-                total_calories = sum(activity.calories or 0 for activity in activities)
+                total_calories = round(totals.calories)
                 if goal.goal_calories and goal.goal_calories > 0:
                     percentage_completed = (total_calories / goal.goal_calories) * 100
             elif goal.goal_type == user_goals_schema.GoalType.DISTANCE:
-                total_distance = sum(activity.distance or 0 for activity in activities)
+                total_distance = totals.distance
                 if goal.goal_distance and goal.goal_distance > 0:
                     percentage_completed = (total_distance / goal.goal_distance) * 100
             elif goal.goal_type == user_goals_schema.GoalType.ELEVATION:
-                total_elevation = sum(activity.elevation_gain or 0 for activity in activities)
+                total_elevation = totals.elevation_gain
                 if goal.goal_elevation and goal.goal_elevation > 0:
                     percentage_completed = (total_elevation / goal.goal_elevation) * 100
             elif goal.goal_type == user_goals_schema.GoalType.DURATION:
-                total_duration = sum(activity.total_elapsed_time or 0 for activity in activities)
+                total_duration = totals.elapsed_time
                 if goal.goal_duration and goal.goal_duration > 0:
                     percentage_completed = (total_duration / goal.goal_duration) * 100
             elif goal.goal_type == user_goals_schema.GoalType.ACTIVITIES:
-                total_activities_number = len(activities)
+                total_activities_number = totals.count
                 if goal.goal_activities_number and goal.goal_activities_number > 0:
                     percentage_completed = (total_activities_number / goal.goal_activities_number) * 100
 

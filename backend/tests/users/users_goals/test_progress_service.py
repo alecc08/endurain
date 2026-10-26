@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 import core.exceptions as core_exceptions
+import modules.activities.activity.contracts as activity_contracts
 import modules.users.users_goals.models as user_goals_models
 import modules.users.users_goals.progress_service as user_goals_progress_service
 import modules.users.users_goals.schema as user_goals_schema
@@ -100,7 +101,9 @@ class TestCalculateGoalProgressByActivityType:
     Test suite for calculate_goal_progress_by_activity_type.
     """
 
-    @patch("modules.users.users_goals.progress_service.activity_integration.list_user_activities_in_timeframe_by_types")
+    @patch(
+        "modules.users.users_goals.progress_service.activity_integration.total_user_activities_in_timeframe_by_types"
+    )
     @patch("modules.users.users_goals.progress_service.user_goals_utils.get_start_end_date_by_interval")
     def test_calculate_progress_calories_goal(self, mock_get_dates, mock_get_activities):
         """Test calculation for calories goal."""
@@ -122,9 +125,7 @@ class TestCalculateGoalProgressByActivityType:
         mock_end = datetime(2024, 1, 21)
         mock_get_dates.return_value = (mock_start, mock_end)
 
-        mock_activity = MagicMock()
-        mock_activity.calories = 1500
-        mock_get_activities.return_value = [mock_activity]
+        mock_get_activities.return_value = activity_contracts.ActivityTotals(count=1, calories=1500)
 
         # Act
         result = user_goals_progress_service.calculate_goal_progress_by_activity_type(
@@ -139,7 +140,9 @@ class TestCalculateGoalProgressByActivityType:
         assert result.total_calories == 1500
         assert result.percentage_completed == 30
 
-    @patch("modules.users.users_goals.progress_service.activity_integration.list_user_activities_in_timeframe_by_types")
+    @patch(
+        "modules.users.users_goals.progress_service.activity_integration.total_user_activities_in_timeframe_by_types"
+    )
     @patch("modules.users.users_goals.progress_service.user_goals_utils.get_start_end_date_by_interval")
     def test_calculate_progress_distance_goal(self, mock_get_dates, mock_get_activities):
         """Test calculation for distance goal."""
@@ -161,10 +164,7 @@ class TestCalculateGoalProgressByActivityType:
         mock_end = datetime(2024, 1, 21)
         mock_get_dates.return_value = (mock_start, mock_end)
 
-        mock_activity = MagicMock()
-        mock_activity.distance = 10000
-        mock_activity.calories = None
-        mock_get_activities.return_value = [mock_activity]
+        mock_get_activities.return_value = activity_contracts.ActivityTotals(count=1, distance=10000)
 
         # Act
         result = user_goals_progress_service.calculate_goal_progress_by_activity_type(
@@ -178,7 +178,9 @@ class TestCalculateGoalProgressByActivityType:
         assert result.total_distance == 10000
         assert result.percentage_completed == 20
 
-    @patch("modules.users.users_goals.progress_service.activity_integration.list_user_activities_in_timeframe_by_types")
+    @patch(
+        "modules.users.users_goals.progress_service.activity_integration.total_user_activities_in_timeframe_by_types"
+    )
     @patch("modules.users.users_goals.progress_service.user_goals_utils.get_start_end_date_by_interval")
     def test_calculate_progress_activities_goal(self, mock_get_dates, mock_get_activities):
         """Test calculation for activities count goal."""
@@ -200,7 +202,7 @@ class TestCalculateGoalProgressByActivityType:
         mock_end = datetime(2024, 1, 21)
         mock_get_dates.return_value = (mock_start, mock_end)
 
-        mock_get_activities.return_value = [MagicMock(), MagicMock()]
+        mock_get_activities.return_value = activity_contracts.ActivityTotals(count=2)
 
         # Act
         result = user_goals_progress_service.calculate_goal_progress_by_activity_type(
@@ -214,7 +216,9 @@ class TestCalculateGoalProgressByActivityType:
         assert result.total_activities_number == 2
         assert result.percentage_completed == 40
 
-    @patch("modules.users.users_goals.progress_service.activity_integration.list_user_activities_in_timeframe_by_types")
+    @patch(
+        "modules.users.users_goals.progress_service.activity_integration.total_user_activities_in_timeframe_by_types"
+    )
     @patch("modules.users.users_goals.progress_service.user_goals_utils.get_start_end_date_by_interval")
     def test_calculate_progress_caps_at_100_percent(self, mock_get_dates, mock_get_activities):
         """Test percentage is capped at 100."""
@@ -236,9 +240,7 @@ class TestCalculateGoalProgressByActivityType:
         mock_end = datetime(2024, 1, 21)
         mock_get_dates.return_value = (mock_start, mock_end)
 
-        mock_activity = MagicMock()
-        mock_activity.calories = 5000  # Exceeds goal
-        mock_get_activities.return_value = [mock_activity]
+        mock_get_activities.return_value = activity_contracts.ActivityTotals(count=1, calories=5000)  # Exceeds goal
 
         # Act
         result = user_goals_progress_service.calculate_goal_progress_by_activity_type(
@@ -251,7 +253,9 @@ class TestCalculateGoalProgressByActivityType:
         # Assert
         assert result.percentage_completed == 100
 
-    @patch("modules.users.users_goals.progress_service.activity_integration.list_user_activities_in_timeframe_by_types")
+    @patch(
+        "modules.users.users_goals.progress_service.activity_integration.total_user_activities_in_timeframe_by_types"
+    )
     @patch("modules.users.users_goals.progress_service.user_goals_utils.get_start_end_date_by_interval")
     def test_calculate_progress_excludes_hidden_activities(self, mock_get_dates, mock_get_activities):
         """Test that hidden activities are excluded from goal progress."""
@@ -273,7 +277,7 @@ class TestCalculateGoalProgressByActivityType:
         mock_end = datetime(2024, 1, 21)
         mock_get_dates.return_value = (mock_start, mock_end)
 
-        mock_get_activities.return_value = [MagicMock()]
+        mock_get_activities.return_value = activity_contracts.ActivityTotals(count=1)
 
         # Act
         user_goals_progress_service.calculate_goal_progress_by_activity_type(
@@ -287,6 +291,77 @@ class TestCalculateGoalProgressByActivityType:
         mock_get_activities.assert_called_once()
         call_kwargs = mock_get_activities.call_args
         assert call_kwargs.kwargs.get("exclude_hidden") is True
+
+    @patch(
+        "modules.users.users_goals.progress_service.activity_integration.total_user_activities_in_timeframe_by_types"
+    )
+    @patch("modules.users.users_goals.progress_service.user_goals_utils.get_start_end_date_by_interval")
+    @pytest.mark.parametrize(
+        ("goal_type", "goal_field", "totals", "field", "expected", "percent"),
+        [
+            (
+                user_goals_schema.GoalType.ELEVATION,
+                "goal_elevation",
+                {"elevation_gain": 400.4},
+                "total_elevation",
+                400,
+                40,
+            ),
+            (
+                user_goals_schema.GoalType.DURATION,
+                "goal_duration",
+                {"elapsed_time": 1800.0},
+                "total_duration",
+                1800,
+                50,
+            ),
+        ],
+    )
+    def test_elevation_and_duration_goals_use_the_summed_totals(
+        self, mock_get_dates, mock_get_totals, goal_type, goal_field, totals, field, expected, percent
+    ):
+        mock_goal = MagicMock(spec=user_goals_models.UsersGoal)
+        mock_goal.id = 1
+        mock_goal.user_id = 1
+        mock_goal.interval = "weekly"
+        mock_goal.activity_type = user_goals_schema.ActivityType.RUN
+        mock_goal.goal_type = goal_type
+        for name in ("goal_calories", "goal_activities_number", "goal_distance", "goal_elevation", "goal_duration"):
+            setattr(mock_goal, name, None)
+        setattr(mock_goal, goal_field, {"goal_elevation": 1000, "goal_duration": 3600}[goal_field])
+        mock_get_dates.return_value = (datetime(2024, 1, 15), datetime(2024, 1, 21))
+        mock_get_totals.return_value = activity_contracts.ActivityTotals(count=1, **totals)
+
+        result = user_goals_progress_service.calculate_goal_progress_by_activity_type(
+            mock_goal, "2024-01-15", "monday", MagicMock(spec=Session)
+        )
+
+        assert getattr(result, field) == expected
+        assert result.percentage_completed == percent
+
+    @patch(
+        "modules.users.users_goals.progress_service.activity_integration.total_user_activities_in_timeframe_by_types"
+    )
+    @patch("modules.users.users_goals.progress_service.user_goals_utils.get_start_end_date_by_interval")
+    def test_no_matching_activities_is_zero_progress(self, mock_get_dates, mock_get_totals):
+        mock_goal = MagicMock(spec=user_goals_models.UsersGoal)
+        mock_goal.id = 1
+        mock_goal.user_id = 1
+        mock_goal.interval = "weekly"
+        mock_goal.activity_type = user_goals_schema.ActivityType.RUN
+        mock_goal.goal_type = user_goals_schema.GoalType.CALORIES
+        mock_goal.goal_calories = 5000
+        for name in ("goal_activities_number", "goal_distance", "goal_elevation", "goal_duration"):
+            setattr(mock_goal, name, None)
+        mock_get_dates.return_value = (datetime(2024, 1, 15), datetime(2024, 1, 21))
+        mock_get_totals.return_value = activity_contracts.ActivityTotals()
+
+        result = user_goals_progress_service.calculate_goal_progress_by_activity_type(
+            mock_goal, "2024-01-15", "monday", MagicMock(spec=Session)
+        )
+
+        assert result.total_calories == 0
+        assert result.percentage_completed == 0
 
 
 class TestActivityTypeMap:

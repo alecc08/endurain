@@ -85,5 +85,9 @@ def read_bounded_csv(
                     )
                 yield row
     except OSError as err:
-        logger.error(f"read_bounded_csv failed to open {file_path.name}: {type(err).__name__}", exc_info=err)
+        logger.error(
+            "read_bounded_csv failed to open the file",
+            exc_info=err,
+            extra=core_logger.context(file_name=file_path.name),
+        )
         raise core_exceptions.DependencyFailedError(f"Failed to open import file {file_path.name}") from err

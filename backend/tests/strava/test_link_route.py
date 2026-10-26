@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import modules.gears.gear.schema as gears_schema
 import modules.strava.router as strava_router
 import modules.strava.schema as strava_schema
 
@@ -91,3 +92,26 @@ def test_the_client_secret_does_not_appear_in_a_repr_or_a_validation_error():
 def test_a_link_must_carry_a_state_as_long_as_the_server_issues():
     with pytest.raises(ValueError):
         strava_schema.StravaLinkRequest(state="abc", code="c")
+
+
+@pytest.mark.parametrize(
+    ("route", "gear_type"),
+    [
+        ("import_bikes_from_strava_export", gears_schema.GearType.BIKE),
+        ("import_shoes_from_strava_export", gears_schema.GearType.SHOES),
+    ],
+)
+def test_a_gear_import_reports_how_many_gears_it_created(route, gear_type):
+    with patch.object(strava_router.strava_gear_service, "import_gear", return_value=4) as import_gear:
+        result = getattr(strava_router, route)(request=MagicMock(), file=MagicMock(), token_user_id=7, db=MagicMock())
+
+    assert result == strava_schema.StravaGearImportResult(imported=4)
+    assert import_gear.call_args.args[2] is gear_type
+
+
+@pytest.mark.parametrize("path", ["/import/bikes", "/import/shoes"])
+def test_a_gear_import_declares_its_result_and_still_answers_201(path):
+    route = _routes()[(path, ("POST",))]
+
+    assert route.status_code == 201
+    assert route.response_model is strava_schema.StravaGearImportResult

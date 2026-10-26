@@ -32,7 +32,6 @@ router = APIRouter()
 @router.get(
     "",
     response_model=core_pagination.Page[health_water_schema.HealthWaterRead],
-    status_code=status.HTTP_200_OK,
     dependencies=[
         Security(
             auth_dependencies.check_scopes,
@@ -106,7 +105,6 @@ def create_health_water(
 @router.patch(
     "/{health_water_id}",
     response_model=health_water_schema.HealthWaterRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[
         Security(
             auth_dependencies.check_scopes,

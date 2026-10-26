@@ -20,7 +20,6 @@ router = APIRouter()
 @router.get(
     "",
     response_model=core_pagination.Page[health_sleep_schema.HealthSleepRead],
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:read"])],
 )
 def read_health_sleep_all_pagination(
@@ -86,7 +85,6 @@ def create_health_sleep(
 @router.patch(
     "/{health_sleep_id}",
     response_model=health_sleep_schema.HealthSleepRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)

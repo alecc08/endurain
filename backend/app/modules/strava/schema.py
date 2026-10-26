@@ -49,6 +49,16 @@ class StravaDetail(BaseModel):
     detail: str
 
 
+class StravaGearImportResult(BaseModel):
+    """What a Strava gear CSV import created.
+
+    Attributes:
+        imported: How many gear entries the upload produced.
+    """
+
+    imported: int
+
+
 class StravaSyncStatus(BaseModel):
     """Where a queued Strava gear sync or unlink is.
 

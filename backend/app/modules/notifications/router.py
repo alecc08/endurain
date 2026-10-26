@@ -17,7 +17,6 @@ router = APIRouter()
 @router.get(
     "/number",
     response_model=int,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["notifications:read"])],
 )
 def read_notifications_number(
@@ -39,7 +38,6 @@ def read_notifications_number(
 @router.get(
     "/{notification_id}",
     response_model=notifications_schema.NotificationRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["notifications:read"])],
 )
 def read_notifications_by_id(
@@ -63,7 +61,6 @@ def read_notifications_by_id(
 @router.get(
     "",
     response_model=core_pagination.Page[notifications_schema.NotificationRead],
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["notifications:read"])],
 )
 def read_notifications_user_pagination(

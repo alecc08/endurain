@@ -296,12 +296,6 @@ class TestScheduledRefreshFanOut:
         yield
         provider_registry.clear()
 
-    @staticmethod
-    def _lock(acquired: bool = True) -> MagicMock:
-        lock = MagicMock()
-        lock.try_acquire.return_value.__enter__.return_value = acquired
-        return lock
-
     def test_queues_one_job_per_linked_user_and_runs_each_locally(self):
         self._provider("strava", [[1, 2], [3]])
         db = MagicMock()
@@ -317,7 +311,7 @@ class TestScheduledRefreshFanOut:
             ) as submit,
         ):
             session_local.return_value.__enter__.return_value = db
-            queued = ingestion_jobs.enqueue_scheduled_refreshes(self._lock(), "storage")
+            queued = ingestion_jobs.enqueue_scheduled_refreshes("storage")
 
         assert queued == 3
         assert [call.args[1] for call in create.call_args_list] == [1, 2, 3]
@@ -337,7 +331,7 @@ class TestScheduledRefreshFanOut:
             patch.object(ingestion_jobs.activity_ingestion_crud, "create_ingestion_job") as create,
             patch.object(ingestion_jobs.activity_ingestion_dispatch_service.activity_ingestion_background, "submit"),
         ):
-            ingestion_jobs.enqueue_scheduled_refreshes(self._lock(), "storage")
+            ingestion_jobs.enqueue_scheduled_refreshes("storage")
 
         assert sorted(call.args[1] for call in create.call_args_list) == [1, 2, 3]
 
@@ -351,7 +345,7 @@ class TestScheduledRefreshFanOut:
             patch.object(ingestion_jobs.activity_ingestion_crud, "create_ingestion_job") as create,
             patch.object(ingestion_jobs.activity_ingestion_dispatch_service.activity_ingestion_background, "submit"),
         ):
-            queued = ingestion_jobs.enqueue_scheduled_refreshes(self._lock(), "storage")
+            queued = ingestion_jobs.enqueue_scheduled_refreshes("storage")
 
         assert queued == 1
         assert [call.args[1] for call in create.call_args_list] == [2]
@@ -373,20 +367,11 @@ class TestScheduledRefreshFanOut:
             ) as submit,
         ):
             session_local.return_value.__enter__.return_value = MagicMock()
-            ingestion_jobs.enqueue_scheduled_refreshes(self._lock(), "storage")
+            ingestion_jobs.enqueue_scheduled_refreshes("storage")
 
         publish_many.assert_called_once()
         assert len(publish_many.call_args.args[1]) == 2
         submit.assert_not_called()
-
-    def test_another_replica_holding_the_lock_means_nothing_is_queued(self):
-        calls = self._provider("strava", [[1]])
-        with patch.object(ingestion_jobs.activity_ingestion_crud, "create_ingestion_job") as create:
-            queued = ingestion_jobs.enqueue_scheduled_refreshes(self._lock(acquired=False), "storage")
-
-        assert queued == 0
-        assert calls == []
-        create.assert_not_called()
 
     def test_pages_each_provider_by_cursor(self):
         calls = self._provider("strava", [[1, 2], [3]])
@@ -399,6 +384,6 @@ class TestScheduledRefreshFanOut:
             patch.object(ingestion_jobs.activity_ingestion_crud, "create_ingestion_job"),
             patch.object(ingestion_jobs.activity_ingestion_dispatch_service.activity_ingestion_background, "submit"),
         ):
-            ingestion_jobs.enqueue_scheduled_refreshes(self._lock(), "storage")
+            ingestion_jobs.enqueue_scheduled_refreshes("storage")
 
         assert [after_id for after_id, _limit in calls] == [0, 2, 3]

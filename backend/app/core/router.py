@@ -56,7 +56,6 @@ class AboutResponse(BaseModel):
 @router.get(
     core_config.ROOT_PATH + "/about",
     response_model=AboutResponse,
-    status_code=status.HTTP_200_OK,
 )
 async def about() -> AboutResponse:
     """
@@ -95,7 +94,7 @@ class HealthResponse(BaseModel):
 _STATE_PROBE_KEY = "endurain:health:probe"
 
 
-@router.get(core_config.ROOT_PATH + "/health", response_model=HealthResponse, status_code=status.HTTP_200_OK)
+@router.get(core_config.ROOT_PATH + "/health", response_model=HealthResponse)
 def health(db: core_dependencies.DbSession, state: core_dependencies.PlatformState) -> HealthResponse:
     """
     Liveness check that needs a database connection, and reports the shared state backend.

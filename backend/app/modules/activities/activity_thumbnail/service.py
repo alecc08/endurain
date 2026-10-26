@@ -40,9 +40,10 @@ _MIN_WAYPOINTS = 2
 #: before the next pass tries it again.
 THUMBNAIL_RETRY_DELAY = timedelta(hours=6)
 
-#: Lock shared by the backfill and the full regeneration, so only one of them
-#: touches the thumbnails at a time across replicas.
-_BACKFILL_LOCK_NAME = "thumbnail_backfill"
+#: Lock shared by the backfill and the full regeneration, so only one of them touches the thumbnails at a
+#: time across replicas. The scheduler holds it for the periodic backfill; the full regeneration takes it
+#: itself, because a regeneration that finds it held must be retried, not skipped.
+BACKFILL_LOCK_NAME = "thumbnail_backfill"
 
 
 class _ActivityPageFetcher(Protocol):
@@ -319,7 +320,7 @@ def delete_and_regenerate_all_activity_thumbnails(
     Raises:
         ConflictError: When another replica holds the backfill lock.
     """
-    with lock.try_acquire(_BACKFILL_LOCK_NAME) as acquired:
+    with lock.try_acquire(BACKFILL_LOCK_NAME) as acquired:
         if not acquired:
             # Dropping the request would leave the old tiles in every thumbnail,
             # so the caller is told; a durable job retries with backoff.
@@ -370,29 +371,23 @@ def _delete_all_thumbnails(storage: platform_providers.StorageProvider, db: Sess
 
 def generate_missing_activity_thumbnails(
     storage: platform_providers.StorageProvider,
-    lock: platform_providers.LockProvider,
     clock: platform_providers.ClockProvider,
     db: Session,
 ) -> None:
     """Generate thumbnails for activities that are missing one.
 
-    Intended to be called periodically by the scheduler. Acquires the
-    coordination lock so only one replica runs the pass, then reconciles
+    Intended to be called periodically by the scheduler, which holds
+    :data:`BACKFILL_LOCK_NAME` so only one replica runs the pass. Reconciles
     stale references and renders and stores a thumbnail for each activity
     whose map_thumbnail_path is NULL. A failure on one activity is logged and
     the pass continues.
 
     Args:
         storage: The blob-storage provider.
-        lock: The coordination lock provider.
         clock: The platform clock, for the due time and the retry time.
         db: Database session.
     """
-    with lock.try_acquire(_BACKFILL_LOCK_NAME) as acquired:
-        if not acquired:
-            logger.debug("Thumbnail scheduler: another replica holds the backfill lock; skipping")
-            return
-        _run_missing_thumbnail_generation(storage, clock.now(), db)
+    _run_missing_thumbnail_generation(storage, clock.now(), db)
 
 
 def _clear_references_to_missing_blobs(storage: platform_providers.StorageProvider, db: Session) -> None:

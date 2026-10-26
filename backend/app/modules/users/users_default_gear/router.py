@@ -1,6 +1,6 @@
 """User default gear API endpoints."""
 
-from fastapi import APIRouter, Request, Response, Security, status
+from fastapi import APIRouter, Request, Response, Security
 
 import core.dependencies as core_dependencies
 import core.etag as core_etag
@@ -16,7 +16,6 @@ router = APIRouter()
 @router.get(
     "",
     response_model=user_default_gear_schema.UsersDefaultGearRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
 def read_user_default_gear(
@@ -43,7 +42,6 @@ def read_user_default_gear(
 @router.patch(
     "",
     response_model=user_default_gear_schema.UsersDefaultGearRead,
-    status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)

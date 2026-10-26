@@ -106,7 +106,7 @@ def strava_sync_status(
 @router.post(
     "/import/bikes",
     status_code=201,
-    response_model=None,
+    response_model=strava_schema.StravaGearImportResult,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["gears:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.UPLOAD)
@@ -115,15 +115,17 @@ def import_bikes_from_strava_export(
     file: UploadFile,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-) -> None:
-    """Create the bikes listed in an uploaded Strava ``bikes.csv``."""
-    strava_gear_service.import_gear(file, token_user_id, gears_schema.GearType.BIKE, db)
+) -> strava_schema.StravaGearImportResult:
+    """Create the bikes listed in an uploaded Strava ``bikes.csv`` and report how many."""
+    return strava_schema.StravaGearImportResult(
+        imported=strava_gear_service.import_gear(file, token_user_id, gears_schema.GearType.BIKE, db)
+    )
 
 
 @router.post(
     "/import/shoes",
     status_code=201,
-    response_model=None,
+    response_model=strava_schema.StravaGearImportResult,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["gears:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.UPLOAD)
@@ -132,9 +134,11 @@ def import_shoes_from_strava_export(
     file: UploadFile,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-) -> None:
-    """Create the shoes listed in an uploaded Strava ``shoes.csv``."""
-    strava_gear_service.import_gear(file, token_user_id, gears_schema.GearType.SHOES, db)
+) -> strava_schema.StravaGearImportResult:
+    """Create the shoes listed in an uploaded Strava ``shoes.csv`` and report how many."""
+    return strava_schema.StravaGearImportResult(
+        imported=strava_gear_service.import_gear(file, token_user_id, gears_schema.GearType.SHOES, db)
+    )
 
 
 @router.put(

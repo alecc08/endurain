@@ -204,7 +204,7 @@ class ExportService:
             self._collect_and_write_global_activity_components(zipf)
 
         except SQLAlchemyError as err:
-            raise DatabaseConnectionError(f"Failed to collect activity data: {err}") from err
+            raise DatabaseConnectionError("Failed to collect activity data") from err
         except MemoryAllocationError as err:
             raise err
         except DataCollectionError:
@@ -519,7 +519,7 @@ class ExportService:
                 raise DataCollectionError(f"Failed to collect gear components: {err}") from err
 
         except SQLAlchemyError as err:
-            raise DatabaseConnectionError(f"Failed to collect gear data: {err}") from err
+            raise DatabaseConnectionError("Failed to collect gear data") from err
 
     def collect_health_weight(self, zipf: zipfile.ZipFile) -> None:
         """Collect and write health data to ZIP.
@@ -565,7 +565,7 @@ class ExportService:
                 raise DataCollectionError(f"Failed to collect health targets: {err}") from err
 
         except SQLAlchemyError as err:
-            raise DatabaseConnectionError(f"Failed to collect health data: {err}") from err
+            raise DatabaseConnectionError("Failed to collect health data") from err
 
     def collect_health_records(self, zipf: zipfile.ZipFile) -> None:
         """Collect and write sleep, steps, water, fasting and poop records to ZIP.
@@ -589,7 +589,7 @@ class ExportService:
                     raise DataCollectionError(f"Failed to collect {name}: {err}") from err
                 users_profile_utils.write_json_to_zip(zipf, f"data/{name}.json", records, self.counts)
         except SQLAlchemyError as err:
-            raise DatabaseConnectionError(f"Failed to collect health records: {err}") from err
+            raise DatabaseConnectionError("Failed to collect health records") from err
 
     def collect_user_settings_data(self, zipf: zipfile.ZipFile) -> None:
         """Collect and write user settings to ZIP.
@@ -668,7 +668,7 @@ class ExportService:
                 raise DataCollectionError(f"Failed to collect user privacy settings: {err}") from err
 
         except SQLAlchemyError as err:
-            raise DatabaseConnectionError(f"Failed to collect user settings: {err}") from err
+            raise DatabaseConnectionError("Failed to collect user settings") from err
 
     def add_activity_files_to_zip(self, zipf: zipfile.ZipFile, activity_ids: list[int]):
         """Add activity files to ZIP archive.

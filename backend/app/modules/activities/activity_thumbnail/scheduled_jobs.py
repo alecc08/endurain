@@ -7,6 +7,7 @@ import core.scheduler as core_scheduler
 import modules.activities.activity_thumbnail.service as activity_thumbnail_service
 
 SWEEP_LOCK_NAME = "thumbnail_sweep"
+BACKFILL_LOCK_NAME = activity_thumbnail_service.BACKFILL_LOCK_NAME
 
 
 def generate_missing_thumbnails() -> None:
@@ -17,13 +18,15 @@ def generate_missing_thumbnails() -> None:
     """
     platform = platform_runtime.get_active_platform()
     with core_database.SessionLocal() as db:
-        activity_thumbnail_service.generate_missing_activity_thumbnails(
-            platform.storage, platform.lock, platform.clock, db
-        )
+        activity_thumbnail_service.generate_missing_activity_thumbnails(platform.storage, platform.clock, db)
 
 
 def regenerate_all_thumbnails() -> None:
-    """Delete and regenerate every activity thumbnail."""
+    """Delete and regenerate every activity thumbnail.
+
+    Not run under the scheduler's lock: a regeneration that finds the backfill running must be retried,
+    not skipped, so the service takes :data:`BACKFILL_LOCK_NAME` itself and reports a conflict.
+    """
     platform = platform_runtime.get_active_platform()
     with core_database.SessionLocal() as db:
         activity_thumbnail_service.delete_and_regenerate_all_activity_thumbnails(
@@ -54,6 +57,7 @@ def recurring_jobs() -> tuple[core_scheduler.ScheduledJob, ...]:
             generate_missing_thumbnails,
             60,
             "generate thumbnails for activities missing one",
+            lock_name=BACKFILL_LOCK_NAME,
         ),
         core_scheduler.ScheduledJob(
             sweep_orphaned_thumbnails,
@@ -70,4 +74,5 @@ def schedule_missing_thumbnail_generation() -> None:
         generate_missing_thumbnails,
         job_id="endurain_generate_missing_thumbnails_oneshot",
         description="missing thumbnail generation",
+        lock_name=BACKFILL_LOCK_NAME,
     )

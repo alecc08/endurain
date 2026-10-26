@@ -196,9 +196,11 @@ def run_once(func: Callable[..., object], *, job_id: str, description: str, lock
             replace_existing=True,
             misfire_grace_time=None,
         )
-        logger.info(f"Scheduled one-shot {description} job")
+        logger.info("Scheduled a one-shot job", extra=core_logger.context(description=description))
     except Exception as err:
-        logger.error(f"Failed to schedule one-shot {description} job: {type(err).__name__}", exc_info=err)
+        logger.error(
+            "Failed to schedule a one-shot job", exc_info=err, extra=core_logger.context(description=description)
+        )
 
 
 def _scheduler_job_id(description: str) -> str:
@@ -241,7 +243,7 @@ def add_scheduler_job(
         None.
     """
     try:
-        logger.info(f"Added scheduler job to {description} every {minutes} minutes")
+        logger.info("Added a scheduler job", extra=core_logger.context(description=description, minutes=minutes))
         scheduler.add_job(
             func,
             interval,
@@ -251,7 +253,7 @@ def add_scheduler_job(
             replace_existing=True,
         )
     except Exception as err:
-        logger.error(f"Failed to add scheduler job to {description}: {type(err).__name__}", exc_info=err)
+        logger.error("Failed to add a scheduler job", exc_info=err, extra=core_logger.context(description=description))
 
 
 def stop_scheduler() -> None:

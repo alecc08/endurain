@@ -1612,3 +1612,40 @@ class TestClearGearFromActivities:
         assert "user_id" in compiled
         assert " IN " not in compiled
         assert "FOR UPDATE" not in compiled
+
+
+class TestSumUserActivitiesPerTimeframeAndTypes:
+    def test_returns_the_sums_the_database_computed(self, mock_db):
+        from datetime import UTC, datetime
+
+        import modules.activities.activity.crud as crud
+
+        mock_db.execute.return_value.one.return_value = (3, 1500, 42000.5, 800, 7200.0)
+
+        totals = crud.sum_user_activities_per_timeframe_and_activity_types(
+            1, [1, 2], datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 1, 31, tzinfo=UTC), mock_db
+        )
+
+        assert (totals.count, totals.calories, totals.distance, totals.elevation_gain, totals.elapsed_time) == (
+            3,
+            1500.0,
+            42000.5,
+            800.0,
+            7200.0,
+        )
+        mock_db.commit.assert_not_called()
+
+    def test_hidden_activities_are_left_out_only_when_asked(self, mock_db):
+        from datetime import UTC, datetime
+
+        import modules.activities.activity.crud as crud
+
+        mock_db.execute.return_value.one.return_value = (0, 0, 0, 0, 0)
+        window = (datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 1, 31, tzinfo=UTC))
+
+        crud.sum_user_activities_per_timeframe_and_activity_types(1, [1], *window, mock_db)
+        crud.sum_user_activities_per_timeframe_and_activity_types(1, [1], *window, mock_db, exclude_hidden=True)
+
+        shown, hidden_excluded = (str(call.args[0]) for call in mock_db.execute.call_args_list)
+        assert "is_hidden" not in shown
+        assert "is_hidden" in hidden_excluded
