@@ -2,6 +2,8 @@
 
 from enum import StrEnum
 
+import core.attempt_state as core_attempt_state
+
 PROVIDER_NAME = "garminconnect"
 
 # A login waits this long for the user's MFA code. The stores' lifetimes must exceed it so a live
@@ -14,6 +16,12 @@ LINK_TTL_SECONDS = MFA_WAIT_SECONDS + 240
 # Lifetime of a queued sync's claim and state: longer than any sync takes, shorter than a stuck
 # claim should block the user.
 SYNC_TTL_SECONDS = 30 * 60
+
+# How long a refresh waits after Garmin Connect answers 429, which reports no reset time.
+RATE_LIMIT_COOLDOWN_SECONDS = 15 * 60
+
+# Link logins one process runs at once; each holds a thread for up to the MFA wait.
+MAX_CONCURRENT_LINKS = 4
 
 # Syncs the in-process pool may hold, running or queued, when durable jobs are off.
 MAX_PENDING_LOCAL_SYNCS = 50
@@ -40,13 +48,8 @@ class SyncKind(StrEnum):
     HEALTH = "health"
 
 
-class SyncStatus(StrEnum):
-    """Where a queued Garmin Connect sync is."""
-
-    QUEUED = "queued"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
+#: Where a queued sync is; shared by every provider's sync state.
+SyncStatus = core_attempt_state.SyncStatus
 
 
 class LinkStatus(StrEnum):

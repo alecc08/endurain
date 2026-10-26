@@ -23,6 +23,35 @@ def get_user_integrations(user_id: int, db: Session) -> user_integrations_schema
     return user_integrations_crud.get_user_integrations_by_user_id(user_id, db)
 
 
+def replace_strava_tokens_if_refresh_token(user_id: int, old_refresh_token: str, tokens: dict, db: Session) -> bool:
+    """Store refreshed Strava tokens only while the stored refresh token is still the one they came from.
+
+    Args:
+        user_id: The user whose tokens were refreshed.
+        old_refresh_token: The stored (encrypted) refresh token the new tokens were refreshed from.
+        tokens: Dictionary containing access_token, refresh_token, and expires_at.
+        db: Database session.
+
+    Returns:
+        True when the tokens were replaced, False when the refresh token has since changed.
+    """
+    return user_integrations_crud.replace_strava_tokens_if_refresh_token(user_id, old_refresh_token, tokens, db)
+
+
+def unlink_strava_tokens_if_refresh_token(user_id: int, refresh_token: str, db: Session) -> bool:
+    """Clear a user's Strava tokens only while they still hold the given refresh token.
+
+    Args:
+        user_id: The user whose Strava link was rejected.
+        refresh_token: The stored (encrypted) refresh token that was found to be rejected.
+        db: Database session.
+
+    Returns:
+        True when the tokens were cleared, False when the refresh token has since changed.
+    """
+    return user_integrations_crud.unlink_strava_tokens_if_refresh_token(user_id, refresh_token, db)
+
+
 def link_garminconnect_account(user_id: int, token: dict, db: Session) -> None:
     """Store a user's Garmin Connect token.
 
@@ -98,21 +127,6 @@ def list_user_ids_with_garminconnect_linked(after_id: int, limit: int, db: Sessi
     return user_integrations_crud.list_user_ids_with_garminconnect_linked(after_id, limit, db)
 
 
-def get_integrations_by_strava_state(
-    strava_state: str, db: Session
-) -> user_integrations_schema.UsersIntegrationsRead | None:
-    """Return the integrations holding a Strava OAuth state, or ``None`` when no user does.
-
-    Args:
-        strava_state: The OAuth state returned by Strava.
-        db: Database session.
-
-    Returns:
-        The matching user's integrations, or ``None``.
-    """
-    return user_integrations_crud.get_user_integrations_by_strava_state(strava_state, db)
-
-
 def create_integrations(user_id: int, db: Session) -> user_integrations_schema.UsersIntegrationsRead:
     """Stage the default integrations row for a new user.
 
@@ -151,7 +165,7 @@ def edit_integrations(
 
 
 def link_strava_account(user_id: int, tokens: dict, db: Session) -> None:
-    """Store a user's Strava tokens (encrypted) and clear the pending OAuth state.
+    """Store a user's Strava tokens (encrypted).
 
     Args:
         user_id: The user linking Strava.
@@ -165,7 +179,7 @@ def link_strava_account(user_id: int, tokens: dict, db: Session) -> None:
 
 
 def unlink_strava_account(user_id: int, db: Session) -> None:
-    """Clear a user's Strava tokens, credentials, state and gear sync preference.
+    """Clear a user's Strava tokens, credentials and gear sync preference.
 
     Args:
         user_id: The user unlinking Strava.
@@ -190,20 +204,6 @@ def set_strava_client(user_id: int, client_id: str, client_secret: str, db: Sess
         NotFoundError: If the user has no integrations.
     """
     user_integrations_crud.set_user_strava_client(user_id, client_id, client_secret, db)
-
-
-def set_strava_state(user_id: int, state: str | None, db: Session) -> None:
-    """Set or clear a user's Strava OAuth state.
-
-    Args:
-        user_id: The user whose state to set.
-        state: The state to store, or ``None`` to clear it.
-        db: Database session.
-
-    Raises:
-        NotFoundError: If the user has no integrations.
-    """
-    user_integrations_crud.set_user_strava_state(user_id, state, db)
 
 
 def set_strava_sync_gear(user_id: int, sync_gear: bool, db: Session) -> None:

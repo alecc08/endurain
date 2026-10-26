@@ -282,6 +282,13 @@ _OUTBOUND_SURFACE_STEMS = frozenset({"identity_service"})
 #: rooted at ``app``. Every entry is a deliberate seam; anything else fails.
 _LAYER_EXCEPTIONS: dict[tuple[str, str], str] = {
     (
+        "modules.strava.activity_service",
+        "modules.activities.computation",
+    ): (
+        "A provider adapter converts Strava's streams into activity metrics with the pure maths the file parsers "
+        "share; the namespace publishes it for that, and it owns no table and calls no module."
+    ),
+    (
         "modules.users.users_profile.export_service",
         "modules.activities.contributor_registry",
     ): (
@@ -853,6 +860,39 @@ class TestSubPackagePrivacy:
             "A file's role is its filename, so the filename has to say what the "
             "file is. Rename it into the vocabulary in "
             "tests/_helpers/module_roles.py:\n  " + "\n  ".join(sorted(offenders))
+        )
+
+
+class TestStoreRole:
+    """A ``*_store.py`` holds shared state in the platform ``StateProvider``, not in the database or the process."""
+
+    def test_a_store_touches_neither_the_database_nor_process_memory(self):
+        offenders: list[str] = []
+        for module_name in _CONVERTED:
+            for path in _python_files(_MODULES_ROOT / module_name):
+                if _role(path.stem) != "store":
+                    continue
+                tree = ast.parse(path.read_text())
+                for node in ast.walk(tree):
+                    imported = (
+                        [alias.name for alias in node.names]
+                        if isinstance(node, ast.Import)
+                        else [node.module or ""]
+                        if isinstance(node, ast.ImportFrom)
+                        else []
+                    )
+                    if any(
+                        name == "sqlalchemy" or name.startswith(("sqlalchemy.", "core.database")) for name in imported
+                    ):
+                        offenders.append(f"{path}: imports the database")
+                for statement in tree.body:
+                    value = statement.value if isinstance(statement, (ast.Assign, ast.AnnAssign)) else None
+                    if isinstance(value, (ast.Dict, ast.List, ast.Set)) or (
+                        isinstance(value, ast.Call) and getattr(value.func, "id", "") in {"dict", "list", "set"}
+                    ):
+                        offenders.append(f"{path}: module-level mutable state")
+        assert not offenders, "\n  ".join(
+            ["A store keeps state in the platform StateProvider only:", *sorted(offenders)]
         )
 
 

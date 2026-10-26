@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DateRange } from '@/features/integrations/types'
 
@@ -18,7 +18,8 @@ import {
   retrieveStravaActivities,
   retrieveStravaGear,
   setStravaClient,
-  setStravaState,
+  beginStravaState,
+  clearStravaState,
   unlinkStrava,
 } from '@/features/integrations/services/strava'
 import { daysAgoRange } from '@/features/integrations/utils/dateRange'
@@ -53,18 +54,16 @@ describe('strava service', () => {
     vi.mocked(apiFetch).mockResolvedValue(undefined)
   })
 
-  it('setStravaState PUTs the state path (void)', async () => {
-    await setStravaState('abc123')
-    expect(apiFetch).toHaveBeenCalledWith('/strava/state/abc123', {
-      method: 'PUT',
-      responseType: 'void',
-    })
+  it('beginStravaState POSTs and returns the server-issued state', async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce({ state: 'issued-by-server' })
+    await expect(beginStravaState()).resolves.toBe('issued-by-server')
+    expect(apiFetch).toHaveBeenCalledWith('/strava/state', { method: 'POST' })
   })
 
-  it('setStravaState sends "null" to clear', async () => {
-    await setStravaState(null)
-    expect(apiFetch).toHaveBeenCalledWith('/strava/state/null', {
-      method: 'PUT',
+  it('clearStravaState DELETEs the state', async () => {
+    await clearStravaState()
+    expect(apiFetch).toHaveBeenCalledWith('/strava/state', {
+      method: 'DELETE',
       responseType: 'void',
     })
   })
@@ -87,32 +86,75 @@ describe('strava service', () => {
     )
   })
 
-  it('completeStravaLink PUTs the link path with state + code', async () => {
-    await completeStravaLink('st ate', 'co/de')
-    expect(apiFetch).toHaveBeenCalledWith('/strava/link?state=st%20ate&code=co%2Fde', {
-      method: 'PUT',
-      responseType: 'void',
+  describe('completeStravaLink', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('PUTs state + code in the body, not the URL, and resolves once the queued link completes', async () => {
+      vi.useFakeTimers()
+      vi.mocked(apiFetch)
+        .mockResolvedValueOnce({ kind: 'link', status: 'queued' })
+        .mockResolvedValueOnce({ kind: 'link', status: 'running' })
+        .mockResolvedValueOnce({ kind: 'link', status: 'completed' })
+
+      const done = completeStravaLink('st ate', 'co/de')
+      await vi.advanceTimersByTimeAsync(2_000)
+      await done
+
+      expect(apiFetch).toHaveBeenNthCalledWith(1, '/strava/link', {
+        method: 'POST',
+        body: JSON.stringify({ state: 'st ate', code: 'co/de' }),
+      })
+      expect(apiFetch).toHaveBeenNthCalledWith(2, '/strava/sync/link')
+      expect(apiFetch).toHaveBeenCalledTimes(3)
+    })
+
+    it('rejects when the queued link fails', async () => {
+      vi.mocked(apiFetch).mockResolvedValueOnce({ kind: 'link', status: 'failed' })
+
+      await expect(completeStravaLink('s', 'c')).rejects.toThrow('Linking Strava failed')
     })
   })
 
-  it('retrieveStravaActivities GETs the activities path with the window', async () => {
+  it('retrieveStravaActivities POSTs the activities path with the window', async () => {
     await retrieveStravaActivities(range)
     expect(apiFetch).toHaveBeenCalledWith(
       '/strava/activities?start_date=2026-01-01&end_date=2026-01-07',
-      { responseType: 'void' },
+      { method: 'POST', responseType: 'void' },
     )
   })
 
-  it('retrieveStravaGear GETs the gear path', async () => {
+  it('retrieveStravaGear POSTs the gear path', async () => {
     await retrieveStravaGear()
-    expect(apiFetch).toHaveBeenCalledWith('/strava/gear', { responseType: 'void' })
+    expect(apiFetch).toHaveBeenCalledWith('/strava/gear', { method: 'POST', responseType: 'void' })
   })
 
-  it('unlinkStrava DELETEs the unlink path', async () => {
-    await unlinkStrava()
-    expect(apiFetch).toHaveBeenCalledWith('/strava/unlink', {
-      method: 'DELETE',
-      responseType: 'void',
+  describe('unlinkStrava', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('DELETEs the unlink path and resolves once the queued unlink completes', async () => {
+      vi.useFakeTimers()
+      vi.mocked(apiFetch)
+        .mockResolvedValueOnce({ kind: 'unlink', status: 'queued' })
+        .mockResolvedValueOnce({ kind: 'unlink', status: 'running' })
+        .mockResolvedValueOnce({ kind: 'unlink', status: 'completed' })
+
+      const done = unlinkStrava()
+      await vi.advanceTimersByTimeAsync(2_000)
+      await done
+
+      expect(apiFetch).toHaveBeenNthCalledWith(1, '/strava/link', { method: 'DELETE' })
+      expect(apiFetch).toHaveBeenNthCalledWith(2, '/strava/sync/unlink')
+      expect(apiFetch).toHaveBeenCalledTimes(3)
+    })
+
+    it('rejects when the queued unlink fails', async () => {
+      vi.mocked(apiFetch).mockResolvedValueOnce({ kind: 'unlink', status: 'failed' })
+
+      await expect(unlinkStrava()).rejects.toThrow('Unlinking Strava failed')
     })
   })
 })

@@ -201,7 +201,7 @@ class TestEditUser:
             "/users/1",
             json={"name": "U", "username": "u", "email": "u@example.com", "active": True, "access_type": "regular"}
             | read_only,
-            headers={"If-Match": "*"},
+            headers={"If-Match": '"1"'},
         )
 
         assert response.status_code == 422
@@ -219,7 +219,7 @@ class TestEditUser:
                 "active": True,
                 "access_type": "regular",
             },
-            headers={"If-Match": "*"},
+            headers={"If-Match": '"1"'},
         )
 
         assert response.status_code == 200
@@ -231,7 +231,7 @@ class TestEditUser:
 class TestApproveUser:
     @patch(f"{_SERVICE}.approve_user")
     def test_approves_with_the_notice_in_the_same_unit_of_work(self, mock_approve, client, identity_service, mock_db):
-        response = client.put("/users/1/approve", headers={"If-Match": "*"})
+        response = client.put("/users/1/approve", headers={"If-Match": '"1"'})
 
         assert response.status_code == 204
         assert response.content == b""
@@ -241,7 +241,7 @@ class TestApproveUser:
     def test_unverified_email_is_refused(self, mock_approve, client):
         mock_approve.side_effect = core_exceptions.InvalidInputError("User email is not verified")
 
-        response = client.put("/users/1/approve", headers={"If-Match": "*"})
+        response = client.put("/users/1/approve", headers={"If-Match": '"1"'})
 
         assert response.status_code == 400
 
@@ -291,7 +291,10 @@ class TestReadScopes:
         route = next(r for r in router.routes if r.path == path and "GET" in r.methods)
         return {scope for dep in route.dependant.dependencies for scope in dep.own_oauth_scopes or []}
 
-    @pytest.mark.parametrize("path", ["", "/email/{email}", "/username/{username}", "/{user_id}"])
+    @pytest.mark.parametrize(
+        "path",
+        ["", "/email/{email}", "/username/{username}", "/{user_id}", "/{user_id}/identity-providers"],
+    )
     def test_full_records_need_the_admin_read_scope(self, path):
         assert self._scopes(path) == {"users:read_all"}
 
@@ -337,7 +340,13 @@ class TestReadScopeEnforcement:
 
     @pytest.mark.parametrize(
         "path",
-        ["/users", "/users/email/admin@example.com", "/users/username/admin", "/users/1"],
+        [
+            "/users",
+            "/users/email/admin@example.com",
+            "/users/username/admin",
+            "/users/1",
+            "/users/1/identity-providers",
+        ],
     )
     def test_regular_token_cannot_read_full_records(self, path):
         response = self._client(auth_constants.REGULAR_ACCESS_SCOPE).get(path)

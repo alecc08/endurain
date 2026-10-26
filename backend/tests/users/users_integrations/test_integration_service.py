@@ -35,24 +35,36 @@ def test_strava_operations_reach_the_crud():
         patch.object(crud, "link_strava_account") as link,
         patch.object(crud, "unlink_strava_account") as unlink,
         patch.object(crud, "set_user_strava_client") as client,
-        patch.object(crud, "set_user_strava_state") as state,
         patch.object(crud, "set_user_strava_sync_gear") as sync_gear,
-        patch.object(crud, "get_user_integrations_by_strava_state", return_value="found") as by_state,
         patch.object(crud, "list_user_ids_with_strava_linked", return_value=[2]) as linked,
     ):
         user_integrations_integration.link_strava_account(1, {"access_token": "a"}, db)
         user_integrations_integration.unlink_strava_account(1, db)
         user_integrations_integration.set_strava_client(1, "id", "secret", db)
-        user_integrations_integration.set_strava_state(1, "abc", db)
         user_integrations_integration.set_strava_sync_gear(1, True, db)
-        found = user_integrations_integration.get_integrations_by_strava_state("abc", db)
         ids = user_integrations_integration.list_user_ids_with_strava_linked(0, 10, db)
 
     link.assert_called_once_with(1, {"access_token": "a"}, db)
     unlink.assert_called_once_with(1, db)
     client.assert_called_once_with(1, "id", "secret", db)
-    state.assert_called_once_with(1, "abc", db)
     sync_gear.assert_called_once_with(1, True, db)
-    by_state.assert_called_once_with("abc", db)
     linked.assert_called_once_with(0, 10, db)
-    assert (found, ids) == ("found", [2])
+    assert ids == [2]
+
+
+def test_strava_token_unlink_reaches_the_crud():
+    db = MagicMock()
+    crud = user_integrations_integration.user_integrations_crud
+    with patch.object(crud, "unlink_strava_tokens_if_refresh_token", return_value=True) as unlink:
+        assert user_integrations_integration.unlink_strava_tokens_if_refresh_token(1, "enc", db) is True
+
+    unlink.assert_called_once_with(1, "enc", db)
+
+
+def test_strava_token_replacement_reaches_the_crud():
+    db = MagicMock()
+    crud = user_integrations_integration.user_integrations_crud
+    with patch.object(crud, "replace_strava_tokens_if_refresh_token", return_value=True) as replace:
+        assert user_integrations_integration.replace_strava_tokens_if_refresh_token(1, "enc", {"k": 1}, db) is True
+
+    replace.assert_called_once_with(1, "enc", {"k": 1}, db)

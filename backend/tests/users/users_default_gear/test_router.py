@@ -19,6 +19,7 @@ def _build_app(mock_db):
         return 1
 
     app.dependency_overrides[auth_deps.get_sub_from_access_token] = _uid
+    app.dependency_overrides[auth_deps.check_scopes] = lambda: None
     app.dependency_overrides[core_db.get_db] = lambda: mock_db
     return app
 
@@ -46,7 +47,7 @@ class TestEditUserDefaultGear:
         response = client.patch(
             "/user_default_gear",
             json={"run_gear_id": 2},
-            headers={**{"Authorization": "Bearer x"}, "If-Match": "*"},
+            headers={**{"Authorization": "Bearer x"}, "If-Match": '"1"'},
         )
         assert response.status_code == 200
 

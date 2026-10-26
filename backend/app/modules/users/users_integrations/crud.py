@@ -119,26 +119,6 @@ def list_user_ids_with_garminconnect_linked(after_id: int, limit: int, db: Sessi
     return linked[:limit]
 
 
-def get_user_integrations_by_strava_state(
-    strava_state: str, db: Session
-) -> user_integrations_schema.UsersIntegrationsRead | None:
-    """Retrieve integrations by Strava OAuth state token.
-
-    Args:
-        strava_state: The Strava OAuth state to search for.
-        db: SQLAlchemy database session.
-
-    Returns:
-        The UsersIntegrationsRead schema if found, None otherwise.
-    """
-    # Get user integrations based on the strava state
-    stmt = select(user_integrations_models.UsersIntegrations).where(
-        user_integrations_models.UsersIntegrations.strava_state == strava_state
-    )
-    user_integrations = db.execute(stmt).scalar_one_or_none()
-    return user_integrations_serializers.to_read_schema(user_integrations) if user_integrations else None
-
-
 def create_user_integrations(user_id: int, db: Session) -> user_integrations_schema.UsersIntegrationsRead:
     """Create integration settings for a user (flushed, not committed).
 
@@ -190,11 +170,40 @@ def link_strava_account(
     db_user_integrations.strava_refresh_token = core_cryptography.encrypt_token_fernet(tokens["refresh_token"])
     db_user_integrations.strava_token_expires_at = datetime.fromtimestamp(tokens["expires_at"], tz=UTC)
 
-    # Set the strava state to None
-    db_user_integrations.strava_state = None
-
     db.flush()
     db.refresh(db_user_integrations)
+
+
+def replace_strava_tokens_if_refresh_token(user_id: int, old_refresh_token: str, tokens: dict, db: Session) -> bool:
+    """Store refreshed Strava tokens only while the stored refresh token is still the one they came from.
+
+    Strava rotates the refresh token on every refresh. The row is locked while the token is
+    compared, so a refresh that raced another, or a relink made in the meantime, is never
+    overwritten. The caller commits.
+
+    Args:
+        user_id: The ID of the user.
+        old_refresh_token: The stored (encrypted) refresh token the new tokens were refreshed from.
+        tokens: Dictionary containing access_token, refresh_token, and expires_at.
+        db: SQLAlchemy database session.
+
+    Returns:
+        True when the tokens were replaced, False when the stored refresh token has changed or is cleared.
+    """
+    stmt = (
+        select(user_integrations_models.UsersIntegrations)
+        .where(user_integrations_models.UsersIntegrations.user_id == user_id)
+        .with_for_update()
+    )
+    db_user_integrations = db.execute(stmt).scalar_one_or_none()
+
+    if db_user_integrations is None or db_user_integrations.strava_refresh_token != old_refresh_token:
+        return False
+
+    db_user_integrations.strava_token = core_cryptography.encrypt_token_fernet(tokens["access_token"])
+    db_user_integrations.strava_refresh_token = core_cryptography.encrypt_token_fernet(tokens["refresh_token"])
+    db_user_integrations.strava_token_expires_at = datetime.fromtimestamp(tokens["expires_at"], tz=UTC)
+    return True
 
 
 def unlink_strava_account(user_id: int, db: Session) -> None:
@@ -211,7 +220,6 @@ def unlink_strava_account(user_id: int, db: Session) -> None:
     db_user_integrations = _get_user_integrations_model_by_user_id_or_404(user_id, db)
 
     # Clear all Strava integration data
-    db_user_integrations.strava_state = None
     db_user_integrations.strava_token = None
     db_user_integrations.strava_refresh_token = None
     db_user_integrations.strava_token_expires_at = None
@@ -221,6 +229,39 @@ def unlink_strava_account(user_id: int, db: Session) -> None:
 
     db.flush()
     db.refresh(db_user_integrations)
+
+
+def unlink_strava_tokens_if_refresh_token(user_id: int, refresh_token: str, db: Session) -> bool:
+    """Clear a user's Strava tokens only while they still hold the given refresh token.
+
+    The client id and secret are kept, so the user relinks without entering them again. The
+    row is locked while the token is compared, so a link or refresh made in the meantime is
+    never cleared by a caller that holds the previous token. The caller commits.
+
+    Args:
+        user_id: The ID of the user to unlink.
+        refresh_token: The stored (encrypted) refresh token the caller found to be rejected.
+        db: SQLAlchemy database session.
+
+    Returns:
+        True when the tokens were cleared, False when the stored refresh token has changed or
+        is already cleared.
+    """
+    stmt = (
+        select(user_integrations_models.UsersIntegrations)
+        .where(user_integrations_models.UsersIntegrations.user_id == user_id)
+        .with_for_update()
+    )
+    db_user_integrations = db.execute(stmt).scalar_one_or_none()
+
+    if db_user_integrations is None or db_user_integrations.strava_refresh_token != refresh_token:
+        return False
+
+    db_user_integrations.strava_token = None
+    db_user_integrations.strava_refresh_token = None
+    db_user_integrations.strava_token_expires_at = None
+    db_user_integrations.strava_sync_gear = False
+    return True
 
 
 def set_user_strava_client(user_id: int, client_id: str, client_secret: str, db: Session) -> None:
@@ -241,27 +282,6 @@ def set_user_strava_client(user_id: int, client_id: str, client_secret: str, db:
     # Encrypt and store Strava client credentials
     db_user_integrations.strava_client_id = core_cryptography.encrypt_token_fernet(client_id)
     db_user_integrations.strava_client_secret = core_cryptography.encrypt_token_fernet(client_secret)
-
-    db.flush()
-    db.refresh(db_user_integrations)
-
-
-def set_user_strava_state(user_id: int, state: str | None, db: Session) -> None:
-    """Set or clear Strava OAuth state for a user (flushed, not committed).
-
-    Args:
-        user_id: The ID of the user.
-        state: Strava OAuth state to set, or None to clear.
-        db: SQLAlchemy database session.
-
-    Raises:
-        NotFoundError: If the user has no integrations.
-    """
-    # Get the user integrations by the user id
-    db_user_integrations = _get_user_integrations_model_by_user_id_or_404(user_id, db)
-
-    # Set the user Strava state
-    db_user_integrations.strava_state = None if state in ("null", None) else state
 
     db.flush()
     db.refresh(db_user_integrations)

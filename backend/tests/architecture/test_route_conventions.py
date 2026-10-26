@@ -62,6 +62,11 @@ def _limits(function: ast.FunctionDef) -> bool:
     )
 
 
+def _scope_parameter_names(path: pathlib.Path) -> frozenset[str]:
+    """Names a route must not give its scope check; ``auth`` is held to the plural until it is converted."""
+    return frozenset({"_check_scopes"} if "modules/auth" in path.as_posix() else {"_check_scopes", "_check_scope"})
+
+
 class TestRouteConventions:
     def test_every_route_declares_what_it_returns(self):
         """JSON routes declare ``response_model``; byte routes declare ``response_class`` or ``responses``.
@@ -166,6 +171,37 @@ class TestRouteConventions:
 
         assert offenders == [], "Use the shared alias instead of an inline Depends:\n  " + "\n  ".join(offenders)
 
+    def test_every_authenticated_route_declares_its_own_scope(self):
+        """A route's scope sits on its decorator, not on the ``include_router`` call in ``api.py``.
+
+        One spelling means a reader of a route sees what it requires, and a route added to a router
+        cannot inherit a scope nobody chose for it. A router whose access control is not a token
+        (a signed URL, a one-time link token) is listed with its reason.
+        """
+        credentialed_by_url = {
+            "photo_router.py": "the signed token in the URL is the credential (an <img> cannot send a header)",
+            "browser_redirect_router.py": "the one-time link_token parameter is the credential",
+        }
+        scope_checks = {"check_scopes", "check_auth_scopes"}
+        offenders = []
+        for path, function in _router_functions():
+            if role_of(path.stem) != "router" or path.name in credentialed_by_url:
+                continue
+            for _, call in _route_decorators(function):
+                declared = {
+                    node.attr
+                    for keyword in call.keywords
+                    if keyword.arg == "dependencies"
+                    for node in ast.walk(keyword.value)
+                    if isinstance(node, ast.Attribute)
+                }
+                if not scope_checks & declared:
+                    offenders.append(f"{path.relative_to(_ROOT).as_posix()}::{function.name}")
+
+        assert offenders == [], "Add dependencies=[Security(auth_dependencies.check_scopes, scopes=[...])] to:\n  " + (
+            "\n  ".join(offenders)
+        )
+
     def test_scope_checks_are_declared_on_the_route_decorator(self):
         """A scope check nobody reads goes in ``dependencies=[Security(...)]``, not a ``_check_scopes`` parameter.
 
@@ -178,7 +214,7 @@ class TestRouteConventions:
             for node in ast.walk(ast.parse(path.read_text()))
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
             and any(
-                argument.arg == "_check_scopes"
+                argument.arg in _scope_parameter_names(path)
                 for argument in node.args.posonlyargs + node.args.args + node.args.kwonlyargs
             )
         ]
@@ -233,4 +269,81 @@ class TestSignatureConventions:
 
         assert offenders == [], (
             "Publishers must be (<ids>, db, [*, commit,] <extras>), with commit required:\n  " + "\n  ".join(offenders)
+        )
+
+
+#: Writes to a versioned package that carry no ``If-Match``, with why (``optimistic-concurrency.md``, "What is not versioned").
+_UNVERSIONED_WRITES = {
+    ("activities/activity/router.py", "edit_activities"): "the bulk edit has no single record to name",
+    ("users/users/router.py", "approve_user"): "an action does not replace a representation the client read",
+}
+
+#: Routes that take a ``{user_id}`` path parameter, hold only a regular-user scope and take no ``CurrentUserId``.
+_USER_PATH_WITHOUT_OWNER = {
+    ("users/users/router.py", "read_users_id"): "returns the public projection, which any authenticated user may read",
+}
+
+
+def _declared_scopes(call: ast.Call) -> set[str]:
+    """Return the scope strings a route decorator passes to its scope check."""
+    return {
+        node.value
+        for keyword in call.keywords
+        if keyword.arg == "dependencies"
+        for node in ast.walk(keyword.value)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+
+
+def _parameter_aliases(function: ast.FunctionDef) -> str:
+    """Return the unparsed parameter list, for a check that an alias is among the annotations."""
+    return ast.unparse(function.args)
+
+
+class TestVersionedAndOwnedRoutes:
+    def test_a_versioned_resource_is_edited_only_with_if_match(self):
+        """A ``PUT``/``PATCH`` in a package whose model declares ``version_id_col`` takes ``IfMatch``.
+
+        Without it the write is last-writer-wins and silently loses a concurrent edit. Creates, deletes and
+        actions are not versioned; the exceptions are listed with their reason.
+        """
+        offenders = []
+        for path, function in _router_functions():
+            models = path.parent / "models.py"
+            if not models.exists() or "version_id_col" not in models.read_text():
+                continue
+            relative = path.relative_to(_ROOT).as_posix()
+            if (relative, function.name) in _UNVERSIONED_WRITES:
+                continue
+            edits = any(method in {"put", "patch"} for method, _ in _route_decorators(function))
+            if edits and "IfMatch" not in _parameter_aliases(function):
+                offenders.append(f"{relative}::{function.name}")
+
+        assert offenders == [], "Take core_dependencies.IfMatch (see optimistic-concurrency.md) in:\n  " + "\n  ".join(
+            offenders
+        )
+
+    def test_a_route_naming_another_user_checks_ownership_or_needs_an_admin_scope(self):
+        """A route with a ``{user_id}`` path parameter takes ``CurrentUserId`` or requires an admin-class scope.
+
+        ``users:read`` and ``profile`` belong to every regular user, so a route guarded only by them that
+        names another user is open to any account (an IDOR). Admin scopes end in ``_all`` or are ``users:write``.
+        """
+        admin_scopes = {"users:write"}
+        offenders = []
+        for path, function in _router_functions():
+            relative = path.relative_to(_ROOT).as_posix()
+            if role_of(path.stem) != "router" or (relative, function.name) in _USER_PATH_WITHOUT_OWNER:
+                continue
+            for _, call in _route_decorators(function):
+                if not call.args or not isinstance(call.args[0], ast.Constant) or "{user_id}" not in call.args[0].value:
+                    continue
+                scopes = _declared_scopes(call)
+                is_admin = any(scope in admin_scopes or scope.endswith("_all") for scope in scopes)
+                if scopes and not is_admin and "CurrentUserId" not in _parameter_aliases(function):
+                    offenders.append(f"{relative}::{function.name}")
+
+        assert offenders == [], (
+            "Require an admin scope or take CurrentUserId and check ownership in the service:\n  "
+            + "\n  ".join(offenders)
         )

@@ -1,11 +1,13 @@
+"""Strava activity sync: fetch a window, parse each activity with its streams and laps, and store it."""
+
+from collections.abc import Callable
 from datetime import datetime, timedelta
 
-from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from stravalib.client import Client
-from stravalib.exc import AccessUnauthorized
 
 import core.config as core_config
+import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.timezone as core_timezone
 import modules.activities.activity.constants as activity_constants
@@ -16,7 +18,8 @@ import modules.activities.activity_streams.constants as activity_streams_constan
 import modules.activities.activity_streams.contracts as activity_streams_contracts
 import modules.activities.computation as activities_computation
 import modules.gears.gear.integration_service as gears_integration
-import modules.strava.utils as strava_utils
+import modules.strava.client_service as strava_client_service
+import modules.strava.rate_limit_store as strava_rate_limit_store
 import modules.users.users.integration_service as users_integration
 import modules.users.users_default_gear.integration_service as users_default_gear_integration
 import modules.users.users_integrations.schema as user_integrations_schema
@@ -33,6 +36,7 @@ def fetch_and_process_activities(
     end_date: datetime,
     user_id: int,
     user_integrations: user_integrations_schema.UsersIntegrationsRead,
+    rate_limits: strava_rate_limit_store.StravaRateLimitStore,
 ) -> list[activity_schema.ActivityRead | None] | None:
     """Fetch a user's Strava activities in a window and store the new ones.
 
@@ -46,117 +50,109 @@ def fetch_and_process_activities(
         end_date: End of the window.
         user_id: The user the activities belong to.
         user_integrations: The user's integration settings.
+        rate_limits: The shared Strava rate-limit state.
 
     Returns:
         One entry per activity Strava returned (``None`` for one already stored),
         or ``None`` when Strava returned nothing or the user is rate limited.
 
     Raises:
-        HTTPException: When Strava rejects the request or the user is missing.
+        DomainError: When Strava rejects the request or the user is missing.
     """
-    # Check if we're currently rate-limited before making any Strava API calls
-    client_id = strava_utils.get_client_id(user_integrations)
-    if strava_utils.rate_limit_tracker.is_rate_limited(client_id):
-        logger.warning(
-            f"User {user_id}: Strava rate limit active, skipping activity fetch",
-            extra=core_logger.context(console=True),
-        )
-        return None
+    client_id = strava_client_service.get_client_id(user_integrations)
+    strava_client_service.raise_if_rate_limit_active(client_id, user_id, rate_limits)
 
     try:
         strava_activities = list(strava_client.get_activities(after=start_date, before=end_date))
-    except AccessUnauthorized as auth_err:
-        logger.error(f"User {user_id}: Authentication error with Strava: {auth_err!s}", exc_info=auth_err)
-        raise HTTPException(
-            status_code=(status.HTTP_424_FAILED_DEPENDENCY),
-            detail=("Strava authentication failed. Please reconnect your Strava account."),
-        ) from auth_err
-    except HTTPException:
+    except core_exceptions.DomainError:
         raise
     except Exception as err:
-        if strava_utils.is_strava_rate_limit_error(err):
-            err_str = str(err).lower()
-            is_long = "long" in err_str or ("daily" in err_str)
-            strava_utils.rate_limit_tracker.mark_rate_limited(client_id, is_long_term=is_long)
-            logger.warning(f"User {user_id}: Strava rate limit exceeded, skipping activity fetch")
-            raise HTTPException(
-                status_code=(status.HTTP_429_TOO_MANY_REQUESTS),
-                detail=("Strava API rate limit exceeded. Please try again later."),
-            ) from err
-
-        logger.error(f"User {user_id}: Error fetching Strava activities: {err!s}", exc_info=err)
-        raise HTTPException(
-            status_code=(status.HTTP_424_FAILED_DEPENDENCY),
-            detail=("Not able to fetch Strava activities"),
-        ) from err
+        strava_client_service.raise_if_unauthorized(err, user_id, user_integrations)
+        strava_client_service.raise_if_rate_limited(err, client_id, rate_limits)
+        logger.error("Error fetching Strava activities", extra=core_logger.context(user_id=user_id), exc_info=err)
+        raise core_exceptions.DependencyFailedError("Not able to fetch Strava activities") from err
 
     if not strava_activities:
-        logger.info(f"User {user_id}: No new Strava activities found after {start_date}")
+        logger.info("No new Strava activities found", extra=core_logger.context(user_id=user_id, start_date=start_date))
         return None
 
     with SessionLocal() as db:
         user = users_integration.get_user(user_id, db)
         if user is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            )
+            raise core_exceptions.NotFoundError("User not found")
         user_privacy_settings = users_privacy_settings_integration.get_privacy_settings(user.id, db)
+    # Fallback for activities with no GPS track (indoor rides, treadmill runs): prefer
+    # the athlete's own timezone over the server's, which is meaningless on another continent.
+    timezone = user.timezone or core_config.settings.TZ
 
-    return [
-        process_activity(
-            activity,
-            user_id,
-            user_privacy_settings,
-            strava_client,
-            user_integrations,
+    processed: list[activity_schema.ActivityRead | None] = []
+    failed = 0
+    for activity in strava_activities:
+        try:
+            processed.append(
+                process_activity(
+                    activity, user_id, user_privacy_settings, timezone, strava_client, user_integrations, rate_limits
+                )
+            )
+        except (core_exceptions.TooManyRequestsError, strava_client_service.StravaTokenRejectedError):
+            raise
+        except Exception as err:
+            # One activity Strava or the parser cannot handle must not stop the rest of the window;
+            # it is not stored, so the next sync of the window tries it again.
+            failed += 1
+            logger.error(
+                "Skipping a Strava activity that could not be processed",
+                extra=core_logger.context(user_id=user_id, strava_activity_id=activity.id),
+                exc_info=err,
+            )
+    if failed:
+        logger.warning(
+            "Some Strava activities were not processed", extra=core_logger.context(user_id=user_id, failed=failed)
         )
-        for activity in strava_activities
-    ]
+    return processed
 
 
 def parse_activity(
     activity,
     user_id: int,
     user_privacy_settings: users_privacy_settings_schema.UsersPrivacySettingsRead,
+    timezone: str,
     strava_client: Client,
     user_integrations: user_integrations_schema.UsersIntegrationsRead,
+    rate_limits: strava_rate_limit_store.StravaRateLimitStore,
 ) -> dict:
-    # Fallback for activities with no GPS track (indoor rides, treadmill runs):
-    # prefer the athlete's own timezone over the server's, which is meaningless
-    # for a user on another continent.
-    with SessionLocal() as db:
-        owner = users_integration.get_user(user_id, db)
-    timezone = (owner.timezone if owner and owner.timezone else None) or core_config.settings.TZ
+    """Fetch one Strava activity in detail and convert it for storage.
 
-    # Check rate limit before detailed activity fetch
-    client_id = strava_utils.get_client_id(user_integrations)
-    if strava_utils.rate_limit_tracker.is_rate_limited(client_id):
-        logger.warning(f"User {user_id}: Strava rate limit active, skipping activity parse")
-        raise HTTPException(
-            status_code=(status.HTTP_429_TOO_MANY_REQUESTS),
-            detail=("Strava API rate limit exceeded. Please try again later."),
-        )
+    Args:
+        activity: The Strava summary activity.
+        user_id: The user the activity belongs to.
+        user_privacy_settings: The user's privacy defaults.
+        timezone: The timezone for an activity with no GPS track.
+        strava_client: A client authenticated as the user.
+        user_integrations: The user's integration settings.
+        rate_limits: The shared Strava rate-limit state.
 
-    # Get the detailed activity
+    Returns:
+        The activity to store, its stream data and its laps.
+
+    Raises:
+        TooManyRequestsError: When Strava's rate limit is active or was just hit.
+        DependencyFailedError: When Strava cannot return the activity.
+    """
+    client_id = strava_client_service.get_client_id(user_integrations)
+    strava_client_service.raise_if_rate_limit_active(client_id, user_id, rate_limits)
+
     try:
         detailed_activity = strava_client.get_activity(activity.id)
     except Exception as err:
-        # Check if this is a rate limit error
-        if strava_utils.is_strava_rate_limit_error(err):
-            err_str = str(err).lower()
-            is_long = "long" in err_str or ("daily" in err_str)
-            strava_utils.rate_limit_tracker.mark_rate_limited(client_id, is_long_term=is_long)
-            raise HTTPException(
-                status_code=(status.HTTP_429_TOO_MANY_REQUESTS),
-                detail=("Strava API rate limit exceeded. Please try again later."),
-            ) from err
-        # Log an error event if an exception occurred
-        logger.error(f"User {user_id}: Error fetching detailed Strava activity {activity.id}: {err!s}", exc_info=err)
-        raise HTTPException(
-            status_code=(status.HTTP_424_FAILED_DEPENDENCY),
-            detail=("Not able to fetch Strava activity"),
-        ) from err
+        strava_client_service.raise_if_unauthorized(err, user_id, user_integrations)
+        strava_client_service.raise_if_rate_limited(err, client_id, rate_limits)
+        logger.error(
+            "Error fetching detailed Strava activity",
+            extra=core_logger.context(user_id=user_id, strava_activity_id=activity.id),
+            exc_info=err,
+        )
+        raise core_exceptions.DependencyFailedError("Not able to fetch Strava activity") from err
 
     # Parse start and end dates
     start_date_parsed = core_timezone.to_utc_second(detailed_activity.start_date)
@@ -164,11 +160,11 @@ def parse_activity(
         # stravalib types start_date as optional; without it there is nothing to
         # anchor the activity to, and every downstream consumer (dedup by start
         # time, end-time derivation) requires it.
-        logger.error(f"User {user_id}: Strava activity {activity.id} has no start date, skipping")
-        raise HTTPException(
-            status_code=status.HTTP_424_FAILED_DEPENDENCY,
-            detail="Strava activity has no start date",
+        logger.error(
+            "Strava activity has no start date, skipping",
+            extra=core_logger.context(user_id=user_id, strava_activity_id=activity.id),
         )
+        raise core_exceptions.DependencyFailedError("Strava activity has no start date")
 
     # Ensure activity.elapsed_time is a numerical value
     total_elapsed_time = (
@@ -214,6 +210,7 @@ def parse_activity(
         activity.id,
         user_id,
         user_integrations,
+        rate_limits,
     )
 
     ele_gain, ele_loss = None, None
@@ -234,7 +231,7 @@ def parse_activity(
         max_speed = detailed_activity.max_speed
 
     # Calculate average pace
-    average_pace = 1 / avg_speed if avg_speed != 0 else None
+    average_pace = 1 / avg_speed if avg_speed else None
 
     avg_hr, max_hr = None, None
     # Get average and max heart rate
@@ -268,13 +265,13 @@ def parse_activity(
 
     # List of conditions, stream types, and corresponding waypoints
     stream_data = [
-        (is_heart_rate_set, 1, hr_waypoints),
-        (is_power_set, 2, power_waypoints),
-        (is_cadence_set, 3, cad_waypoints),
-        (is_elevation_set, 4, ele_waypoints),
-        (is_velocity_set, 5, vel_waypoints),
-        (is_velocity_set, 6, pace_waypoints),
-        (detailed_activity.start_latlng is not None, 7, lat_lon_waypoints),
+        (is_heart_rate_set, activity_streams_constants.STREAM_TYPE_HR, hr_waypoints),
+        (is_power_set, activity_streams_constants.STREAM_TYPE_POWER, power_waypoints),
+        (is_cadence_set, activity_streams_constants.STREAM_TYPE_CADENCE, cad_waypoints),
+        (is_elevation_set, activity_streams_constants.STREAM_TYPE_ELEVATION, ele_waypoints),
+        (is_velocity_set, activity_streams_constants.STREAM_TYPE_SPEED, vel_waypoints),
+        (is_velocity_set, activity_streams_constants.STREAM_TYPE_PACE, pace_waypoints),
+        (detailed_activity.start_latlng is not None, activity_streams_constants.STREAM_TYPE_MAP, lat_lon_waypoints),
     ]
 
     gear_id = None
@@ -329,7 +326,7 @@ def parse_activity(
         max_hr=max_hr,
         average_cad=round(avg_cadence) if avg_cadence else None,
         max_cad=max_cadence,
-        calories=round(detailed_activity.calories),
+        calories=round(detailed_activity.calories) if detailed_activity.calories is not None else None,
         gear_id=gear_id,
         strava_gear_id=detailed_activity.gear_id,
         strava_activity_id=int(activity.id),
@@ -357,6 +354,7 @@ def parse_activity(
         user_id,
         stream_data,
         user_integrations,
+        rate_limits,
     )
 
     # Return the activity and stream data
@@ -419,6 +417,10 @@ def save_activity_streams_laps(
     # duplicate start times hidden and forwards that to the notification subscriber.
     stored = activity_integration.store_parsed_activity(parsed, db)
     db.commit()
+    logger.debug(
+        "Strava activity stored",
+        extra=core_logger.context(user_id=activity.user_id, strava_activity_id=activity.strava_activity_id),
+    )
     return stored
 
 
@@ -426,34 +428,47 @@ def process_activity(
     activity,
     user_id: int,
     user_privacy_settings: users_privacy_settings_schema.UsersPrivacySettingsRead,
+    timezone: str,
     strava_client: Client,
     user_integrations: user_integrations_schema.UsersIntegrationsRead,
+    rate_limits: strava_rate_limit_store.StravaRateLimitStore,
 ) -> activity_schema.ActivityRead | None:
     """Parse one Strava activity and store it, unless it is already stored.
 
     The Strava calls inside :func:`parse_activity` run with no session open. The
     duplicate check and the store each use a short session, and the store
     publishes ``activity.created`` on this worker thread, where its subscribers
-    run inline without touching the request path.
+    run inline without touching the request path. The store is idempotent on the
+    activity's ``dedup_key``, so two workers racing on one activity store it once.
 
     Args:
         activity (stravalib.model.SummaryActivity): The Strava summary activity.
         user_id: The user the activity belongs to.
         user_privacy_settings: The user's privacy defaults.
+        timezone: The timezone for an activity with no GPS track.
         strava_client: A client authenticated as the user.
         user_integrations: The user's integration settings.
+        rate_limits: The shared Strava rate-limit state.
 
     Returns:
         The stored activity, or ``None`` when it was already stored.
     """
     with SessionLocal() as db:
-        already_stored = strava_utils.fetch_and_validate_activity(activity.id, user_id, db) is not None
+        already_stored = activity_integration.get_activity_by_strava_id(activity.id, user_id, db) is not None
     if already_stored:
+        logger.info(
+            "Strava activity already exists, skipping",
+            extra=core_logger.context(user_id=user_id, strava_activity_id=activity.id),
+        )
         return None
 
-    logger.info(f"User {user_id}: Strava activity {activity.id} will be processed")
+    logger.info(
+        "Strava activity will be processed", extra=core_logger.context(user_id=user_id, strava_activity_id=activity.id)
+    )
 
-    parsed_activity = parse_activity(activity, user_id, user_privacy_settings, strava_client, user_integrations)
+    parsed_activity = parse_activity(
+        activity, user_id, user_privacy_settings, timezone, strava_client, user_integrations, rate_limits
+    )
 
     with SessionLocal() as db:
         return save_activity_streams_laps(
@@ -469,17 +484,28 @@ def fetch_and_process_activity_streams(
     strava_activity_id: int,
     user_id: int,
     user_integrations: user_integrations_schema.UsersIntegrationsRead,
+    rate_limits: strava_rate_limit_store.StravaRateLimitStore,
 ):
-    # Check rate limit before fetching streams
-    client_id = strava_utils.get_client_id(user_integrations)
-    if strava_utils.rate_limit_tracker.is_rate_limited(client_id):
-        logger.warning(f"User {user_id}: Strava rate limit active, skipping streams fetch")
-        raise HTTPException(
-            status_code=(status.HTTP_429_TOO_MANY_REQUESTS),
-            detail=("Strava API rate limit exceeded. Please try again later."),
-        )
+    """Fetch an activity's streams from Strava and convert them to waypoint lists.
 
-    # Get streams for the activity
+    Args:
+        strava_client: A client authenticated as the user.
+        strava_activity_id: The Strava activity id.
+        user_id: The user the activity belongs to.
+        user_integrations: The user's integration settings.
+        rate_limits: The shared Strava rate-limit state.
+
+    Returns:
+        A flat tuple of each stream's waypoints and whether it is present, ending
+        with the pace waypoints. All empty when the activity has no streams.
+
+    Raises:
+        TooManyRequestsError: When Strava's rate limit is active or was just hit.
+        DependencyFailedError: When Strava cannot return the streams.
+    """
+    client_id = strava_client_service.get_client_id(user_integrations)
+    strava_client_service.raise_if_rate_limit_active(client_id, user_id, rate_limits)
+
     try:
         streams = strava_client.get_activity_streams(
             strava_activity_id,
@@ -494,122 +520,63 @@ def fetch_and_process_activity_streams(
             ],
         )
     except Exception as err:
-        # Check if this is a rate limit error
-        if strava_utils.is_strava_rate_limit_error(err):
-            err_str = str(err).lower()
-            is_long = "long" in err_str or ("daily" in err_str)
-            strava_utils.rate_limit_tracker.mark_rate_limited(client_id, is_long_term=is_long)
-            raise HTTPException(
-                status_code=(status.HTTP_429_TOO_MANY_REQUESTS),
-                detail=("Strava API rate limit exceeded. Please try again later."),
-            ) from err
-        # Check if streams simply don't exist for this activity (e.g., manually
-        # added activities from Apple Health have no GPS/sensor streams).
-        # In that case return empty data so the activity can still be imported.
-        if strava_utils.is_strava_not_found_error(err):
+        strava_client_service.raise_if_unauthorized(err, user_id, user_integrations)
+        strava_client_service.raise_if_rate_limited(err, client_id, rate_limits)
+        # Streams simply don't exist for some activities (e.g. manually added ones from
+        # Apple Health have no GPS/sensor streams); import the activity without them.
+        if strava_client_service.is_strava_not_found_error(err):
             logger.info(
-                f"User {user_id}: No streams found for Strava activity {strava_activity_id} (activity has no sensor data). Continuing without streams."
+                "No streams found for Strava activity (no sensor data), continuing without streams",
+                extra=core_logger.context(user_id=user_id, strava_activity_id=strava_activity_id),
             )
-            return (
-                [],
-                False,  # lat_lon_waypoints, is_lat_lon_set
-                [],
-                False,  # ele_waypoints, is_elevation_set
-                [],
-                False,  # hr_waypoints, is_heart_rate_set
-                [],
-                False,  # cad_waypoints, is_cadence_set
-                [],
-                False,  # power_waypoints, is_power_set
-                [],
-                False,  # vel_waypoints, is_velocity_set
-                [],  # pace_waypoints
-            )
-        # Log an error event if an exception occurred
+            return ([], False, [], False, [], False, [], False, [], False, [], False, [])
         logger.error(
-            f"User {user_id}: Error fetching Strava activity streams {strava_activity_id}: {err!s}", exc_info=err
+            "Error fetching Strava activity streams",
+            extra=core_logger.context(user_id=user_id, strava_activity_id=strava_activity_id),
+            exc_info=err,
         )
-        raise HTTPException(
-            status_code=(status.HTTP_424_FAILED_DEPENDENCY),
-            detail=("Not able to fetch Strava activity streams"),
-        ) from err
+        raise core_exceptions.DependencyFailedError("Not able to fetch Strava activity streams") from err
 
-    # Extract data from streams
-    lat_lon = streams["latlng"].data if "latlng" in streams else []
-    lat_lon_waypoints = []
-    is_lat_lon_set = False
-    ele = streams["altitude"].data if "altitude" in streams else []
-    ele_waypoints = []
-    is_elevation_set = False
-    time = streams["time"].data if "time" in streams else []
-    hr = streams["heartrate"].data if "heartrate" in streams else []
-    hr_waypoints = []
-    is_heart_rate_set = False
-    cad = streams["cadence"].data if "cadence" in streams else []
-    cad_waypoints = []
-    is_cadence_set = False
-    power = streams["watts"].data if "watts" in streams else []
-    power_waypoints = []
-    is_power_set = False
-    vel = streams["velocity_smooth"].data if "velocity_smooth" in streams else []
-    vel_waypoints = []
-    is_velocity_set = False
-    pace_waypoints = []
+    def stream_data(name: str) -> list:
+        return streams[name].data if name in streams else []
 
-    for i in range(len(lat_lon)):
-        lat_lon_waypoints.append(
-            {
-                "time": time[i],
-                "lat": lat_lon[i][0],
-                "lon": lat_lon[i][1],
-            }
-        )
-        is_lat_lon_set = True
+    time = stream_data("time")
 
-    for i in range(len(ele)):
-        ele_waypoints.append({"time": time[i], "ele": ele[i]})
-        is_elevation_set = True
+    def waypoints(name: str, make: Callable) -> list[dict]:
+        # A stream longer than the time stream has no timestamp for its extra points.
+        return [{"time": t, **make(value)} for t, value in zip(time, stream_data(name), strict=False)]
 
-    for i in range(len(hr)):
-        hr_waypoints.append({"time": time[i], "hr": hr[i]})
-        is_heart_rate_set = True
-
-    for i in range(len(cad)):
-        cad_waypoints.append({"time": time[i], "cad": cad[i]})
-        is_cadence_set = True
-
-    for i in range(len(power)):
-        power_waypoints.append({"time": time[i], "power": power[i]})
-        is_power_set = True
-
-    for i in range(len(vel)):
-        # Append velocity to the velocity waypoints
-        vel_waypoints.append({"time": time[i], "vel": vel[i]})
-
-        # Calculate pace on-the-fly. If velocity is 0, pace is 0
-        pace_calculation = 0
-        if vel[i] != 0:
-            pace_calculation = 1 / vel[i]
-
-        # Append pace to the pace waypoints
-        pace_waypoints.append({"time": time[i], "pace": pace_calculation})
-        is_velocity_set = True
+    lat_lon_waypoints = waypoints("latlng", lambda value: {"lat": value[0], "lon": value[1]})
+    ele_waypoints = waypoints("altitude", lambda value: {"ele": value})
+    hr_waypoints = waypoints("heartrate", lambda value: {"hr": value})
+    cad_waypoints = waypoints("cadence", lambda value: {"cad": value})
+    power_waypoints = waypoints("watts", lambda value: {"power": value})
+    vel_waypoints = waypoints("velocity_smooth", lambda value: {"vel": value})
+    # Pace is derived from velocity; a standstill has pace 0.
+    pace_waypoints = [
+        {"time": point["time"], "pace": 1 / point["vel"] if point["vel"] != 0 else 0} for point in vel_waypoints
+    ]
 
     return (
         lat_lon_waypoints,
-        is_lat_lon_set,
+        bool(lat_lon_waypoints),
         ele_waypoints,
-        is_elevation_set,
+        bool(ele_waypoints),
         hr_waypoints,
-        is_heart_rate_set,
+        bool(hr_waypoints),
         cad_waypoints,
-        is_cadence_set,
+        bool(cad_waypoints),
         power_waypoints,
-        is_power_set,
+        bool(power_waypoints),
         vel_waypoints,
-        is_velocity_set,
+        bool(vel_waypoints),
         pace_waypoints,
     )
+
+
+def _lap_stream(filtered_stream_data: list, stream_type: int) -> list[dict] | None:
+    """Return the waypoints of one stream type from a lap's slice of the streams, if it has them."""
+    return next((points for _, stream_id, points in filtered_stream_data if stream_id == stream_type), None)
 
 
 def fetch_and_process_activity_laps(
@@ -618,35 +585,37 @@ def fetch_and_process_activity_laps(
     user_id: int,
     stream_data: list,
     user_integrations: user_integrations_schema.UsersIntegrationsRead,
+    rate_limits: strava_rate_limit_store.StravaRateLimitStore,
 ):
-    # Check rate limit before fetching laps
-    client_id = strava_utils.get_client_id(user_integrations)
-    if strava_utils.rate_limit_tracker.is_rate_limited(client_id):
-        logger.warning(f"User {user_id}: Strava rate limit active, skipping laps fetch")
-        raise HTTPException(
-            status_code=(status.HTTP_429_TOO_MANY_REQUESTS),
-            detail=("Strava API rate limit exceeded. Please try again later."),
-        )
+    """Fetch an activity's laps from Strava and derive each lap's metrics.
 
-    # Fetch the activity laps
+    Args:
+        strava_client: A client authenticated as the user.
+        strava_activity_id: The Strava activity id.
+        user_id: The user the activity belongs to.
+        stream_data: ``(is_set, stream_type, waypoints)`` tuples the lap metrics are cut from.
+        user_integrations: The user's integration settings.
+        rate_limits: The shared Strava rate-limit state.
+
+    Returns:
+        The converted laps, or ``None`` when Strava could not return them.
+
+    Raises:
+        TooManyRequestsError: When Strava's rate limit is active or was just hit.
+    """
+    client_id = strava_client_service.get_client_id(user_integrations)
+    strava_client_service.raise_if_rate_limit_active(client_id, user_id, rate_limits)
+
     try:
         laps = strava_client.get_activity_laps(strava_activity_id)
     except Exception as err:
-        # Check if this is a rate limit error
-        if strava_utils.is_strava_rate_limit_error(err):
-            err_str = str(err).lower()
-            is_long = "long" in err_str or ("daily" in err_str)
-            strava_utils.rate_limit_tracker.mark_rate_limited(client_id, is_long_term=is_long)
-            raise HTTPException(
-                status_code=(status.HTTP_429_TOO_MANY_REQUESTS),
-                detail=("Strava API rate limit exceeded. Please try again later."),
-            ) from err
-        # Log an error event if an exception occurred
+        strava_client_service.raise_if_rate_limited(err, client_id, rate_limits)
         logger.error(
-            f"User {user_id}: Error fetching Strava activity laps for Strava activity {strava_activity_id}: {err!s}",
+            "Error fetching Strava activity laps",
+            extra=core_logger.context(user_id=user_id, strava_activity_id=strava_activity_id),
             exc_info=err,
         )
-        # Return None to indicate the activity was not processed
+        # The activity is stored without laps rather than not at all
         return None
 
     # Create an array to store the processed laps
@@ -666,32 +635,20 @@ def fetch_and_process_activity_laps(
             if enabled
         ]
 
-        lat_lon_stream = next(
-            (waypoints for enabled, stream_id, waypoints in filtered_stream_data if stream_id == 7),
-            None,
-        )
+        lat_lon_stream = _lap_stream(filtered_stream_data, activity_streams_constants.STREAM_TYPE_MAP)
 
-        cad_stream = next(
-            (waypoints for enabled, stream_id, waypoints in filtered_stream_data if stream_id == 3),
-            None,
-        )
+        cad_stream = _lap_stream(filtered_stream_data, activity_streams_constants.STREAM_TYPE_CADENCE)
 
         if cad_stream:
             cad_avg, cad_max = activities_computation.calculate_avg_and_max(cad_stream, "cad")
 
-        power_stream = next(
-            (waypoints for enabled, stream_id, waypoints in filtered_stream_data if stream_id == 2),
-            None,
-        )
+        power_stream = _lap_stream(filtered_stream_data, activity_streams_constants.STREAM_TYPE_POWER)
 
         if power_stream:
             power_avg, power_max = activities_computation.calculate_avg_and_max(power_stream, "power")
             np = activities_computation.calculate_np(power_stream)
 
-        ele_stream = next(
-            (waypoints for enabled, stream_id, waypoints in filtered_stream_data if stream_id == 4),
-            None,
-        )
+        ele_stream = _lap_stream(filtered_stream_data, activity_streams_constants.STREAM_TYPE_ELEVATION)
 
         if ele_stream:
             ele_gain, ele_loss = activities_computation.compute_elevation_gain_and_loss(ele_stream)
@@ -732,6 +689,7 @@ def get_user_strava_activities_by_dates(
     start_date: datetime,
     end_date: datetime,
     user_id: int,
+    rate_limits: strava_rate_limit_store.StravaRateLimitStore,
 ) -> list[activity_schema.ActivityRead | None] | None:
     """Fetch and store one user's Strava activities recorded in a window.
 
@@ -743,26 +701,32 @@ def get_user_strava_activities_by_dates(
         start_date: Start of the window.
         end_date: End of the window.
         user_id: The user to sync.
+        rate_limits: The shared Strava rate-limit state.
 
     Returns:
         The activities Strava returned, or ``None`` when Strava is not linked or
         nothing came back.
 
     Raises:
-        HTTPException: When Strava rejects the request or the account is missing.
+        DomainError: When Strava rejects the request or the account is missing.
     """
-    strava_utils.refresh_user_strava_token(user_id)
+    strava_client_service.refresh_user_strava_token(user_id, rate_limits)
 
     with SessionLocal() as db:
-        user_integrations = strava_utils.fetch_user_integrations_and_validate_token(user_id, db)
+        user_integrations = strava_client_service.fetch_user_integrations_and_validate_token(user_id, db)
 
     if user_integrations is None:
-        logger.info(f"User {user_id}: Strava not linked")
+        logger.info("Strava not linked", extra=core_logger.context(user_id=user_id))
         return None
 
-    logger.info(f"User {user_id}: Started Strava activities processing")
-    strava_client = strava_utils.create_strava_client(user_integrations)
-    processed = fetch_and_process_activities(strava_client, start_date, end_date, user_id, user_integrations)
+    logger.info("Started Strava activities processing", extra=core_logger.context(user_id=user_id))
+    strava_client = strava_client_service.create_strava_client(user_integrations)
+    processed = fetch_and_process_activities(
+        strava_client, start_date, end_date, user_id, user_integrations, rate_limits
+    )
 
-    logger.info(f"User {user_id}: {len([a for a in processed or [] if a])} Strava activities processed")
+    logger.info(
+        "Strava activities processed",
+        extra=core_logger.context(user_id=user_id, count=len([a for a in processed or [] if a])),
+    )
     return processed

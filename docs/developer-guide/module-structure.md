@@ -66,6 +66,7 @@ rather than that its name is on a list. Ending a transaction (`commit`,
 | `models.py` | persistence | SQLAlchemy ORM. The only place a table is declared. |
 | `query.py` | persistence | Reusable SQL expression fragments. No session, no I/O. |
 | `crud.py` | persistence | The **only** file that opens a `Session` against its own tables. Stages writes (`flush`), never commits or rolls back. Returns schemas/DTOs, never ORM rows. |
+| `store.py` | application | Short-lived shared state (claims, one-time codes, rate-limit flags, sync status) over the platform `StateProvider`. Never opens a `Session` and never keeps state in process memory. Qualified as `<thing>_store.py`. |
 | `serializers.py` | persistence | ORM ↔ schema transformation, both directions. Called by `crud` at its edges. |
 | `service.py` | application | Decides access, orchestrates, publishes events, owns transaction boundaries. |
 | `router.py` / `public_router.py` | transport | Validate, delegate to `service`, return. No domain rule. |
@@ -187,7 +188,7 @@ wrapper is not a substitute for that.
 
 ### 4. Package-private — importable only from inside its own module
 
-`service.py`, `query.py`, `crud.py`, `models.py`, `serializers.py`, `utils.py`,
+`service.py`, `store.py`, `query.py`, `crud.py`, `models.py`, `serializers.py`, `utils.py`,
 `signing.py`, `subscribers.py`, `event_publishers.py`, and every unlisted helper.
 Sibling activity modules are outside callers for this rule. A derived subsystem
 that needs the activity row asks `activity.integration_service`, never
@@ -437,7 +438,7 @@ it rather than the platform importing it. Three worked examples live in the tree
 | --- | --- |
 | The scheduler needed each module's recurring jobs | Each module declares `scheduled_jobs.recurring_jobs()`; `main.py` collects and hands the list to `start_scheduler`. |
 | Ingestion needed to pull from Strava and Garmin | Providers call `activity_ingestion.integration_service.register_activity_provider`; the private registry names no provider. |
-| Bulk import needed Strava-export semantics | `BulkImportFormat` is a registered layout (which members are activity files, the drop folder, how to build the source); `modules.strava.bulk_import_source` registers one and `StravaBulkImportSource` subclasses `BulkImportSource`. |
+| Bulk import needed Strava-export semantics | `BulkImportFormat` is a registered layout (which members are activity files, the drop folder, how to build the source); `modules.strava.bulk_import_service` registers one and `StravaBulkImportSource` subclasses `BulkImportSource`. |
 | Activity ingestion/profile restore needed child records | Each child returns typed contributor objects from `integration_service`; `app/module_registry.py` installs them in `activities.contributor_registry`. |
 | Returning an activity needed its thumbnail's URL | `activity.service` asks `contributor_registry.resolve_thumbnail_url` for each activity it hands a client; `activity_thumbnail` registers the resolver at composition time. The stored key never leaves the server. |
 | Gear totals needed the distance and time activities recorded, and activities needs gear ownership checks | `gears` sits below activities. It states the questions in `gears/contributors.py` and keeps the answers in `gears/contributor_registry.py`; `module_registry.configure_gear_contributors` installs the activities readers in both entrypoints. |
@@ -757,8 +758,9 @@ the conformance test's allowlist.
 
 - **Storage lifecycle.** The `bulk_import_errors` area has no sweep, retention or account-deletion
   removal, and the thumbnail reconciliation lists its whole area each pass.
-- **Timeouts.** The pool (20 + 40, 30 s wait) and the absence of a `statement_timeout` are
-  constants in `core/database.py`, not settings, so an operator cannot bound them.
+- **Timeouts.** The pool size, its overflow and the `statement_timeout` are operator settings
+  (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_STATEMENT_TIMEOUT_SECONDS`), and the statement timeout is
+  off by default. The 30 s pool wait and the 30 s lock timeout are still constants in `core/database.py`.
 - **Observability.** Logs are the only signal; queue depth, job
   duration and dead-letter counts are not exported as metrics.
 - **Visibility across modules.** The followee set reaches `activity.crud` as an id list, which
@@ -767,7 +769,7 @@ the conformance test's allowlist.
 
 ### Pilot status and what the next conversion owns
 
-`activities`, `followers`, `garmin`, `gears`, `health`, `notifications`, `server_settings`, `users` and `websocket` are the only modules converted so far. The
+`activities`, `followers`, `garmin`, `gears`, `health`, `notifications`, `server_settings`, `strava`, `users` and `websocket` are the only modules converted so far. The
 remaining modules are listed in `UNCONVERTED_MODULES` so that
 `TestModuleInventory` keeps them visible rather than silently exempt, and are
 converted one at a time with the `convert-module` skill. The items below need
@@ -807,17 +809,15 @@ limitations rather than half-done:
   The generic boundary rule needs a special case until it is aligned.
 
 - **Persistence layers calling other modules.** Converted modules ask nothing of
-  another bounded context below `service` (`TestLayerRules`). The unconverted ones still do,
-  for example `strava`.
+  another bounded context below `service` (`TestLayerRules`). The unconverted ones still do.
 - **Persistence ending transactions.** Converted modules stage with `flush()` and
   let `service` (or the job, importer or `migration_service` that owns the unit of
-  work) commit. Unconverted modules (`auth`, `strava`) are outside
+  work) commit. The unconverted module (`auth`) is outside
   `test_crud_does_not_end_transactions`; `_CRUD_TRANSACTION_DEBT` is empty and is
   where a module being converted lists its files.
 - **Subscribers reaching past a surface.** Followers holds no subscribers; its
   notification handlers live in `modules/notifications` and subscribe to
-  `followers.events` (`TestLayerRules`). `strava`
-  still imports another module's `utils`/`manager` directly.
+  `followers.events` (`TestLayerRules`).
 - **Profile import runs its own event loop.** `users_profile.import_job_service` calls `asyncio.run` on the
   worker's thread, because `ImportService` awaits `core.file_uploads.validate_bytes` for each activity file,
   media file and user image (storage writes already run through `asyncio.to_thread`). The importer shares no

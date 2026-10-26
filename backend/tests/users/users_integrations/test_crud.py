@@ -1,5 +1,6 @@
 """Tests for user_integrations.crud module."""
 
+from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -60,48 +61,6 @@ class TestGetUserIntegrationsByUserId:
 
         # Act
         result = user_integrations_crud.get_user_integrations_by_user_id(1, mock_db)
-
-        # Assert
-        assert result is None
-
-
-class TestGetUserIntegrationsByStravaState:
-    """Test suite for get_user_integrations_by_strava_state function."""
-
-    def test_get_user_integrations_by_strava_state_success(self, mock_db):
-        """Test retrieving integrations by Strava state.
-
-        Args:
-            mock_db: Mocked database session
-
-        Asserts:
-            - Returns UsersIntegrations object when found
-        """
-        # Arrange
-        mock_integrations = MagicMock(spec=UsersIntegrations)
-        mock_integrations.strava_state = "state123"
-        mock_db.execute.return_value.scalar_one_or_none.return_value = mock_integrations
-
-        # Act
-        result = user_integrations_crud.get_user_integrations_by_strava_state("state123", mock_db)
-
-        # Assert
-        assert result == mock_integrations
-
-    def test_get_user_integrations_by_strava_state_not_found(self, mock_db):
-        """Test retrieving integrations when state not found.
-
-        Args:
-            mock_db: Mocked database session
-
-        Asserts:
-            - Returns None when state not found
-        """
-        # Arrange
-        mock_db.execute.return_value.scalar_one_or_none.return_value = None
-
-        # Act
-        result = user_integrations_crud.get_user_integrations_by_strava_state("nonexistent", mock_db)
 
         # Assert
         assert result is None
@@ -170,7 +129,6 @@ class TestLinkStravaAccount:
 
         Asserts:
             - Strava tokens are stored
-            - Strava state is cleared
             - Database operations are called
         """
         # Arrange
@@ -196,7 +154,6 @@ class TestLinkStravaAccount:
         # Assert
         assert mock_integrations.strava_token == "encrypted_access_token_123"
         assert mock_integrations.strava_refresh_token == "encrypted_refresh_token_456"
-        assert mock_integrations.strava_state is None
         mock_db.flush.assert_called_once()
 
 
@@ -219,7 +176,6 @@ class TestUnlinkStravaAccount:
             user_integrations_crud.unlink_strava_account(1, mock_db)
 
         # Assert
-        assert mock_integrations.strava_state is None
         assert mock_integrations.strava_token is None
         assert mock_integrations.strava_refresh_token is None
         assert mock_integrations.strava_token_expires_at is None
@@ -275,61 +231,6 @@ class TestSetUserStravaClient:
             # Act & Assert
             with pytest.raises(core_exceptions.NotFoundError):
                 user_integrations_crud.set_user_strava_client(1, "id", "secret", mock_db)
-
-
-class TestSetUserStravaState:
-    """Test suite for set_user_strava_state function."""
-
-    def test_set_user_strava_state_success(self, mock_db):
-        """
-        ...
-        """
-        # Arrange
-        mock_integrations = MagicMock(spec=UsersIntegrations)
-
-        with patch("modules.users.users_integrations.crud._get_user_integrations_model_by_user_id_or_404") as mock_get:
-            mock_get.return_value = mock_integrations
-            mock_db.flush = MagicMock()
-
-            # Act
-            user_integrations_crud.set_user_strava_state(1, "state123", mock_db)
-
-        # Assert
-        assert mock_integrations.strava_state == "state123"
-
-    def test_set_user_strava_state_clear(self, mock_db):
-        """
-        ...
-        """
-        # Arrange
-        mock_integrations = MagicMock(spec=UsersIntegrations)
-
-        with patch("modules.users.users_integrations.crud._get_user_integrations_model_by_user_id_or_404") as mock_get:
-            mock_get.return_value = mock_integrations
-            mock_db.flush = MagicMock()
-
-            # Act
-            user_integrations_crud.set_user_strava_state(1, None, mock_db)
-
-        # Assert
-        assert mock_integrations.strava_state is None
-
-    def test_set_user_strava_state_clear_null_string(self, mock_db):
-        """
-        ...
-        """
-        # Arrange
-        mock_integrations = MagicMock(spec=UsersIntegrations)
-
-        with patch("modules.users.users_integrations.crud._get_user_integrations_model_by_user_id_or_404") as mock_get:
-            mock_get.return_value = mock_integrations
-            mock_db.flush = MagicMock()
-
-            # Act
-            user_integrations_crud.set_user_strava_state(1, "null", mock_db)
-
-        # Assert
-        assert mock_integrations.strava_state is None
 
 
 class TestSetUserStravaSyncGear:
@@ -506,6 +407,83 @@ class TestUnlinkGarminConnectAccountIfToken:
         mock_db.execute.return_value.scalar_one_or_none.return_value = None
 
         assert user_integrations_crud.unlink_garminconnect_account_if_token(1, {}, mock_db) is False
+
+
+class TestReplaceStravaTokensIfRefreshToken:
+    """Test suite for replace_strava_tokens_if_refresh_token function."""
+
+    TOKENS: ClassVar[dict] = {"access_token": "a2", "refresh_token": "r2", "expires_at": 1234567890}
+
+    def test_replaces_while_the_stored_refresh_token_is_the_one_refreshed_from(self, mock_db):
+        """The new tokens are stored encrypted, without committing."""
+        mock_integrations = MagicMock(spec=UsersIntegrations)
+        mock_integrations.strava_refresh_token = "old"
+        mock_db.execute.return_value.scalar_one_or_none.return_value = mock_integrations
+
+        with patch("modules.users.users_integrations.crud.core_cryptography.encrypt_token_fernet") as encrypt:
+            encrypt.side_effect = lambda value: f"enc_{value}"
+            result = user_integrations_crud.replace_strava_tokens_if_refresh_token(1, "old", self.TOKENS, mock_db)
+
+        assert result is True
+        assert mock_integrations.strava_token == "enc_a2"
+        assert mock_integrations.strava_refresh_token == "enc_r2"
+        mock_db.commit.assert_not_called()
+
+    def test_keeps_tokens_replaced_since(self, mock_db):
+        """A refresh or a relink that got there first is not overwritten."""
+        mock_integrations = MagicMock(spec=UsersIntegrations)
+        mock_integrations.strava_refresh_token = "newer"
+        mock_db.execute.return_value.scalar_one_or_none.return_value = mock_integrations
+
+        result = user_integrations_crud.replace_strava_tokens_if_refresh_token(1, "old", self.TOKENS, mock_db)
+
+        assert result is False
+        assert mock_integrations.strava_refresh_token == "newer"
+
+    def test_returns_false_without_integrations(self, mock_db):
+        mock_db.execute.return_value.scalar_one_or_none.return_value = None
+
+        assert user_integrations_crud.replace_strava_tokens_if_refresh_token(1, "old", self.TOKENS, mock_db) is False
+
+
+class TestUnlinkStravaTokensIfRefreshToken:
+    """Test suite for unlink_strava_tokens_if_refresh_token function."""
+
+    def test_clears_the_tokens_and_keeps_the_client_while_the_refresh_token_is_the_rejected_one(self, mock_db):
+        """The tokens are cleared, without committing; the client id and secret stay for a quick relink."""
+        mock_integrations = MagicMock(spec=UsersIntegrations)
+        mock_integrations.strava_refresh_token = "old"
+        mock_integrations.strava_client_id = "client"
+        mock_integrations.strava_client_secret = "secret"
+        mock_db.execute.return_value.scalar_one_or_none.return_value = mock_integrations
+
+        result = user_integrations_crud.unlink_strava_tokens_if_refresh_token(1, "old", mock_db)
+
+        assert result is True
+        assert mock_integrations.strava_token is None
+        assert mock_integrations.strava_refresh_token is None
+        assert mock_integrations.strava_token_expires_at is None
+        assert mock_integrations.strava_sync_gear is False
+        assert mock_integrations.strava_client_id == "client"
+        assert mock_integrations.strava_client_secret == "secret"
+        mock_db.flush.assert_not_called()
+
+    def test_keeps_a_token_linked_since(self, mock_db):
+        """A refresh token replaced by a new link or refresh is left alone."""
+        mock_integrations = MagicMock(spec=UsersIntegrations)
+        mock_integrations.strava_refresh_token = "new"
+        mock_db.execute.return_value.scalar_one_or_none.return_value = mock_integrations
+
+        result = user_integrations_crud.unlink_strava_tokens_if_refresh_token(1, "old", mock_db)
+
+        assert result is False
+        assert mock_integrations.strava_refresh_token == "new"
+
+    def test_returns_false_without_integrations(self, mock_db):
+        """A user with no integrations row is not unlinked."""
+        mock_db.execute.return_value.scalar_one_or_none.return_value = None
+
+        assert user_integrations_crud.unlink_strava_tokens_if_refresh_token(1, "old", mock_db) is False
 
 
 class TestEditUserIntegrations:

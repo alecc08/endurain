@@ -1,4 +1,4 @@
-"""Registers Strava as an activity provider ingestion can pull from.
+"""The operation other modules may call on Strava: registering it as an activity provider.
 
 The direction that keeps activities extractable: Strava depends on activities,
 never the reverse. Ingestion's refresh path asks the registry what is available
@@ -7,14 +7,18 @@ instead of importing this module.
 
 from datetime import datetime
 
+import jasil.runtime as platform_runtime
+
 import modules.activities.activity.schema as activity_schema
 import modules.activities.activity_ingestion.integration_service as activity_ingestion_integration
-import modules.strava.activity_utils as strava_activity_utils
-import modules.strava.bulk_import_source as strava_bulk_import_source
+import modules.strava.activity_service as strava_activity_service
+import modules.strava.bulk_import_service as strava_bulk_import_service
+import modules.strava.constants as strava_constants
+import modules.strava.link_service as strava_link_service
+import modules.strava.rate_limit_store as strava_rate_limit_store
+import modules.strava.sync_service as strava_sync_service
 import modules.users.users_integrations.integration_service as user_integrations_integration
 from core.database import SessionLocal
-
-PROVIDER_NAME = "strava"
 
 
 def _fetch_window(
@@ -22,8 +26,7 @@ def _fetch_window(
     window_start: datetime,
     window_end: datetime,
 ) -> list[activity_schema.ActivityRead] | None:
-    """
-    Fetch and store a user's Strava activities recorded in the given window.
+    """Fetch and store a user's Strava activities recorded in the given window.
 
     Args:
         user_id: The user whose Strava account to pull from.
@@ -33,12 +36,16 @@ def _fetch_window(
     Returns:
         The stored activities, or ``None`` when Strava is not linked.
     """
-    return strava_activity_utils.get_user_strava_activities_by_dates(window_start, window_end, user_id)
+    return strava_activity_service.get_user_strava_activities_by_dates(
+        window_start,
+        window_end,
+        user_id,
+        strava_rate_limit_store.StravaRateLimitStore(platform_runtime.get_state()),
+    )
 
 
 def _linked_user_ids(after_id: int, limit: int) -> list[int]:
-    """
-    Page through the users who have linked Strava.
+    """Page through the users who have linked Strava.
 
     Args:
         after_id: Return only users with an id greater than this.
@@ -51,7 +58,15 @@ def _linked_user_ids(after_id: int, limit: int) -> list[int]:
         return user_integrations_integration.list_user_ids_with_strava_linked(after_id, limit, db)
 
 
+def shutdown_pools() -> None:
+    """Stop the Strava link and sync pools."""
+    strava_link_service.shutdown_link_pool()
+    strava_sync_service.shutdown_sync_pool()
+
+
 def register_activity_provider() -> None:
     """Register Strava, and its export format, on the activities provider registry."""
-    activity_ingestion_integration.register_activity_provider(PROVIDER_NAME, _fetch_window, _linked_user_ids)
-    strava_bulk_import_source.register_bulk_import_format()
+    activity_ingestion_integration.register_activity_provider(
+        strava_constants.PROVIDER_NAME, _fetch_window, _linked_user_ids
+    )
+    strava_bulk_import_service.register_bulk_import_format()
