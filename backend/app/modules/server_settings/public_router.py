@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request, Response, status
 import core.dependencies as core_dependencies
 import core.etag as core_etag
 import core.exceptions as core_exceptions
+import core.rate_limit as core_rate_limit
 import modules.server_settings.login_photo_service as server_settings_login_photo_service
 import modules.server_settings.schema as server_settings_schema
 import modules.server_settings.service as server_settings_service
@@ -15,13 +16,15 @@ router = APIRouter()
 
 
 @router.get("", response_model=server_settings_schema.ServerSettingsReadPublic)
+@core_rate_limit.limiter.limit(core_rate_limit.PUBLIC_READ)
 def read_public_server_settings(
+    request: Request,
     db: core_dependencies.DbSession,
 ) -> server_settings_schema.ServerSettingsReadPublic:
     """Get public server settings (unauthenticated).
 
     Protection Mechanisms:
-    - Rate limiting: the application's default per-IP limit applies.
+    - Rate limiting: the PUBLIC_READ per-IP limit applies.
 
     Returns only the public subset of server configuration
     (sensitive signup approval/verification settings excluded).
@@ -37,11 +40,12 @@ def read_public_server_settings(
     "/tile-maps-templates",
     response_model=list[server_settings_schema.TileMapsTemplate],
 )
-def list_tile_maps_templates() -> list[server_settings_schema.TileMapsTemplate]:
+@core_rate_limit.limiter.limit(core_rate_limit.PUBLIC_READ)
+def list_tile_maps_templates(request: Request) -> list[server_settings_schema.TileMapsTemplate]:
     """Retrieve available tile map templates for server settings (unauthenticated).
 
     Protection Mechanisms:
-    - Rate limiting: the application's default per-IP limit applies.
+    - Rate limiting: the PUBLIC_READ per-IP limit applies.
 
     This endpoint returns a list of all available tile map templates that can be
     used for configuring map display options in server settings.
@@ -60,6 +64,7 @@ _LOGIN_PHOTO_CACHE_MAX_AGE = 300
     "/login-photo",
     responses={200: {"content": {"image/*": {}}}, 304: {"description": "Not modified"}},
 )
+@core_rate_limit.limiter.limit(core_rate_limit.PUBLIC_READ)
 def read_login_photo(
     request: Request,
     storage: core_dependencies.Storage,

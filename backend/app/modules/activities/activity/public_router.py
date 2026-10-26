@@ -2,9 +2,11 @@
 
 from fastapi import (
     APIRouter,
+    Request,
 )
 
 import core.dependencies as core_dependencies
+import core.rate_limit as core_rate_limit
 import modules.activities.activity.dependencies as activity_dependencies
 import modules.activities.activity.schema as activity_schema
 import modules.activities.activity.service as activity_service
@@ -17,7 +19,9 @@ router = APIRouter()
     "/{activity_id}",
     response_model=activity_schema.ActivityRead,
 )
+@core_rate_limit.limiter.limit(core_rate_limit.PUBLIC_READ)
 def read_public_activity(
+    request: Request,
     activity_id: activity_dependencies.ActivityId,
     db: core_dependencies.DbSession,
 ) -> activity_schema.ActivityRead:

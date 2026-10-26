@@ -15,9 +15,10 @@ the avatar, while removing the ability to enumerate ids.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Request, Response
 
 import core.dependencies as core_dependencies
+import core.rate_limit as core_rate_limit
 import modules.users.users.photo_service as users_photo_service
 
 router = APIRouter()
@@ -30,7 +31,9 @@ _CACHE_MAX_AGE = 3600
     "/{user_id}/photo",
     responses={200: {"content": {"image/*": {}}}},
 )
+@core_rate_limit.limiter.limit(core_rate_limit.PUBLIC_READ)
 def read_user_photo(
+    request: Request,
     user_id: core_dependencies.PositiveId,
     storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
@@ -39,6 +42,7 @@ def read_user_photo(
     """Serve a user's profile photo when the signed token is valid.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         user_id: The user whose photo to serve.
         storage: The platform storage provider.
         db: Database session dependency.

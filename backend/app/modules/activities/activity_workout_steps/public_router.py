@@ -2,10 +2,11 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 import core.dependencies as core_dependencies
 import core.pagination as core_pagination
+import core.rate_limit as core_rate_limit
 import modules.activities.activity.dependencies as activity_dependencies
 import modules.activities.activity_workout_steps.schema as activity_workout_steps_schema
 import modules.activities.activity_workout_steps.service as activity_workout_steps_service
@@ -17,7 +18,9 @@ router = APIRouter()
     "/workout-steps",
     response_model=activity_workout_steps_schema.ActivityWorkoutStepsPage,
 )
+@core_rate_limit.limiter.limit(core_rate_limit.PUBLIC_READ)
 def list_public_activity_workout_steps(
+    request: Request,
     activity_id: activity_dependencies.ActivityId,
     db: core_dependencies.DbSession,
     page: Annotated[core_pagination.PageParams, Depends(core_pagination.child_page_params)],

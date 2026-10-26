@@ -87,7 +87,7 @@ class TestReadUserPhoto:
         storage = MagicMock()
         db = MagicMock()
 
-        response = read_user_photo(7, storage, db, "tok")
+        response = read_user_photo(MagicMock(), 7, storage, db, "tok")
 
         assert response.status_code == 200
         assert response.media_type == "image/png"
@@ -102,7 +102,7 @@ class TestReadUserPhoto:
         mock_service.read_photo.side_effect = core_exceptions.NotFoundError("User photo not found")
 
         with pytest.raises(core_exceptions.NotFoundError):
-            read_user_photo(7, MagicMock(), MagicMock(), "forged")
+            read_user_photo(MagicMock(), 7, MagicMock(), MagicMock(), "forged")
 
 
 class TestReadPhoto:

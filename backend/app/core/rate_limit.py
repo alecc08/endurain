@@ -61,9 +61,15 @@ UPLOAD: str = "20/minute"
 #: DEFAULT; a page makes one such call, so a person using the app never meets it.
 EXPENSIVE_READ: str = "30/minute"
 
-#: Unauthenticated reads of a shared activity's data (its streams). Keyed by client IP, so visitors
-#: behind one NAT share a bucket; kept separate from EXPENSIVE_READ so the two can be tuned apart.
-PUBLIC_READ: str = "30/minute"
+#: Unauthenticated reads that are cheap, such as a shared activity, its laps, a thumbnail or the public
+#: server settings. Keyed by client IP, so visitors behind one NAT share a bucket. It starts at the
+#: global default and exists so public reads can be tuned apart from authenticated ones.
+PUBLIC_READ: str = DEFAULT
+
+#: Unauthenticated reads that are expensive, such as a shared activity's streams. Keyed by client IP,
+#: so visitors behind one NAT share a bucket; kept apart from EXPENSIVE_READ so the two can be tuned
+#: separately.
+EXPENSIVE_PUBLIC_READ: str = "30/minute"
 
 #: Endpoints that trigger OUTBOUND calls to a third-party
 #: provider (Strava, Garmin Connect). Tighter than WRITE

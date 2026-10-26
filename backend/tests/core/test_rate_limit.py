@@ -23,11 +23,17 @@ class TestRateLimitConstants:
         assert EXPENSIVE_READ != DEFAULT
         assert EXPENSIVE_READ == WRITE
 
-    def test_public_read_constant(self):
+    def test_public_read_starts_at_the_default(self):
         from core.rate_limit import DEFAULT, PUBLIC_READ
 
-        assert PUBLIC_READ == "30/minute"
-        assert PUBLIC_READ != DEFAULT
+        assert PUBLIC_READ == DEFAULT
+
+    def test_expensive_public_read_constant(self):
+        from core.rate_limit import DEFAULT, EXPENSIVE_PUBLIC_READ, EXPENSIVE_READ
+
+        assert EXPENSIVE_PUBLIC_READ == "30/minute"
+        assert EXPENSIVE_PUBLIC_READ != DEFAULT
+        assert EXPENSIVE_PUBLIC_READ == EXPENSIVE_READ
 
     def test_sensitive_constant(self):
         from core.rate_limit import SENSITIVE

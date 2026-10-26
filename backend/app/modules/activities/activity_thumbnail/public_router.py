@@ -10,9 +10,10 @@ fetch the blob — while the activity owner keeps their map.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Request, Response
 
 import core.dependencies as core_dependencies
+import core.rate_limit as core_rate_limit
 import modules.activities.activity.dependencies as activity_dependencies
 import modules.activities.activity_thumbnail.service as activity_thumbnail_service
 
@@ -26,7 +27,9 @@ _CACHE_MAX_AGE = 3600
     "/{activity_id}/thumbnail",
     responses={200: {"content": {"image/webp": {}}}},
 )
+@core_rate_limit.limiter.limit(core_rate_limit.PUBLIC_READ)
 def read_activity_thumbnail(
+    request: Request,
     activity_id: activity_dependencies.ActivityId,
     token: Annotated[str, Query(alias="t", description="Signed thumbnail access token")],
     storage: core_dependencies.Storage,

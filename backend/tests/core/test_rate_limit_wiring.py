@@ -31,12 +31,19 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 import core.rate_limit as core_rate_limit
+import modules.activities.activity.public_router as activity_public_router
 import modules.activities.activity.router as activity_router
 import modules.activities.activity.summary_router as activity_summary_router
+import modules.activities.activity_exercise_titles.public_router as activity_exercise_titles_public_router
 import modules.activities.activity_ingestion.router as ingestion_router
+import modules.activities.activity_laps.public_router as activity_laps_public_router
+import modules.activities.activity_media.public_router as activity_media_public_router
 import modules.activities.activity_media.router as activity_media_router
+import modules.activities.activity_sets.public_router as activity_sets_public_router
 import modules.activities.activity_streams.public_router as activity_streams_public_router
 import modules.activities.activity_streams.router as activity_streams_router
+import modules.activities.activity_thumbnail.public_router as activity_thumbnail_public_router
+import modules.activities.activity_workout_steps.public_router as activity_workout_steps_public_router
 import modules.auth.identity_providers.profile_router as auth_idp_profile_router
 import modules.auth.identity_providers.public_router as idp_public_router
 import modules.auth.mfa.profile_router as auth_mfa_profile_router
@@ -58,8 +65,11 @@ import modules.health.health_water.router as health_water_router
 import modules.health.health_weight.router as health_weight_router
 import modules.notifications.router as notifications_router
 import modules.server_settings.logs_router as server_settings_logs_router
+import modules.server_settings.public_router as server_settings_public_router
 import modules.server_settings.router as server_settings_router
 import modules.strava.router as strava_router
+import modules.users.users.photo_router as users_photo_router
+import modules.users.users.public_router as users_public_router
 import modules.users.users.router as users_router
 import modules.users.users_default_gear.router as users_default_gear_router
 import modules.users.users_goals.router as users_goals_router
@@ -258,18 +268,48 @@ _TIERED_ENDPOINTS = [
     ),
     pytest.param(
         activity_streams_public_router.list_public_activity_streams,
-        core_rate_limit.PUBLIC_READ,
+        core_rate_limit.EXPENSIVE_PUBLIC_READ,
         id="public-activity-streams-list",
     ),
     pytest.param(
         activity_streams_public_router.read_public_activity_stream,
-        core_rate_limit.PUBLIC_READ,
+        core_rate_limit.EXPENSIVE_PUBLIC_READ,
         id="public-activity-stream-read",
     ),
     pytest.param(
         health_dashboard_router.read_health_daily_stats, core_rate_limit.EXPENSIVE_READ, id="health-dashboard"
     ),
     pytest.param(users_goals_router.get_user_goals_results, core_rate_limit.EXPENSIVE_READ, id="goals-results"),
+    pytest.param(activity_public_router.read_public_activity, core_rate_limit.PUBLIC_READ, id="public-activity"),
+    pytest.param(activity_laps_public_router.list_public_activity_laps, core_rate_limit.PUBLIC_READ, id="public-laps"),
+    pytest.param(activity_sets_public_router.list_public_activity_sets, core_rate_limit.PUBLIC_READ, id="public-sets"),
+    pytest.param(
+        activity_workout_steps_public_router.list_public_activity_workout_steps,
+        core_rate_limit.PUBLIC_READ,
+        id="public-workout-steps",
+    ),
+    pytest.param(
+        activity_exercise_titles_public_router.list_public_activity_exercise_titles,
+        core_rate_limit.PUBLIC_READ,
+        id="public-exercise-titles",
+    ),
+    pytest.param(
+        activity_media_public_router.read_activity_media_file, core_rate_limit.PUBLIC_READ, id="public-media-blob"
+    ),
+    pytest.param(
+        activity_thumbnail_public_router.read_activity_thumbnail, core_rate_limit.PUBLIC_READ, id="public-thumbnail"
+    ),
+    pytest.param(users_public_router.read_users_id, core_rate_limit.PUBLIC_READ, id="public-user"),
+    pytest.param(users_photo_router.read_user_photo, core_rate_limit.PUBLIC_READ, id="user-photo"),
+    pytest.param(
+        server_settings_public_router.read_public_server_settings,
+        core_rate_limit.PUBLIC_READ,
+        id="public-server-settings",
+    ),
+    pytest.param(
+        server_settings_public_router.list_tile_maps_templates, core_rate_limit.PUBLIC_READ, id="public-tile-templates"
+    ),
+    pytest.param(server_settings_public_router.read_login_photo, core_rate_limit.PUBLIC_READ, id="public-login-photo"),
 ]
 
 

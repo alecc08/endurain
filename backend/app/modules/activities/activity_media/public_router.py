@@ -9,9 +9,10 @@ caller does not own.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Request, Response
 
 import core.dependencies as core_dependencies
+import core.rate_limit as core_rate_limit
 import modules.activities.activity.dependencies as activity_dependencies
 import modules.activities.activity_media.service as activity_media_service
 
@@ -25,7 +26,9 @@ _CACHE_MAX_AGE = 3600
     "/{activity_id}/media/{media_id}/file",
     responses={200: {"content": {"image/*": {}}}},
 )
+@core_rate_limit.limiter.limit(core_rate_limit.PUBLIC_READ)
 def read_activity_media_file(
+    request: Request,
     activity_id: activity_dependencies.ActivityId,
     media_id: core_dependencies.PositiveId,
     token: Annotated[str, Query(alias="t", description="Signed media access token")],

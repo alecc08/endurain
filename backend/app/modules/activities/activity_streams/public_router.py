@@ -19,7 +19,7 @@ router = APIRouter()
     "/streams",
     response_model=activity_streams_schema.ActivityStreamsPage,
 )
-@core_rate_limit.limiter.limit(core_rate_limit.PUBLIC_READ)
+@core_rate_limit.limiter.limit(core_rate_limit.EXPENSIVE_PUBLIC_READ)
 def list_public_activity_streams(
     request: Request,
     activity_id: activity_dependencies.ActivityId,
@@ -39,7 +39,7 @@ def list_public_activity_streams(
     "/streams/{stream_type}",
     response_model=activity_streams_schema.ActivityStreamsRead,
 )
-@core_rate_limit.limiter.limit(core_rate_limit.PUBLIC_READ)
+@core_rate_limit.limiter.limit(core_rate_limit.EXPENSIVE_PUBLIC_READ)
 def read_public_activity_stream(
     request: Request,
     activity_id: activity_dependencies.ActivityId,

@@ -16,7 +16,7 @@ class TestReadActivityThumbnailUnit:
         storage = MagicMock()
         storage.get.return_value = b"webpdata"
 
-        resp = read_activity_thumbnail(1, "tok", storage)
+        resp = read_activity_thumbnail(MagicMock(), 1, "tok", storage)
 
         assert resp.status_code == 200
         assert resp.media_type == "image/webp"
@@ -34,7 +34,7 @@ class TestReadActivityThumbnailUnit:
         storage = MagicMock()
 
         with pytest.raises(core_exceptions.NotFoundError):
-            read_activity_thumbnail(1, "bad", storage)
+            read_activity_thumbnail(MagicMock(), 1, "bad", storage)
 
         storage.get.assert_not_called()
 
@@ -48,7 +48,7 @@ class TestReadActivityThumbnailUnit:
         storage.get.return_value = None
 
         with pytest.raises(core_exceptions.NotFoundError):
-            read_activity_thumbnail(1, "tok", storage)
+            read_activity_thumbnail(MagicMock(), 1, "tok", storage)
 
 
 class TestReadActivityThumbnailEndToEnd:
