@@ -1418,14 +1418,14 @@ class TestDeleteAllStravaActivitiesForUser:
         mock_db.execute.assert_not_called()
 
 
-class TestDeleteAllActivitiesForUser:
+class TestDeleteActivitiesBatchForUser:
     def test_returns_deleted_ids(self, mock_db):
         import modules.activities.activity.crud as crud
 
         r = MagicMock()
         r.all.return_value = [(1,), (2,), (3,)]
         mock_db.execute.return_value = r
-        result = crud.delete_all_activities_for_user(user_id=1, db=mock_db)
+        result = crud.delete_activities_batch_for_user(user_id=1, limit=2, db=mock_db)
         assert result == [1, 2, 3]
         mock_db.commit.assert_not_called()
 

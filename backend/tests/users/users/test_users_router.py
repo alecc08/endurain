@@ -14,6 +14,7 @@ import modules.auth.constants as auth_constants
 import modules.auth.dependencies as auth_dependencies
 import modules.auth.identity_service as auth_identity_service
 import modules.auth.principal as auth_principal
+import modules.users.users.dependencies as users_dependencies
 import modules.users.users.schema as users_schema
 
 _SERVICE = "modules.users.users.router.users_service"
@@ -41,6 +42,7 @@ def client(mock_db, identity_service):
     app.dependency_overrides[auth_dependencies.get_sub_from_access_token] = lambda: 9
     app.dependency_overrides[core_database.get_db] = lambda: mock_db
     app.dependency_overrides[core_dependencies.get_storage] = lambda: MagicMock()
+    app.dependency_overrides[users_dependencies.get_user_deletion_state_store] = lambda: MagicMock()
     app.dependency_overrides[auth_identity_service.get_identity_service] = lambda: identity_service
     return TestClient(app)
 
@@ -266,19 +268,46 @@ class TestDeleteUserPhoto:
 
 
 class TestDeleteUser:
-    @patch(f"{_SERVICE}.delete_user")
-    def test_success(self, mock_delete, client, mock_db):
+    @patch("modules.users.users.router.users_deletion_job_service.request_deletion")
+    def test_queues_the_deletion(self, mock_request, client, mock_db, identity_service):
+        mock_request.return_value = users_schema.UserDeletionStatus(status="queued")
+
         response = client.delete("/users/1")
 
-        assert response.status_code == 204
-        assert mock_delete.call_args.args[0] == 1
-        assert mock_delete.call_args.args[2] == mock_db
+        assert response.status_code == 202
+        assert response.json() == {"status": "queued"}
+        assert mock_request.call_args.args[0] == 1
+        assert mock_request.call_args.args[1] is identity_service
+        assert mock_request.call_args.args[4] == mock_db
 
-    @patch(f"{_SERVICE}.delete_user")
-    def test_unknown_user_is_not_found(self, mock_delete, client):
-        mock_delete.side_effect = core_exceptions.NotFoundError("User not found")
+    @patch("modules.users.users.router.users_deletion_job_service.request_deletion")
+    def test_unknown_user_is_not_found(self, mock_request, client):
+        mock_request.side_effect = core_exceptions.NotFoundError("User not found")
 
         assert client.delete("/users/1").status_code == 404
+
+    @patch("modules.users.users.router.users_deletion_job_service.request_deletion")
+    def test_the_only_administrator_is_refused(self, mock_request, client):
+        mock_request.side_effect = core_exceptions.ConflictError("The only administrator cannot be deleted")
+
+        assert client.delete("/users/1").status_code == 409
+
+
+class TestReadUserDeletionStatus:
+    @patch("modules.users.users.router.users_deletion_job_service.get_deletion_status")
+    def test_reports_the_status(self, mock_status, client):
+        mock_status.return_value = users_schema.UserDeletionStatus(status="running")
+
+        response = client.get("/users/1/deletion")
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "running"}
+
+    @patch("modules.users.users.router.users_deletion_job_service.get_deletion_status")
+    def test_none_recorded_is_not_found(self, mock_status, client):
+        mock_status.side_effect = core_exceptions.NotFoundError("No account deletion recorded")
+
+        assert client.get("/users/1/deletion").status_code == 404
 
 
 class TestReadScopes:

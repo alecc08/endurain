@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 
 import modules.server_settings.schema as server_settings_schema
 import modules.users.users.crud as users_crud
+import modules.users.users.deletion_job_service as users_deletion_job_service
+import modules.users.users.deletion_state_store as users_deletion_state_store
 import modules.users.users.photo_service as users_photo_service
 import modules.users.users.schema as users_schema
 import modules.users.users.service as users_service
@@ -285,19 +287,39 @@ def delete_user_photo(user_id: int, storage: platform_providers.StorageProvider,
     users_photo_service.delete_photo(user_id, storage, db)
 
 
-def delete_user(user_id: int, storage: platform_providers.StorageProvider, db: Session) -> None:
-    """Delete a user with their data and stored photo, and commit.
+def request_user_deletion(
+    user_id: int,
+    identity_service: "auth_identity_service.IdentityService",
+    state: platform_providers.StateProvider,
+    storage: platform_providers.StorageProvider,
+    db: Session,
+) -> users_schema.UserDeletionStatus:
+    """Queue the erasure of a user's account and data, and commit.
+
+    Signs the user out, deactivates the account and hands the erasure to a worker.
 
     Args:
         user_id: The user to delete.
+        identity_service: Identity service that revokes the user's sessions.
+        state: The platform state provider.
         storage: The platform storage provider.
         db: Database session.
 
+    Returns:
+        The deletion's initial status.
+
     Raises:
         NotFoundError: If the user does not exist.
-        ConflictError: If the user is the only administrator.
+        ConflictError: If the user is the only administrator, or a deletion is already pending.
     """
-    users_service.delete_user(user_id, storage, db)
+    return users_deletion_job_service.request_deletion(
+        user_id, identity_service, users_deletion_state_store.UserDeletionStateStore(state), storage, db
+    )
+
+
+def shutdown_deletion_pool() -> None:
+    """Stop the in-process pool account deletions run on, without waiting for them."""
+    users_deletion_job_service.shutdown_deletion_pool()
 
 
 def local_today(user_id: int, db: Session) -> date:

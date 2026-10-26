@@ -510,63 +510,36 @@ class TestApproveAndVerify:
         assert mock_crud.update_user.call_args.args[1] == {"email_verified": True}
 
 
-class TestDeleteUser:
-    @patch("modules.users.users.service.users_photo_service")
-    @patch("modules.users.users.service.users_contributor_registry")
+class TestRequireDeletableUser:
     @patch(_CRUD)
-    def test_erases_data_then_the_row_then_the_photo(self, mock_crud, mock_registry, mock_photos, mock_db):
-        mock_crud.get_user_by_id.return_value = _user(1)
-        storage = MagicMock()
-        order = MagicMock()
-        order.attach_mock(mock_registry.erasers.return_value.delete_activities, "activities")
-        order.attach_mock(mock_crud.delete_user, "row")
-        order.attach_mock(mock_db.commit, "commit")
-        order.attach_mock(mock_photos.delete_photo_files, "photos")
-        order.attach_mock(mock_registry.erasers.return_value.delete_staged_files, "staged")
-
-        users_service.delete_user(1, storage, mock_db)
-
-        assert [call[0] for call in order.mock_calls] == ["activities", "row", "commit", "photos", "staged"]
-        mock_registry.erasers.return_value.delete_activities.assert_called_once_with(1, mock_db)
-        mock_photos.delete_photo_files.assert_called_once_with(1, storage)
-        mock_registry.erasers.return_value.delete_staged_files.assert_called_once_with(1, storage)
-
-    @patch("modules.users.users.service.users_contributor_registry")
-    @patch(_CRUD)
-    def test_unknown_user_deletes_nothing(self, mock_crud, mock_registry, mock_db):
+    def test_unknown_user_is_not_found(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = None
 
         with pytest.raises(core_exceptions.NotFoundError):
-            users_service.delete_user(1, MagicMock(), mock_db)
+            users_service.require_deletable_user(1, mock_db)
 
-        mock_registry.erasers.assert_not_called()
-
-    @patch("modules.users.users.service.users_contributor_registry")
     @patch(_CRUD)
-    def test_the_only_administrator_cannot_be_deleted(self, mock_crud, mock_registry, mock_db):
-        admin = _user(1, access_type="admin")
-        mock_crud.get_user_by_id.return_value = admin
+    def test_the_only_administrator_cannot_be_deleted(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1, access_type="admin")
         mock_crud.lock_active_admin_ids.return_value = [1]
 
         with pytest.raises(core_exceptions.ConflictError):
-            users_service.delete_user(1, MagicMock(), mock_db)
+            users_service.require_deletable_user(1, mock_db)
 
-        mock_registry.erasers.assert_not_called()
-        mock_crud.delete_user.assert_not_called()
-        mock_db.commit.assert_not_called()
-
-    @patch("modules.users.users.service.users_photo_service")
-    @patch("modules.users.users.service.users_contributor_registry")
     @patch(_CRUD)
-    def test_an_administrator_can_be_deleted_while_another_remains(
-        self, mock_crud, mock_registry, mock_photos, mock_db
-    ):
+    def test_an_administrator_can_be_deleted_while_another_remains(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1, access_type="admin")
         mock_crud.lock_active_admin_ids.return_value = [1, 2]
 
-        users_service.delete_user(1, MagicMock(), mock_db)
+        users_service.require_deletable_user(1, mock_db)
 
-        mock_crud.delete_user.assert_called_once_with(1, mock_db)
+    @patch(_CRUD)
+    def test_a_regular_user_can_be_deleted(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1)
+
+        users_service.require_deletable_user(1, mock_db)
+
+        mock_crud.lock_active_admin_ids.assert_not_called()
 
 
 class TestLastAdminIsProtected:

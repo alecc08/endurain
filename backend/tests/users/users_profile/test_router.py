@@ -11,6 +11,7 @@ import core.config as core_config
 import core.dependencies as core_dependencies
 import core.exceptions as core_exceptions
 import modules.auth.mfa.schema as mfa_schema
+import modules.users.users.schema as users_schema
 
 PREFIX = core_config.ROOT_PATH + "/profile"  # /api/v1/profile
 
@@ -1184,12 +1185,14 @@ class TestDeleteMyAccount:
 
     @patch("modules.users.users_profile.router.profile_service.delete_account")
     def test_success(self, mock_delete, profile_client, mock_identity_service):
+        mock_delete.return_value = users_schema.UserDeletionStatus(status="queued")
         response = profile_client.post(
             PREFIX + "/delete-account",
             json={"current_password": "secret-password", "mfa_code": "123456"},
         )
 
-        assert response.status_code == 204
+        assert response.status_code == 202
+        assert response.json() == {"status": "queued"}
         assert mock_delete.call_args.args[0] == 1
         assert mock_delete.call_args.args[1].current_password == "secret-password"
         mock_identity_service.clear_session_cookies.assert_called_once()

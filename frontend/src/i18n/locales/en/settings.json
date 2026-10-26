@@ -167,7 +167,7 @@
       "confirm": "Delete",
       "cancel": "Cancel",
       "close": "Close",
-      "success": "User deleted",
+      "success": "User signed out and queued for deletion",
       "error": "Couldn't delete the user. Please try again."
     },
     "detail": {

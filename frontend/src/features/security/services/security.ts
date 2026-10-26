@@ -332,10 +332,11 @@ export async function deleteApiKey(id: string): Promise<void> {
 }
 
 /**
- * Permanently deletes the authenticated user's account and all of their data
- * (the GDPR right to erasure) after step-up verification. The backend removes
- * the activities and their files, health records, gear, goals, integrations,
- * sessions and every other row that references the user, and refuses when the
+ * Queues the permanent deletion of the authenticated user's account and all of
+ * their data (the GDPR right to erasure) after step-up verification. The backend
+ * signs the user out and deactivates the account at once (202), then a background
+ * job removes the activities and their files, health records, gear, goals,
+ * integrations and every other row that references the user. It refuses when the
  * user is the server's only administrator.
  *
  * @param input - The step-up credentials.

@@ -16,6 +16,7 @@ from pydantic import (
 )
 
 import modules.server_settings.schema as server_settings_schema
+import modules.users.users.constants as users_constants
 
 
 class Gender(Enum):
@@ -730,3 +731,15 @@ class ProfileUpdate(BaseModel):
         if value not in available_timezones():
             raise ValueError(f"Unknown IANA timezone: {value}")
         return value
+
+
+class UserDeletionStatus(BaseModel):
+    """Where a queued account deletion is.
+
+    Attributes:
+        status: Lifecycle state of the deletion.
+    """
+
+    status: users_constants.DeletionStatus = Field(..., description="Lifecycle state of the account deletion")
+
+    model_config = ConfigDict(extra="forbid")

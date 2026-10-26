@@ -839,27 +839,29 @@ def delete_all_strava_activities(user_id: int, db: Session, *, source: str, limi
     return len(deleted_ids)
 
 
-def delete_all_activities_for_user(user_id: int, db: Session, *, source: str) -> int:
-    """Delete every activity owned by a user, emitting cleanup events.
+def delete_activities_batch_for_user(user_id: int, limit: int, db: Session, *, source: str) -> int:
+    """Delete up to ``limit`` of a user's activities, emitting cleanup events.
 
     The account-deletion path. Deleting the user row alone would let the database
     FK cascade remove the activities silently, orphaning every thumbnail and
     stored source file the user ever produced — an incomplete erasure. Removing
     them explicitly first yields the ids needed to publish ``activity.deleted``,
-    so the cleanup subscribers delete the blobs too. The caller commits.
+    so the cleanup subscribers delete the blobs too. The caller commits, and
+    repeats the call until it returns 0.
 
     Args:
         user_id: The owning user id.
+        limit: The most activities to delete.
         db: Database session.
         source: The caller recorded on the published events.
 
     Returns:
         The number of activities deleted.
     """
-    deleted_ids = activity_crud.delete_all_activities_for_user(user_id, db)
+    deleted_ids = activity_crud.delete_activities_batch_for_user(user_id, limit, db)
     activity_event_publishers.publish_activities_deleted(deleted_ids, user_id, db, source=source)
-    logger.info(
-        "Deleted all activities for user",
+    logger.debug(
+        "Deleted a batch of a user's activities",
         extra=core_logger.context(user_id=user_id, deleted_count=len(deleted_ids)),
     )
     return len(deleted_ids)

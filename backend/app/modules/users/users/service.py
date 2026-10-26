@@ -9,7 +9,6 @@ may consume lives in :mod:`modules.users.users.integration_service`.
 from datetime import date as datetime_date
 from typing import TYPE_CHECKING
 
-import jasil.providers as platform_providers
 from sqlalchemy.orm import Session
 
 import core.etag as core_etag
@@ -21,10 +20,8 @@ import modules.health.health_targets.integration_service as health_targets_integ
 import modules.health.health_weight.integration_service as health_weight_integration
 import modules.server_settings.integration_service as server_settings_integration
 import modules.server_settings.schema as server_settings_schema
-import modules.users.contributor_registry as users_contributor_registry
 import modules.users.users.constants as users_constants
 import modules.users.users.crud as users_crud
-import modules.users.users.photo_service as users_photo_service
 import modules.users.users.schema as users_schema
 import modules.users.users_default_gear.integration_service as users_default_gear_integration
 import modules.users.users_integrations.integration_service as user_integrations_integration
@@ -614,35 +611,18 @@ def stage_email_verification(
     users_crud.update_user(user_id, changes, db)
 
 
-def delete_user(user_id: int, storage: platform_providers.StorageProvider, db: Session) -> None:
-    """Delete a user together with their data and stored photo.
-
-    The data other modules keep about the user is erased through the installed erasers, in the same
-    transaction as the user row, so an account is never left half erased. The activities are removed
-    explicitly instead of through the database cascade: the cascade tells nobody, so every
-    thumbnail and stored source file the user produced would be orphaned in storage. Everything
-    else that references the user is removed by the database cascade.
+def require_deletable_user(user_id: int, db: Session) -> None:
+    """Require a user to exist and not be the only active administrator.
 
     Args:
-        user_id: ID of the user to delete.
-        storage: The platform storage provider.
+        user_id: ID of the user to be deleted.
         db: Database session.
 
     Raises:
         NotFoundError: If the user does not exist.
         ConflictError: If the user is the only administrator.
     """
-    user = require_user(user_id, db)
-    _refuse_to_remove_last_admin(user, "deleted", db)
-
-    erasers = users_contributor_registry.erasers()
-    erasers.delete_activities(user_id, db)
-    users_crud.delete_user(user_id, db)
-    db.commit()
-    logger.info("User deleted", extra=core_logger.context(user_id=user_id))
-
-    users_photo_service.delete_photo_files(user_id, storage)
-    erasers.delete_staged_files(user_id, storage)
+    _refuse_to_remove_last_admin(require_user(user_id, db), "deleted", db)
 
 
 def timezone_or_default(timezone: str | None) -> str:

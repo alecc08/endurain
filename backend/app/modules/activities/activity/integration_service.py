@@ -496,21 +496,22 @@ def delete_all_strava_activities(user_id: int, db: Session, *, limit: int) -> in
     )
 
 
-def delete_all_activities_for_user(user_id: int, db: Session) -> int:
-    """Delete every activity owned by a user, emitting cleanup events.
+def delete_activities_batch_for_user(user_id: int, limit: int, db: Session) -> int:
+    """Delete up to ``limit`` of a user's activities, emitting cleanup events.
 
-    The account-deletion path. Deleting the user row alone would let the database
-    FK cascade remove the activities silently, orphaning every thumbnail and
-    stored source file the user ever produced. The caller commits.
+    The account-deletion path, repeated until it returns 0. Deleting the user row alone would let the
+    database FK cascade remove the activities silently, orphaning every thumbnail and stored source
+    file the user ever produced. The caller commits.
 
     Args:
         user_id: The owning user id.
+        limit: The most activities to delete.
         db: Database session.
 
     Returns:
         The number of activities deleted.
     """
-    return activity_service.delete_all_activities_for_user(user_id, db, source="api:delete_user")
+    return activity_service.delete_activities_batch_for_user(user_id, limit, db, source="api:delete_user")
 
 
 def filter_existing_activity_ids(activity_ids: Sequence[int], db: Session) -> set[int]:

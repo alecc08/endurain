@@ -2669,10 +2669,11 @@ export interface paths {
         put?: never;
         /**
          * Delete My Account
-         * @description Delete the authenticated user's account and all of their data.
+         * @description Queue the deletion of the authenticated user's account and all of their data.
          *
          *     Requires step-up verification: the current password, and an MFA code when MFA is enabled. The
-         *     deletion is permanent and cannot be undone. Export the profile first to keep a copy. The browser's
+         *     account is signed out and deactivated at once and a background job erases the data, which is
+         *     permanent and cannot be undone. Export the profile first to keep a copy. The browser's
          *     refresh-token cookie is cleared on the response.
          *
          *     Args:
@@ -2682,8 +2683,12 @@ export interface paths {
          *         token_user_id: User ID from access token.
          *         identity_service: Identity service dependency.
          *         step_up_store: Step-up lockout store.
+         *         state: The platform state provider.
          *         storage: The platform storage provider.
          *         db: Database session.
+         *
+         *     Returns:
+         *         The deletion's initial status.
          */
         post: operations["delete_my_account_api_v1_profile_delete_account_post"];
         delete?: never;
@@ -4885,16 +4890,25 @@ export interface paths {
         post?: never;
         /**
          * Delete User
-         * @description Delete user account.
+         * @description Queue the deletion of a user account.
+         *
+         *     The user is signed out and deactivated at once and a background job erases their data. Poll
+         *     ``GET /users/{user_id}/deletion`` for the outcome; a failed deletion is requested again.
          *
          *     Args:
          *         request: The incoming request, read by the rate limiter.
          *         user_id: ID of user to delete.
+         *         identity_service: Identity service that revokes the user's sessions.
+         *         states: Shared store of the deletion's state.
          *         storage: The platform storage provider.
          *         db: Database session dependency.
          *
          *     Returns:
-         *         None
+         *         The deletion's initial status.
+         *
+         *     Raises:
+         *         NotFoundError: If the user does not exist.
+         *         ConflictError: If the user is the only administrator, or a deletion is already pending.
          */
         delete: operations["delete_user_api_v1_users__user_id__delete"];
         options?: never;
@@ -4921,6 +4935,36 @@ export interface paths {
          *         identity_service: Identity service dependency.
          */
         put: operations["approve_user_api_v1_users__user_id__approve_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}/deletion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read User Deletion Status
+         * @description Report where a user's account deletion is.
+         *
+         *     Args:
+         *         user_id: ID of the user being deleted.
+         *         states: Shared store of the deletion's state.
+         *
+         *     Returns:
+         *         The deletion's status.
+         *
+         *     Raises:
+         *         NotFoundError: If no deletion is recorded or it has expired.
+         */
+        get: operations["read_user_deletion_status_api_v1_users__user_id__deletion_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -10584,6 +10628,17 @@ export interface components {
          * @enum {string}
          */
         UserAccessType: "regular" | "admin";
+        /**
+         * UserDeletionStatus
+         * @description Where a queued account deletion is.
+         *
+         *     Attributes:
+         *         status: Lifecycle state of the deletion.
+         */
+        UserDeletionStatus: {
+            /** @description Lifecycle state of the account deletion */
+            status: components["schemas"]["SyncStatus"];
+        };
         /**
          * UserPhotoRead
          * @description The photo a user has after an upload.
@@ -16971,11 +17026,13 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            204: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["UserDeletionStatus"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -19961,11 +20018,13 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            204: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["UserDeletionStatus"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -20004,6 +20063,46 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    read_user_deletion_status_api_v1_users__user_id__deletion_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDeletionStatus"];
+                };
             };
             /** @description Validation Error */
             422: {

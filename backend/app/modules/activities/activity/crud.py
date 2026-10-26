@@ -1668,25 +1668,33 @@ def delete_all_strava_activities_for_user(user_id: int, db: Session, *, limit: i
     return batch_ids
 
 
-def delete_all_activities_for_user(user_id: int, db: Session) -> list[int]:
-    """Stage the deletion of every activity owned by a user.
+def delete_activities_batch_for_user(user_id: int, limit: int, db: Session) -> list[int]:
+    """Stage the deletion of up to ``limit`` of a user's activities.
 
-    Used by account deletion. The database FK cascade from ``users`` would remove
-    the rows but tell nobody, leaving each activity's thumbnail and stored source
-    file behind — deleting them explicitly here yields the IDs needed to publish
-    the cleanup events, so account deletion erases the user's stored artifacts too.
+    Used by account deletion, which repeats it, one transaction per batch, until nothing is left. The
+    database FK cascade from ``users`` would remove the rows but tell nobody, leaving each activity's
+    thumbnail and stored source file behind — deleting them explicitly here yields the IDs needed to
+    publish the cleanup events, so account deletion erases the user's stored artifacts too. The rows
+    are locked in id order first, so two overlapping bulk writes wait their turn instead of deadlocking.
 
     Args:
         user_id: Owner user ID.
+        limit: The most activities to delete.
         db: Database session.
 
     Returns:
-        The IDs of the deleted activities.
+        The IDs of the deleted activities; empty once the user has none.
     """
-    _lock_user_activities(user_id, db)
+    batch = (
+        select(activity_models.Activity.id)
+        .where(activity_models.Activity.user_id == user_id)
+        .order_by(activity_models.Activity.id)
+        .limit(limit)
+        .with_for_update()
+    )
     stmt = (
         sa_delete(activity_models.Activity)
-        .where(activity_models.Activity.user_id == user_id)
+        .where(activity_models.Activity.id.in_(batch))
         .returning(activity_models.Activity.id)
     )
     return [row_id for (row_id,) in db.execute(stmt).all()]

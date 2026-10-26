@@ -53,7 +53,7 @@
   "tagline2": "Own every moment",
   "accountDeleted": {
     "title": "Sorry to see you go",
-    "body": "Your account and all of your data have been permanently deleted.",
+    "body": "You have been signed out, and your account and all of your data are being permanently deleted.",
     "backToLogin": "Back to sign in"
   }
 }

@@ -205,30 +205,37 @@ def delete_account(
     step_up: users_schema.StepUpVerification,
     identity_service: "auth_identity_service.IdentityService",
     step_up_store: "auth_dependencies.StepUpStore",
+    state: platform_providers.StateProvider,
     storage: platform_providers.StorageProvider,
     db: Session,
-) -> None:
-    """Delete the authenticated user's account and all of their data.
+) -> users_schema.UserDeletionStatus:
+    """Queue the deletion of the authenticated user's account and all of their data.
 
     The right to erasure: the user, their activities and stored files, health records, gear, goals,
     integrations, privacy settings, sessions and every other row that references them are removed. The
-    caller must prove their identity again first, so a stolen access token cannot erase an account.
+    caller must prove their identity again first, so a stolen access token cannot erase an account. The
+    account is signed out and deactivated before this returns, and a background job erases the data.
 
     Args:
         user_id: The authenticated user.
         step_up: Step-up verification payload (password, and an MFA code when MFA is enabled).
         identity_service: Identity service that verifies the step-up.
         step_up_store: Step-up lockout store.
+        state: The platform state provider.
         storage: The platform storage provider.
         db: Database session.
 
+    Returns:
+        The deletion's initial status.
+
     Raises:
         HTTPException: If step-up verification fails.
-        ConflictError: If the user is the only administrator.
+        ConflictError: If the user is the only administrator, or a deletion is already pending.
     """
     identity_service.verify_step_up(step_up, user_id, step_up_store)
-    users_integration.delete_user(user_id, storage, db)
-    logger.info("Account deleted by its owner", extra=core_logger.context(user_id=user_id))
+    status = users_integration.request_user_deletion(user_id, identity_service, state, storage, db)
+    logger.info("Account deletion requested by its owner", extra=core_logger.context(user_id=user_id))
+    return status
 
 
 def stage_export(user_id: int, storage: platform_providers.StorageProvider, db: Session) -> int:

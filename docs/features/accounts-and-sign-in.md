@@ -86,4 +86,4 @@ Under **Settings → Security** you can:
 
 Accounts that sign in only through single sign-on have no local password, so password prompts are skipped for them. They still need a code if two-step verification is on.
 
-Deleting an account deletes its data, including activities, photos, thumbnails and stored files. The only administrator of a server cannot delete or demote themselves; make another user an administrator first.
+Deleting an account signs you out at once and deletes its data in the background, including activities, photos, thumbnails and stored files. The only administrator of a server cannot delete or demote themselves; make another user an administrator first.

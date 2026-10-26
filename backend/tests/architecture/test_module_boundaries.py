@@ -405,9 +405,10 @@ _SURFACE_UNITS_OF_WORK: dict[str, str] = {
         "commit, so an account never exists without its credential or MFA row; a caller composing the "
         "steps itself could commit between them."
     ),
-    "users.integration_service.delete_user": (
-        "Erases the user's data and the user row in one commit, then removes the stored photo blobs, "
-        "which cannot be staged; deleting the blobs before the commit could leave a user with no photo."
+    "users.integration_service.request_user_deletion": (
+        "Deactivates the account and stages users.deletion_requested in one commit, so the account is never "
+        "deactivated without the job that erases it, nor queued for erasure while still active; without durable "
+        "jobs the commit also has to precede the hand-off to the in-process pool."
     ),
     "users.integration_service.upload_user_photo": (
         "Writes the blob to storage before recording its key, so the commit is what publishes the photo; "

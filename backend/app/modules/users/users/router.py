@@ -11,6 +11,7 @@ import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
 import modules.auth.identity_providers.links.schema as auth_identity_links_schema
 import modules.auth.identity_service as auth_identity_service
+import modules.users.users.deletion_job_service as users_deletion_job_service
 import modules.users.users.dependencies as users_dependencies
 import modules.users.users.photo_service as users_photo_service
 import modules.users.users.schema as users_schema
@@ -410,29 +411,68 @@ def delete_user_photo(
 
 @router.delete(
     "/{user_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_model=None,
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=users_schema.UserDeletionStatus,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:write"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
 def delete_user(
     request: Request,
     user_id: core_dependencies.PositiveId,
+    identity_service: Annotated[
+        auth_identity_service.IdentityService,
+        Depends(auth_identity_service.get_identity_service),
+    ],
+    states: users_dependencies.UserDeletionStateStoreDep,
     storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
-) -> None:
-    """Delete user account.
+) -> users_schema.UserDeletionStatus:
+    """Queue the deletion of a user account.
+
+    The user is signed out and deactivated at once and a background job erases their data. Poll
+    ``GET /users/{user_id}/deletion`` for the outcome; a failed deletion is requested again.
 
     Args:
         request: The incoming request, read by the rate limiter.
         user_id: ID of user to delete.
+        identity_service: Identity service that revokes the user's sessions.
+        states: Shared store of the deletion's state.
         storage: The platform storage provider.
         db: Database session dependency.
 
     Returns:
-        None
+        The deletion's initial status.
+
+    Raises:
+        NotFoundError: If the user does not exist.
+        ConflictError: If the user is the only administrator, or a deletion is already pending.
     """
-    users_service.delete_user(user_id, storage, db)
+    return users_deletion_job_service.request_deletion(user_id, identity_service, states, storage, db)
+
+
+@router.get(
+    "/{user_id}/deletion",
+    status_code=status.HTTP_200_OK,
+    response_model=users_schema.UserDeletionStatus,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read_all"])],
+)
+def read_user_deletion_status(
+    user_id: core_dependencies.PositiveId,
+    states: users_dependencies.UserDeletionStateStoreDep,
+) -> users_schema.UserDeletionStatus:
+    """Report where a user's account deletion is.
+
+    Args:
+        user_id: ID of the user being deleted.
+        states: Shared store of the deletion's state.
+
+    Returns:
+        The deletion's status.
+
+    Raises:
+        NotFoundError: If no deletion is recorded or it has expired.
+    """
+    return users_deletion_job_service.get_deletion_status(user_id, states)
 
 
 @router.get(

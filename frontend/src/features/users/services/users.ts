@@ -246,7 +246,7 @@ export async function deleteUserPhoto(userId: number): Promise<void> {
 }
 
 /**
- * Deletes a user (admin scope `users:write`).
+ * Queues the deletion of a user (admin scope `users:write`): the user is signed out and deactivated at once (202) and a background job erases their data.
  *
  * @param id - The user id to delete.
  * @throws {HttpError} When the request fails.

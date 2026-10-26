@@ -293,8 +293,8 @@ def delete_profile_photo(
 
 @router.post(
     "/delete-account",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_model=None,
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=users_schema.UserDeletionStatus,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
@@ -311,13 +311,15 @@ def delete_my_account(
         auth_dependencies.StepUpStore,
         Depends(auth_dependencies.get_step_up_attempts),
     ],
+    state: core_dependencies.PlatformState,
     storage: core_dependencies.Storage,
     db: core_dependencies.DbSession,
-) -> None:
-    """Delete the authenticated user's account and all of their data.
+) -> users_schema.UserDeletionStatus:
+    """Queue the deletion of the authenticated user's account and all of their data.
 
     Requires step-up verification: the current password, and an MFA code when MFA is enabled. The
-    deletion is permanent and cannot be undone. Export the profile first to keep a copy. The browser's
+    account is signed out and deactivated at once and a background job erases the data, which is
+    permanent and cannot be undone. Export the profile first to keep a copy. The browser's
     refresh-token cookie is cleared on the response.
 
     Args:
@@ -327,11 +329,18 @@ def delete_my_account(
         token_user_id: User ID from access token.
         identity_service: Identity service dependency.
         step_up_store: Step-up lockout store.
+        state: The platform state provider.
         storage: The platform storage provider.
         db: Database session.
+
+    Returns:
+        The deletion's initial status.
     """
-    profile_service.delete_account(token_user_id, step_up, identity_service, step_up_store, storage, db)
+    deletion = profile_service.delete_account(
+        token_user_id, step_up, identity_service, step_up_store, state, storage, db
+    )
     identity_service.clear_session_cookies(response)
+    return deletion
 
 
 @router.post(

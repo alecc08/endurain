@@ -380,18 +380,18 @@ class TestCrossModuleWrites:
 
     @patch("modules.activities.activity.service.activity_event_publishers")
     @patch("modules.activities.activity.service.activity_crud")
-    def test_delete_all_activities_for_user_publishes_cleanup_events(self, mock_crud, mock_publishers):
+    def test_delete_activities_batch_for_user_publishes_cleanup_events(self, mock_crud, mock_publishers):
         """Account deletion must emit activity.deleted so stored blobs are reclaimed."""
         from modules.activities.activity import service
 
         db = MagicMock()
-        mock_crud.delete_all_activities_for_user.return_value = [1, 2]
+        mock_crud.delete_activities_batch_for_user.return_value = [1, 2]
 
-        deleted = service.delete_all_activities_for_user(7, db, source="api:test")
+        deleted = service.delete_activities_batch_for_user(7, 50, db, source="api:test")
 
         assert deleted == 2
         db.commit.assert_not_called()
-        mock_crud.delete_all_activities_for_user.assert_called_once_with(7, db)
+        mock_crud.delete_activities_batch_for_user.assert_called_once_with(7, 50, db)
         mock_publishers.publish_activities_deleted.assert_called_once_with([1, 2], 7, db, source="api:test")
 
 

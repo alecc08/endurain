@@ -88,16 +88,16 @@ class TestIntegrationService:
         )
 
     @patch("modules.activities.activity.integration_service.activity_service")
-    def test_delete_all_activities_for_user_delegates(self, mock_service):
+    def test_delete_activities_batch_for_user_delegates(self, mock_service):
         from modules.activities.activity import integration_service
 
         db = MagicMock()
-        mock_service.delete_all_activities_for_user.return_value = 2
+        mock_service.delete_activities_batch_for_user.return_value = 2
 
-        result = integration_service.delete_all_activities_for_user(7, db)
+        result = integration_service.delete_activities_batch_for_user(7, 50, db)
 
         assert result == 2
-        mock_service.delete_all_activities_for_user.assert_called_once_with(7, db, source="api:delete_user")
+        mock_service.delete_activities_batch_for_user.assert_called_once_with(7, 50, db, source="api:delete_user")
 
 
 class TestDerivedArtifactWritesStageOnly:

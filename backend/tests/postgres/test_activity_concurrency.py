@@ -78,7 +78,7 @@ def test_delete_all_waits_for_a_bulk_edit_that_holds_the_rows(pg_factory):
 
     def delete_all() -> None:
         with pg_factory() as db:
-            deleted.extend(activity_crud.delete_all_activities_for_user(1, db))
+            deleted.extend(activity_crud.delete_activities_batch_for_user(1, 100, db))
             db.commit()
         finished.set()
 

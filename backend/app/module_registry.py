@@ -49,6 +49,7 @@ import modules.server_settings.integration_service as server_settings_integratio
 import modules.strava.subscriber_registry as strava_subscriber_registry
 import modules.users.contributor_registry as users_contributor_registry
 import modules.users.contributors as users_contributors
+import modules.users.users.subscriber_registry as users_subscriber_registry
 import modules.users.users_profile.integration_service as users_profile_integration
 import modules.users.users_profile.scheduled_jobs as users_profile_scheduled_jobs
 import modules.users.users_profile.subscriber_registry as users_profile_subscriber_registry
@@ -208,6 +209,11 @@ MODULES: tuple[RuntimeModule, ...] = (
         recurring_jobs=notifications_scheduled_jobs.recurring_jobs,
     ),
     RuntimeModule(
+        name="users",
+        register_durable=users_subscriber_registry.register_durable_handlers,
+        nets=users_subscriber_registry.DURABLE_SUBSCRIBER_NETS,
+    ),
+    RuntimeModule(
         name="users_profile",
         register_bus=users_profile_subscriber_registry.register_bus_subscribers,
         register_durable=users_profile_subscriber_registry.register_durable_handlers,
@@ -282,7 +288,7 @@ def configure_user_contributors() -> None:
     """Install the erasures the users namespace asks the activities and profile modules to answer."""
     users_contributor_registry.register(
         users_contributors.UserErasers(
-            delete_activities=activity_integration.delete_all_activities_for_user,
+            delete_activities=activity_integration.delete_activities_batch_for_user,
             delete_staged_files=users_profile_integration.delete_staged_transfers,
         )
     )
