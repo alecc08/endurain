@@ -1,5 +1,6 @@
 """Migration execution orchestration utilities."""
 
+import asyncio
 from collections.abc import Callable, Coroutine
 from typing import Any
 
@@ -45,7 +46,10 @@ async def check_migrations_not_executed(
     Check and execute any pending migrations.
 
     Iterates over unexecuted migrations and runs each migration handler in
-    order. Sync handlers are called directly; async handlers are awaited.
+    order. Async handlers are awaited. Sync handlers run on a worker thread: they do
+    blocking work (provider calls, file handling) that would otherwise stall the
+    startup event loop, and some start an event loop of their own, which
+    ``asyncio.run`` refuses to do on a thread that already runs one.
 
     Args:
         db: Database session.
@@ -62,6 +66,6 @@ async def check_migrations_not_executed(
         logger.info(f"Migration not executed: {migration.name} - Migration will be executed")
 
         if migration.id in _SYNC_MIGRATIONS:
-            _SYNC_MIGRATIONS[migration.id](db)
+            await asyncio.to_thread(_SYNC_MIGRATIONS[migration.id], db)
         elif migration.id in _ASYNC_MIGRATIONS:
             await _ASYNC_MIGRATIONS[migration.id](db)
