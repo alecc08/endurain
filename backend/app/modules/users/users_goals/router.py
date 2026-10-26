@@ -65,13 +65,16 @@ def get_user_goals(
     status_code=status.HTTP_200_OK,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
+@core_rate_limit.limiter.limit(core_rate_limit.EXPENSIVE_READ)
 def get_user_goals_results(
+    request: Request,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
 ) -> list[user_goals_schema.UsersGoalProgress]:
     """Calculate and retrieve goal progress for authenticated user.
 
     Args:
+        request: The incoming request, read by the rate limiter.
         token_user_id: User ID from access token.
         db: Database session dependency.
 

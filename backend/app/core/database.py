@@ -5,7 +5,7 @@ from collections.abc import Generator, Mapping
 from datetime import datetime
 
 import jasil.orm as jasil_orm
-from sqlalchemy import DateTime, create_engine, func
+from sqlalchemy import DateTime, create_engine, func, text
 from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import (
@@ -129,9 +129,11 @@ def _connect_args(env: Mapping[str, str]) -> dict:
 # max_connections (default 100). Lower DB_POOL_SIZE / DB_MAX_OVERFLOW, or front the database
 # with PgBouncer in session pooling mode: the postgres-advisory:// lock is a session-level
 # advisory lock and breaks under transaction pooling.
+_POOL_OPTIONS = _pool_options(os.environ)
+
 engine = create_engine(
     db_url,
-    **_pool_options(os.environ),
+    **_POOL_OPTIONS,
     pool_timeout=30,
     pool_recycle=3600,
     pool_pre_ping=True,
@@ -182,6 +184,60 @@ class TimestampMixin:
         onupdate=func.now(),
         nullable=False,
     )
+
+
+def connection_budget_warning(
+    pool_size: int, max_overflow: int, processes: int, *, max_connections: int, reserved: int
+) -> str | None:
+    """Say so when the pools of this deployment's web processes can hold more connections than PostgreSQL allows.
+
+    Only the processes the caller counts are known here; replicas and dedicated workers each add their own pool,
+    so a budget that fits is not proof the whole deployment does.
+
+    Args:
+        pool_size: Connections one process's pool keeps open.
+        max_overflow: Extra connections one process's pool may open under load.
+        processes: How many processes share this configuration.
+        max_connections: PostgreSQL's ``max_connections``.
+        reserved: PostgreSQL's ``superuser_reserved_connections``, which ordinary roles cannot use.
+
+    Returns:
+        The warning to log, or None when the pools fit.
+    """
+    needed = (pool_size + max_overflow) * processes
+    available = max_connections - reserved
+    if needed <= available:
+        return None
+    return (
+        f"The database pools of {processes} process(es) can open up to {needed} database connections "
+        f"({pool_size} + {max_overflow} each), but PostgreSQL allows {available} for ordinary roles. "
+        "Under load requests will fail to get a connection. Lower DB_POOL_SIZE and DB_MAX_OVERFLOW, raise "
+        "max_connections, or put PgBouncer in front of the database. Every replica and dedicated worker adds "
+        "its own pool to this total."
+    )
+
+
+def check_connection_budget(processes: int) -> None:
+    """Warn at startup when this process's pool settings can exhaust PostgreSQL's connections.
+
+    A warning only: the pool sizes stay as configured, because the right size depends on how many replicas
+    and workers share the database, which only the operator knows.
+
+    Args:
+        processes: How many processes share this configuration (``WEB_WORKERS`` for the API).
+    """
+    with engine.connect() as connection:
+        max_connections = int(connection.execute(text("SHOW max_connections")).scalar_one())
+        reserved = int(connection.execute(text("SHOW superuser_reserved_connections")).scalar_one())
+    warning = connection_budget_warning(
+        _POOL_OPTIONS["pool_size"],
+        _POOL_OPTIONS["max_overflow"],
+        processes,
+        max_connections=max_connections,
+        reserved=reserved,
+    )
+    if warning is not None:
+        logger.warning(warning, extra=core_logger.context(console=True))
 
 
 def violated_constraint(err: IntegrityError) -> str | None:

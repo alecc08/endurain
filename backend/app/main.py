@@ -24,6 +24,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 import core.async_bridge as core_async_bridge
 import core.config as core_config
+import core.database as core_database
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.middleware as core_middleware
@@ -273,6 +274,9 @@ async def startup_event(fastapi_app: FastAPI) -> None:
         extra=core_logger.context(console=True),
     )
     _safe_run("purge_expired_tokens", _purge_expired_tokens)
+    _safe_run(
+        "check_connection_budget", lambda: core_database.check_connection_budget(core_config.settings.WEB_WORKERS)
+    )
 
     for task in runtime_module_registry.startup_tasks():
         logger.info(task.description, extra=core_logger.context(console=True))

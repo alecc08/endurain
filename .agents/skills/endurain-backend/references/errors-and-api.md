@@ -59,7 +59,7 @@
 ## Rate limiting
 
 - Decorate with `@core_rate_limit.limiter.limit(<tier>)` and take `request: Request` as the first parameter.
-- Tiers: `DEFAULT` 120/min, `WRITE` 30/min, `SENSITIVE` 10/min (auth, secrets), `UPLOAD` 20/min, `PROVIDER_SYNC` 6/min.
+- Tiers: `DEFAULT` 120/min, `WRITE` 30/min, `SENSITIVE` 10/min (auth, secrets), `UPLOAD` 20/min, `PROVIDER_SYNC` 6/min, `EXPENSIVE_READ` 30/min (summaries, streams, dashboards, goal progress), `PUBLIC_READ` 30/min (unauthenticated reads of shared activity data, keyed by IP).
 - Reads take the global default (`DEFAULT`, applied by the middleware); every write, upload or provider sync names its own tier, which `TestRouteConventions` enforces.
 - Pick the tier by what the endpoint costs or exposes; an authenticated write of caller-supplied bytes is `UPLOAD`.
 - Counters live in the shared state backend, so they hold across workers.

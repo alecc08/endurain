@@ -78,3 +78,59 @@ class TestConnectOptions:
     def test_tls_is_opt_in(self):
         assert "sslmode" not in core_database._connect_args({})
         assert core_database._connect_args({"DB_SSLMODE": " Require "})["sslmode"] == "require"
+
+
+class TestConnectionBudgetWarning:
+    """The pool can hold more connections than PostgreSQL allows; startup says so instead of failing later."""
+
+    def test_a_budget_within_the_limit_has_no_warning(self):
+        assert core_database.connection_budget_warning(20, 40, 1, max_connections=100, reserved=3) is None
+
+    def test_a_single_process_at_the_default_pool_fits_the_default_limit(self):
+        assert core_database.connection_budget_warning(20, 40, 1, max_connections=100, reserved=3) is None
+
+    def test_several_workers_that_exceed_the_limit_are_reported(self):
+        warning = core_database.connection_budget_warning(20, 40, 2, max_connections=100, reserved=3)
+
+        assert warning is not None
+        assert "120" in warning and "97" in warning
+        assert "DB_POOL_SIZE" in warning and "DB_MAX_OVERFLOW" in warning
+
+    def test_the_connections_reserved_for_superusers_are_not_counted_as_available(self):
+        assert core_database.connection_budget_warning(20, 40, 1, max_connections=62, reserved=3) is not None
+        assert core_database.connection_budget_warning(20, 40, 1, max_connections=63, reserved=3) is None
+
+    def test_the_warning_says_other_processes_add_to_the_total(self):
+        warning = core_database.connection_budget_warning(20, 40, 2, max_connections=100, reserved=3)
+
+        assert "replica" in warning and "worker" in warning
+
+    def test_the_server_limits_are_read_and_a_warning_is_logged(self, caplog):
+        connection = MagicMock()
+        connection.execute.return_value.scalar_one.side_effect = ["100", "3"]
+        engine = MagicMock()
+        engine.connect.return_value.__enter__.return_value = connection
+
+        with (
+            patch.object(core_database, "engine", engine),
+            patch.object(core_database, "_POOL_OPTIONS", {"pool_size": 20, "max_overflow": 40}),
+            caplog.at_level("WARNING"),
+        ):
+            core_database.check_connection_budget(2)
+
+        assert "database connections" in caplog.text
+
+    def test_a_fitting_budget_logs_nothing(self, caplog):
+        connection = MagicMock()
+        connection.execute.return_value.scalar_one.side_effect = ["200", "3"]
+        engine = MagicMock()
+        engine.connect.return_value.__enter__.return_value = connection
+
+        with (
+            patch.object(core_database, "engine", engine),
+            patch.object(core_database, "_POOL_OPTIONS", {"pool_size": 20, "max_overflow": 40}),
+            caplog.at_level("WARNING"),
+        ):
+            core_database.check_connection_budget(2)
+
+        assert caplog.text == ""

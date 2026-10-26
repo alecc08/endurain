@@ -56,6 +56,15 @@ SENSITIVE: str = "10/minute"
 #: resource consumption on the ingestion endpoints.
 UPLOAD: str = "20/minute"
 
+#: Reads that aggregate or return a whole activity's worth of data (summaries, streams, the health
+#: dashboard, goal progress). Each costs far more than a row lookup, so they take a tighter cap than
+#: DEFAULT; a page makes one such call, so a person using the app never meets it.
+EXPENSIVE_READ: str = "30/minute"
+
+#: Unauthenticated reads of a shared activity's data (its streams). Keyed by client IP, so visitors
+#: behind one NAT share a bucket; kept separate from EXPENSIVE_READ so the two can be tuned apart.
+PUBLIC_READ: str = "30/minute"
+
 #: Endpoints that trigger OUTBOUND calls to a third-party
 #: provider (Strava, Garmin Connect). Tighter than WRITE
 #: because each request amplifies into several external

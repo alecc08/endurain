@@ -32,8 +32,11 @@ from slowapi.middleware import SlowAPIMiddleware
 
 import core.rate_limit as core_rate_limit
 import modules.activities.activity.router as activity_router
+import modules.activities.activity.summary_router as activity_summary_router
 import modules.activities.activity_ingestion.router as ingestion_router
 import modules.activities.activity_media.router as activity_media_router
+import modules.activities.activity_streams.public_router as activity_streams_public_router
+import modules.activities.activity_streams.router as activity_streams_router
 import modules.auth.identity_providers.profile_router as auth_idp_profile_router
 import modules.auth.identity_providers.public_router as idp_public_router
 import modules.auth.mfa.profile_router as auth_mfa_profile_router
@@ -45,6 +48,7 @@ import modules.followers.router as followers_router
 import modules.garmin.router as garmin_router
 import modules.gears.gear.router as gear_router
 import modules.gears.gear_components.router as gear_components_router
+import modules.health.health_dashboard.router as health_dashboard_router
 import modules.health.health_fasting.router as health_fasting_router
 import modules.health.health_poop.router as health_poop_router
 import modules.health.health_sleep.router as health_sleep_router
@@ -243,6 +247,29 @@ _TIERED_ENDPOINTS = [
     pytest.param(
         notifications_router.mark_all_notifications_as_read, core_rate_limit.WRITE, id="notification-mark-all-read"
     ),
+    pytest.param(
+        activity_summary_router.read_activity_summary, core_rate_limit.EXPENSIVE_READ, id="activity-summary-read"
+    ),
+    pytest.param(
+        activity_streams_router.list_activity_streams, core_rate_limit.EXPENSIVE_READ, id="activity-streams-list"
+    ),
+    pytest.param(
+        activity_streams_router.read_activity_stream, core_rate_limit.EXPENSIVE_READ, id="activity-stream-read"
+    ),
+    pytest.param(
+        activity_streams_public_router.list_public_activity_streams,
+        core_rate_limit.PUBLIC_READ,
+        id="public-activity-streams-list",
+    ),
+    pytest.param(
+        activity_streams_public_router.read_public_activity_stream,
+        core_rate_limit.PUBLIC_READ,
+        id="public-activity-stream-read",
+    ),
+    pytest.param(
+        health_dashboard_router.read_health_daily_stats, core_rate_limit.EXPENSIVE_READ, id="health-dashboard"
+    ),
+    pytest.param(users_goals_router.get_user_goals_results, core_rate_limit.EXPENSIVE_READ, id="goals-results"),
 ]
 
 

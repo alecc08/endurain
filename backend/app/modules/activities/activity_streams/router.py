@@ -2,10 +2,11 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Security
+from fastapi import APIRouter, Depends, Request, Security
 
 import core.dependencies as core_dependencies
 import core.pagination as core_pagination
+import core.rate_limit as core_rate_limit
 import modules.activities.activity.dependencies as activity_dependencies
 import modules.activities.activity_streams.dependencies as activity_streams_dependencies
 import modules.activities.activity_streams.schema as activity_streams_schema
@@ -25,7 +26,9 @@ router = APIRouter()
         )
     ],
 )
+@core_rate_limit.limiter.limit(core_rate_limit.EXPENSIVE_READ)
 def list_activity_streams(
+    request: Request,
     activity_id: activity_dependencies.ActivityId,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
@@ -51,7 +54,9 @@ def list_activity_streams(
         )
     ],
 )
+@core_rate_limit.limiter.limit(core_rate_limit.EXPENSIVE_READ)
 def read_activity_stream(
+    request: Request,
     activity_id: activity_dependencies.ActivityId,
     stream_type: activity_streams_dependencies.StreamType,
     token_user_id: auth_dependencies.CurrentUserId,
