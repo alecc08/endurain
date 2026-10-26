@@ -462,6 +462,21 @@ def _replace_handlers(
         old_handler.close()
 
 
+class _SlowapiLimitExceededFilter(logging.Filter):
+    """Drop slowapi's own "limit exceeded" record, which the 429 handler already logs with the route."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Keep every record except slowapi's per-request limit-exceeded line.
+
+        Args:
+            record: The record being logged.
+
+        Returns:
+            False for the limit-exceeded line, True otherwise.
+        """
+        return not str(record.msg).startswith("ratelimit ")
+
+
 def setup_main_logger():
     """
     Set up the main application logger.
@@ -493,12 +508,18 @@ def setup_main_logger():
     # outcomes flow through the same handler/format pipeline
     # as the rest of the backend logs.
     safeuploads_audit_logger = logging.getLogger("safeuploads.audit")
+    # slowapi reports a rate-limit storage outage and its recovery here; without handlers they would
+    # reach stderr unstructured, and its own handler discards them.
+    slowapi_logger = logging.getLogger("slowapi")
+    if not any(isinstance(f, _SlowapiLimitExceededFilter) for f in slowapi_logger.filters):
+        slowapi_logger.addFilter(_SlowapiLimitExceededFilter())
 
     for logger in (
         main_logger,
         alembic_logger,
         scheduler_logger,
         safeuploads_audit_logger,
+        slowapi_logger,
     ):
         logger.setLevel(log_level)
 
@@ -509,6 +530,7 @@ def setup_main_logger():
             alembic_logger,
             scheduler_logger,
             safeuploads_audit_logger,
+            slowapi_logger,
         ),
         handlers,
     )

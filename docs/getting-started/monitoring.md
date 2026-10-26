@@ -9,16 +9,19 @@ Both are unauthenticated and need no `X-Client-Type` header.
 | Endpoint | Checks | Fails with |
 | -------- | ------ | ---------- |
 | `GET /api/v1/about` | That the web process is up. Returns the name, version and licence | Nothing but a dead process |
-| `GET /api/v1/health` | That a database connection can be obtained and answers `SELECT 1`. Returns `{"status": "ok"}` | `503` when the pool is exhausted or the database is unreachable |
+| `GET /api/v1/health` | That a database connection can be obtained and answers `SELECT 1`, and that the shared state backend (Redis, when configured) answers. Returns `{"status": "ok", "state": "ok"}` | `503` when the pool is exhausted or the database is unreachable |
 
 The container image's own `HEALTHCHECK` calls `/api/v1/about` every 30 seconds, with a 120 second start period. That tells Docker the process runs, not that the database works. For a load balancer or an orchestrator that should stop sending traffic to a wedged instance, probe `/api/v1/health` instead.
+
+When only the shared state backend does not answer, `/api/v1/health` still returns `200`, with `{"status": "degraded", "state": "unavailable"}`. Restarting or removing the instance from a load balancer would not bring Redis back, and the instance still serves most routes: rate limits fall back to per-process counters (so the effective limit is up to the number of replicas times higher until Redis returns), while features that need shared state, such as MFA, WebSocket tickets and sync claims, answer `503`. Alert on `"status": "degraded"` in the body instead of on the status code. With the default `local` profile the state is in memory, so `state` is always `ok`.
 
 ```mermaid
 flowchart TD
     P[Probe] --> A{GET /api/v1/about}
     A -- no answer --> D[Process down: restart it]
     A -- 200 --> H{GET /api/v1/health}
-    H -- 200 --> OK[Healthy]
+    H -- 200, status ok --> OK[Healthy]
+    H -- 200, status degraded --> R[State backend unreachable: check Redis]
     H -- 503 --> W[Web process up, database unreachable or connection pool exhausted]
 ```
 

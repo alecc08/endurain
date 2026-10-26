@@ -5,7 +5,9 @@ from unittest.mock import MagicMock, patch
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.testclient import TestClient
+from jasil.providers import StateBackendUnavailableError
 
+import core.dependencies as core_dependencies
 from core.database import get_db
 from core.router import router
 
@@ -31,26 +33,56 @@ class TestAbout:
 
 
 class TestHealth:
-    """Tests for GET {ROOT_PATH}/health — database-backed liveness."""
+    """Tests for GET {ROOT_PATH}/health — database-backed liveness and the state backend."""
 
-    def test_returns_ok_when_database_answers(self):
-        app.dependency_overrides[get_db] = lambda: MagicMock()
+    @staticmethod
+    def _get(db, state):
+        app.dependency_overrides[get_db] = lambda: db
+        app.dependency_overrides[core_dependencies.get_platform_state] = lambda: state
         try:
-            response = client.get("/api/v1/health")
+            return client.get("/api/v1/health")
         finally:
             app.dependency_overrides.pop(get_db, None)
+            app.dependency_overrides.pop(core_dependencies.get_platform_state, None)
+
+    def test_returns_ok_when_the_database_and_the_state_answer(self):
+        response = self._get(MagicMock(), MagicMock())
+
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        assert response.json() == {"status": "ok", "state": "ok"}
 
     def test_returns_503_when_database_fails(self):
         db = MagicMock()
         db.execute.side_effect = TimeoutError("pool exhausted")
-        app.dependency_overrides[get_db] = lambda: db
-        try:
-            response = client.get("/api/v1/health")
-        finally:
-            app.dependency_overrides.pop(get_db, None)
-        assert response.status_code == 503
+
+        assert self._get(db, MagicMock()).status_code == 503
+
+    def test_an_unreachable_state_backend_is_degraded_not_down(self, caplog):
+        state = MagicMock()
+        state.get.side_effect = StateBackendUnavailableError("redis down")
+
+        with caplog.at_level("WARNING"):
+            response = self._get(MagicMock(), state)
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "degraded", "state": "unavailable"}
+        assert "health probe" in caplog.text
+
+    def test_the_probe_only_reads(self):
+        state = MagicMock()
+
+        self._get(MagicMock(), state)
+
+        state.get.assert_called_once()
+        state.set.assert_not_called()
+
+    def test_a_database_failure_wins_over_a_state_failure(self):
+        db = MagicMock()
+        db.execute.side_effect = TimeoutError("pool exhausted")
+        state = MagicMock()
+        state.get.side_effect = StateBackendUnavailableError("redis down")
+
+        assert self._get(db, state).status_code == 503
 
 
 class _FileResponseTestMixin:

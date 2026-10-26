@@ -1,13 +1,19 @@
 """Core metadata and static fallback routes."""
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
+from jasil.providers import StateBackendUnavailableError
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 
 import core.config as core_config
 import core.dependencies as core_dependencies
+import core.logger as core_logger
 import core.utils as core_utils
+
+logger = core_logger.get_logger(__name__)
 
 # Define the API router
 router = APIRouter()
@@ -70,19 +76,44 @@ async def about() -> AboutResponse:
     )
 
 
-@router.get(core_config.ROOT_PATH + "/health", status_code=status.HTTP_200_OK)
-def health(db: core_dependencies.DbSession) -> dict[str, str]:
+class HealthResponse(BaseModel):
     """
-    Liveness check that needs a database connection.
+    Health of the dependencies this process needs.
+
+    Attributes:
+        status: ``ok``, or ``degraded`` when only the shared state backend is unreachable.
+        state: Whether the shared state backend (rate limits, claims, tickets) answers.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["ok", "degraded"]
+    state: Literal["ok", "unavailable"]
+
+
+#: Key the health probe reads. It is never written, so the probe leaves nothing in the backend.
+_STATE_PROBE_KEY = "endurain:health:probe"
+
+
+@router.get(core_config.ROOT_PATH + "/health", response_model=HealthResponse, status_code=status.HTTP_200_OK)
+def health(db: core_dependencies.DbSession, state: core_dependencies.PlatformState) -> HealthResponse:
+    """
+    Liveness check that needs a database connection, and reports the shared state backend.
 
     Unlike ``/about``, this fails when the connection pool is exhausted or the
-    database is unreachable, so orchestrators can detect a wedged instance.
+    database is unreachable, so orchestrators can detect a wedged instance. A state
+    backend that does not answer does not fail it: the process still serves most
+    routes (rate limits fall back to per-process counters), and restarting or
+    de-routing replicas would not bring the backend back. It answers 200 with
+    ``degraded`` so a monitor can alert on the body.
 
     Args:
         db: Database session.
+        state: The platform state provider.
 
     Returns:
-        ``{"status": "ok"}`` when the database answers.
+        ``ok`` when the database and the state backend answer, ``degraded`` when only the state
+        backend does not.
 
     Raises:
         HTTPException: 503 when no connection can be obtained or the query fails.
@@ -91,7 +122,12 @@ def health(db: core_dependencies.DbSession) -> dict[str, str]:
         db.execute(text("SELECT 1"))
     except Exception as err:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database unavailable") from err
-    return {"status": "ok"}
+    try:
+        state.get(_STATE_PROBE_KEY)
+    except StateBackendUnavailableError as err:
+        logger.warning("The shared state backend did not answer the health probe", exc_info=err)
+        return HealthResponse(status="degraded", state="unavailable")
+    return HealthResponse(status="ok", state="ok")
 
 
 # NOTE: there is deliberately no ``/server_images/{img}``, ``/user_images/{user_img}``,

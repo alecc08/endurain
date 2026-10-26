@@ -413,3 +413,21 @@ class TestEndToEnd:
         assert record.activity_id == 42
         assert not hasattr(record, "gear_id")
         assert json.loads(core_logger.JsonFormatter().format(record))["context"] == {"activity_id": 42}
+
+
+class TestSlowapiLimitExceededFilter:
+    """slowapi's per-request line duplicates the 429 handler's log; its outage lines must stay."""
+
+    @staticmethod
+    def _record(message: str) -> logging.LogRecord:
+        return logging.LogRecord("slowapi", logging.WARNING, __file__, 1, message, None, None)
+
+    def test_drops_the_limit_exceeded_line(self):
+        record = self._record("ratelimit %s (%s) exceeded at endpoint: %s")
+
+        assert core_logger._SlowapiLimitExceededFilter().filter(record) is False
+
+    def test_keeps_the_storage_outage_line(self):
+        record = self._record("Rate limit storage unreachable - falling back to in-memory storage")
+
+        assert core_logger._SlowapiLimitExceededFilter().filter(record) is True

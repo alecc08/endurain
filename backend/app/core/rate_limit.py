@@ -109,11 +109,34 @@ def _get_rate_limit_key(request: Request) -> str:
     return core_network.get_ip_address(request)
 
 
-limiter: Limiter = Limiter(
-    key_func=_get_rate_limit_key,
-    default_limits=[DEFAULT],
-    enabled=core_config.settings.RATE_LIMIT_ENABLED,
-    storage_uri=core_config.settings.resolved_state_uri,
+def build_limiter(*, storage_uri: str, enabled: bool) -> Limiter:
+    """
+    Build the application limiter.
+
+    When the shared state backend cannot be reached, each process keeps enforcing every limit
+    from its own memory and goes back to the shared backend once it answers again. The limits
+    are then per replica, so a caller can do up to as many times the limit as there are
+    replicas, but a state outage neither answers every request with a 500 nor lifts the limits
+    that protect login and other sensitive routes.
+
+    Args:
+        storage_uri: Where the shared counters live.
+        enabled: Whether limits are enforced at all.
+
+    Returns:
+        The configured limiter.
+    """
+    return Limiter(
+        key_func=_get_rate_limit_key,
+        default_limits=[DEFAULT],
+        enabled=enabled,
+        storage_uri=storage_uri,
+        in_memory_fallback_enabled=True,
+    )
+
+
+limiter: Limiter = build_limiter(
+    storage_uri=core_config.settings.resolved_state_uri, enabled=core_config.settings.RATE_LIMIT_ENABLED
 )
 
 # slowapi's ``headers_enabled`` is deliberately left off. It injects the

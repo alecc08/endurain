@@ -181,3 +181,47 @@ class TestRateLimitExceededHandler:
             response = rate_limit_exceeded_handler(request, exc)
 
         assert response.status_code == 429
+
+
+class TestStorageOutageFallback:
+    """A state backend outage degrades the limiter to per-process counters instead of failing requests."""
+
+    @staticmethod
+    def _client(limit: str):
+        from fastapi import FastAPI, Request
+        from fastapi.testclient import TestClient
+        from slowapi.errors import RateLimitExceeded
+        from slowapi.middleware import SlowAPIMiddleware
+
+        from core.rate_limit import build_limiter, rate_limit_exceeded_handler
+
+        limiter = build_limiter(storage_uri="memory://", enabled=True)
+        app = FastAPI()
+        app.state.limiter = limiter
+        app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+        app.add_middleware(SlowAPIMiddleware)
+
+        @app.get("/limited")
+        @limiter.limit(limit)
+        def limited(request: Request) -> dict[str, str]:
+            return {"ok": "yes"}
+
+        return TestClient(app), limiter
+
+    def test_a_failing_storage_does_not_fail_the_request(self, caplog):
+        client, limiter = self._client("5/minute")
+        with (
+            patch.object(limiter._limiter, "hit", side_effect=ConnectionError("redis down")),
+            caplog.at_level("WARNING"),
+        ):
+            response = client.get("/limited")
+
+        assert response.status_code == 200
+        assert "falling back to in-memory storage" in caplog.text
+
+    def test_the_limit_still_applies_per_process_during_the_outage(self):
+        client, limiter = self._client("2/minute")
+        with patch.object(limiter._limiter, "hit", side_effect=ConnectionError("redis down")):
+            statuses = [client.get("/limited").status_code for _ in range(4)]
+
+        assert statuses == [200, 200, 429, 429]

@@ -1278,16 +1278,22 @@ export interface paths {
         };
         /**
          * Health
-         * @description Liveness check that needs a database connection.
+         * @description Liveness check that needs a database connection, and reports the shared state backend.
          *
          *     Unlike ``/about``, this fails when the connection pool is exhausted or the
-         *     database is unreachable, so orchestrators can detect a wedged instance.
+         *     database is unreachable, so orchestrators can detect a wedged instance. A state
+         *     backend that does not answer does not fail it: the process still serves most
+         *     routes (rate limits fall back to per-process counters), and restarting or
+         *     de-routing replicas would not bring the backend back. It answers 200 with
+         *     ``degraded`` so a monitor can alert on the body.
          *
          *     Args:
          *         db: Database session.
+         *         state: The platform state provider.
          *
          *     Returns:
-         *         ``{"status": "ok"}`` when the database answers.
+         *         ``ok`` when the database and the state backend answer, ``degraded`` when only the state
+         *         backend does not.
          *
          *     Raises:
          *         HTTPException: 503 when no connection can be obtained or the query fails.
@@ -7077,6 +7083,26 @@ export interface components {
             notes?: string | null;
             /** @description Source of the data */
             source?: components["schemas"]["modules__health__health_poop__schema__Source"] | null;
+        };
+        /**
+         * HealthResponse
+         * @description Health of the dependencies this process needs.
+         *
+         *     Attributes:
+         *         status: ``ok``, or ``degraded`` when only the shared state backend is unreachable.
+         *         state: Whether the shared state backend (rate limits, claims, tickets) answers.
+         */
+        HealthResponse: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ok" | "unavailable";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "degraded";
         };
         /**
          * HealthSleepCreate
@@ -14966,9 +14992,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["HealthResponse"];
                 };
             };
             /** @description Unexpected error */
