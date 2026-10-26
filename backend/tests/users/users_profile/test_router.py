@@ -1,6 +1,7 @@
 """Comprehensive tests for profile.router endpoints."""
 
 import io
+import os
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
@@ -634,15 +635,21 @@ class TestDownloadProfileExport:
 # ===================================================================
 
 
+def _write_upload(_file, *, kind, upload_dir, filename):
+    """Stand in for the shared validator: write the archive where it would."""
+    path = os.path.join(upload_dir, filename)
+    with open(path, "wb") as out:
+        out.write(b"zip-data")
+    return path
+
+
 class TestImportProfileData:
     """Tests for POST /profile/import — import_profile_data."""
 
     _PUBLISH = "modules.users.users_profile.import_job_service.profile_event_publishers.publish_import_requested"
 
-    @patch("modules.users.users_profile.router.core_file_uploads.read_validated_upload_sync")
+    @patch("modules.users.users_profile.router.core_file_uploads.save_validated_upload_sync", side_effect=_write_upload)
     def test_accepts_the_archive_and_queues_it(self, mock_validate, profile_client, import_states):
-        mock_validate.return_value = b"zip-data"
-
         with patch(self._PUBLISH) as publish:
             response = profile_client.post(
                 PREFIX + "/import",
@@ -656,9 +663,8 @@ class TestImportProfileData:
         assert publish.call_args.args[1].startswith("1/")
         assert import_states.get(1).status == "queued"
 
-    @patch("modules.users.users_profile.router.core_file_uploads.read_validated_upload_sync")
+    @patch("modules.users.users_profile.router.core_file_uploads.save_validated_upload_sync", side_effect=_write_upload)
     def test_a_second_import_while_one_is_pending_is_a_conflict(self, mock_validate, profile_client):
-        mock_validate.return_value = b"zip-data"
         files = {"file": ("test.zip", b"zip-data", "application/zip")}
 
         with patch(self._PUBLISH) as publish:
@@ -668,9 +674,8 @@ class TestImportProfileData:
         assert (first.status_code, second.status_code) == (202, 409)
         publish.assert_called_once()
 
-    @patch("modules.users.users_profile.router.core_file_uploads.read_validated_upload_sync")
+    @patch("modules.users.users_profile.router.core_file_uploads.save_validated_upload_sync", side_effect=_write_upload)
     def test_a_queueing_failure_frees_the_user_to_retry(self, mock_validate, profile_client, import_states):
-        mock_validate.return_value = b"zip-data"
         files = {"file": ("test.zip", b"zip-data", "application/zip")}
 
         with patch(self._PUBLISH, side_effect=RuntimeError("outbox down")), pytest.raises(RuntimeError):

@@ -128,6 +128,25 @@ class AttemptStateStore:
                 extra=core_logger.context(namespace=self._namespace, name=self._name),
             )
 
+    def discard(self, subject: str) -> None:
+        """Drop an attempt's claim and state, for one that was refused before it started.
+
+        Unlike :meth:`release`, nothing is left for the status route to report. Entries storage
+        cannot reach are left to expire.
+
+        Args:
+            subject: What the attempt was for.
+        """
+        try:
+            self._state.delete(self._claim_key(subject))
+            self._state.delete(self._state_key(subject))
+        except StateBackendUnavailableError as err:
+            logger.warning(
+                "Failed to discard an attempt; it will expire",
+                exc_info=err,
+                extra=core_logger.context(namespace=self._namespace, name=self._name),
+            )
+
     def record(self, subject: str, state: BaseModel, *, finished: bool, strict: bool = False) -> None:
         """Record an attempt's progress or outcome.
 

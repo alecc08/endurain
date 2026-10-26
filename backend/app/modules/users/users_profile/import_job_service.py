@@ -11,8 +11,10 @@ from then on is final.
 """
 
 import asyncio
+import tempfile
 import time
 from collections.abc import Callable
+from typing import Protocol
 from uuid import uuid4
 
 import jasil.providers as platform_providers
@@ -22,6 +24,7 @@ from sqlalchemy.orm import Session
 import core.config as core_config
 import core.database as core_database
 import core.exceptions as core_exceptions
+import core.file_uploads as core_file_uploads
 import core.logger as core_logger
 import modules.users.users_profile.constants as profile_constants
 import modules.users.users_profile.event_publishers as profile_event_publishers
@@ -51,18 +54,42 @@ _REJECTION_CODES: tuple[tuple[type[Exception], profile_constants.ImportFailure],
 )
 
 
+class UploadSaver(Protocol):
+    """Callable that validates the request's upload and streams it to local disk."""
+
+    def __call__(self, *, kind: core_file_uploads.UploadKind, upload_dir: str, filename: str) -> str:
+        """Validate the upload and save it as ``upload_dir/filename``.
+
+        The router binds the request's file to the shared upload writer, so nothing below the router
+        handles the transport's file object.
+
+        Args:
+            kind: Logical content type, which drives the validator and size cap.
+            upload_dir: Trusted destination directory.
+            filename: Server-generated filename within ``upload_dir``.
+
+        Returns:
+            Absolute filesystem path of the saved file.
+        """
+        ...
+
+
 def request_import(
     user_id: int,
-    zip_data: bytes,
+    save_upload: UploadSaver,
     states: profile_import_state_store.ProfileImportStateStore,
     storage: platform_providers.StorageProvider,
     db: Session,
 ) -> profile_import_state_store.ProfileImportState:
-    """Stage an archive and queue its import.
+    """Validate an upload, stage it and queue its import.
+
+    The claim and the pool are checked before the body is read, so a request that will be refused never
+    pays for receiving up to 500 MB. The archive goes to disk and from there into storage in chunks, so
+    it is never held in memory.
 
     Args:
         user_id: The importing user.
-        zip_data: The validated archive.
+        save_upload: Validates the request's upload and streams it to local disk.
         states: Shared store of the import's state.
         storage: The platform storage provider.
         db: Database session.
@@ -73,6 +100,7 @@ def request_import(
     Raises:
         ConflictError: When the user already has an import pending.
         ServiceUnavailableError: When there is no durable worker and the in-process pool is full.
+        DomainError: When the shared upload validators reject the archive.
     """
     if not core_config.settings.JOBS_ENABLED:
         profile_transfer_pool.pool.require_capacity()
@@ -83,14 +111,24 @@ def request_import(
         raise core_exceptions.ConflictError("A profile import is already in progress")
 
     staged_key = f"{user_id}/{uuid4()}.zip"
-    try:
-        storage.save(profile_constants.IMPORT_STAGING_AREA, staged_key, zip_data)
-        profile_event_publishers.publish_import_requested(user_id, staged_key, db, commit=db.commit)
-    except BaseException:
-        # The import never started, so nothing else would finish its claim or remove its archive.
-        _discard_staged(staged_key, storage)
-        states.set_status(user_id, _Status.FAILED, failure=_Failure.PROCESSING_FAILED)
-        raise
+    with tempfile.TemporaryDirectory(prefix="profile-import-") as incoming_dir:
+        try:
+            incoming_path = save_upload(
+                kind=core_file_uploads.UploadKind.ZIP, upload_dir=incoming_dir, filename="archive.zip"
+            )
+        except BaseException:
+            # A rejected upload is answered synchronously, so there is no import to report on.
+            states.discard(user_id)
+            raise
+        try:
+            with open(incoming_path, "rb") as archive:
+                storage.save_stream(profile_constants.IMPORT_STAGING_AREA, staged_key, archive)
+            profile_event_publishers.publish_import_requested(user_id, staged_key, db, commit=db.commit)
+        except BaseException:
+            # The import never started, so nothing else would finish its claim or remove its archive.
+            _discard_staged(staged_key, storage)
+            states.set_status(user_id, _Status.FAILED, failure=_Failure.PROCESSING_FAILED)
+            raise
 
     logger.info("Profile import queued", extra=core_logger.context(user_id=user_id))
     return profile_import_state_store.ProfileImportState(status=_Status.QUEUED)

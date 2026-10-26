@@ -11,6 +11,7 @@ served under the same ``/profile`` prefix by the auth module (``modules.auth.ses
 ``modules.auth.mfa`` and ``modules.auth.identity_providers``, each in a ``profile_router``).
 """
 
+from functools import partial
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, Security, UploadFile, status
@@ -463,10 +464,13 @@ def import_profile_data(
     Returns:
         The queued import's state.
     """
-    # Comprehensive security validation via the unified pipeline.
-    zip_data = core_file_uploads.read_validated_upload_sync(file, kind=core_file_uploads.UploadKind.ZIP)
-
-    state = profile_import_job_service.request_import(token_user_id, zip_data, import_states, storage, db)
+    state = profile_import_job_service.request_import(
+        token_user_id,
+        partial(core_file_uploads.save_validated_upload_sync, file),
+        import_states,
+        storage,
+        db,
+    )
     return profile_schema.ProfileImportStatus.model_validate(state)
 
 

@@ -1,5 +1,6 @@
 """Tests for users_profile.import_job_service: accepting, running and sweeping profile imports."""
 
+import os
 import time
 from unittest.mock import MagicMock, patch
 
@@ -34,6 +35,18 @@ def storage():
     return store
 
 
+def _saver(data: bytes = b"zip"):
+    """An upload saver that writes ``data`` where the shared validator would."""
+
+    def save(*, kind, upload_dir, filename):
+        path = os.path.join(upload_dir, filename)
+        with open(path, "wb") as out:
+            out.write(data)
+        return path
+
+    return save
+
+
 def _validation_error() -> ValidationError:
     try:
         TypeAdapter(int).validate_python("x")
@@ -66,9 +79,9 @@ class TestRequestImport:
         ):
             pool.require_capacity.side_effect = core_exceptions.ServiceUnavailableError("full")
             with pytest.raises(core_exceptions.ServiceUnavailableError):
-                job_service.request_import(7, b"zip", states, storage, mock_db)
+                job_service.request_import(7, _saver(), states, storage, mock_db)
 
-        storage.save.assert_not_called()
+        storage.save_stream.assert_not_called()
         assert states.get(7) is None
 
     def test_a_durable_deployment_does_not_look_at_the_local_pool(self, states, storage, mock_db):
@@ -77,7 +90,7 @@ class TestRequestImport:
             patch(f"{_MODULE}.profile_transfer_pool.pool") as pool,
             patch(f"{_MODULE}.profile_event_publishers.publish_import_requested"),
         ):
-            job_service.request_import(7, b"zip", states, storage, mock_db)
+            job_service.request_import(7, _saver(), states, storage, mock_db)
 
         pool.require_capacity.assert_not_called()
 
@@ -92,11 +105,11 @@ class TestRequestImport:
 
     def test_stages_the_archive_under_the_users_prefix_and_queues_it(self, states, storage, mock_db):
         with patch(f"{_MODULE}.profile_event_publishers.publish_import_requested") as publish:
-            state = job_service.request_import(7, b"zip", states, storage, mock_db)
+            state = job_service.request_import(7, _saver(), states, storage, mock_db)
 
         assert state.status == _Status.QUEUED
-        area, key, data = storage.save.call_args.args[:3]
-        assert (area, data) == (_AREA, b"zip")
+        area, key = storage.save_stream.call_args.args[:2]
+        assert area == _AREA
         assert key.startswith("7/") and key.endswith(".zip")
         publish.assert_called_once_with(7, key, mock_db, commit=mock_db.commit)
         assert states.get(7).status == _Status.QUEUED
@@ -104,17 +117,39 @@ class TestRequestImport:
     def test_a_pending_import_refuses_a_second_and_stages_nothing(self, states, storage, mock_db):
         states.begin(7)
 
+        saver = MagicMock()
         with pytest.raises(core_exceptions.ConflictError):
-            job_service.request_import(7, b"zip", states, storage, mock_db)
+            job_service.request_import(7, saver, states, storage, mock_db)
 
-        storage.save.assert_not_called()
+        saver.assert_not_called()
+        storage.save_stream.assert_not_called()
+
+    def test_the_archive_is_streamed_from_disk_never_read_into_memory(self, states, storage, mock_db):
+        streamed = []
+        storage.save_stream.side_effect = lambda area, key, source, **_: streamed.append(source.read())
+
+        with patch(f"{_MODULE}.profile_event_publishers.publish_import_requested"):
+            job_service.request_import(7, _saver(b"archive-bytes"), states, storage, mock_db)
+
+        assert streamed == [b"archive-bytes"]
+
+    def test_a_rejected_archive_frees_the_claim_and_records_no_import(self, states, storage, mock_db):
+        saver = MagicMock(side_effect=core_exceptions.InvalidInputError("not a zip"))
+
+        with pytest.raises(core_exceptions.InvalidInputError):
+            job_service.request_import(7, saver, states, storage, mock_db)
+
+        storage.save_stream.assert_not_called()
+        storage.delete.assert_not_called()
+        assert states.get(7) is None
+        assert states.begin(7) is True
 
     def test_a_failure_to_queue_removes_the_archive_and_closes_the_state(self, states, storage, mock_db):
         with (
             patch(f"{_MODULE}.profile_event_publishers.publish_import_requested", side_effect=RuntimeError("down")),
             pytest.raises(RuntimeError),
         ):
-            job_service.request_import(7, b"zip", states, storage, mock_db)
+            job_service.request_import(7, _saver(), states, storage, mock_db)
 
         storage.delete.assert_called_once()
         assert states.get(7).status == _Status.FAILED

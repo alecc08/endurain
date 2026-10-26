@@ -65,6 +65,14 @@ class ProfileImportStateStore:
         """
         return self._attempts.begin(str(user_id), ProfileImportState(status=profile_constants.ImportStatus.QUEUED))
 
+    def discard(self, user_id: int) -> None:
+        """Forget an import that was refused before it started, so the user can try again at once.
+
+        Args:
+            user_id: The importing user.
+        """
+        self._attempts.discard(str(user_id))
+
     def set_status(
         self,
         user_id: int,

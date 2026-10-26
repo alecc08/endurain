@@ -80,6 +80,24 @@ def test_release_frees_the_claim_without_touching_the_state():
     assert store.begin("1", _State(step="queued")) is True
 
 
+def test_discard_removes_the_claim_and_the_state():
+    store = _store()
+    store.begin("1", _State(step="queued"))
+
+    store.discard("1")
+
+    assert store.read("1") is None
+    assert store.begin("1", _State(step="queued")) is True
+
+
+def test_an_outage_while_discarding_is_swallowed():
+    state = MemoryState()
+    store = _store(state)
+    store.begin("1", _State(step="queued"))
+    with patch.object(state, "delete", side_effect=StateBackendUnavailableError("down")):
+        store.discard("1")
+
+
 def test_a_claim_is_not_left_behind_when_the_first_state_cannot_be_written():
     state = MemoryState()
     store = _store(state)
