@@ -47,7 +47,7 @@ A user's detail page shows their sessions, which you can revoke, and the identit
 
 ## Deleting a user
 
-Deleting a user deletes the account and everything it owns: activities, their laps, streams, photos, thumbnails and stored source files, gear, health records, goals, notifications and the profile photo. The user is signed out and deactivated at once, and a background job erases their data, so a large account does not hold up the server; the request answers `202`, and `GET /users/{user_id}/deletion` reports the job's progress. If the job fails the account stays deactivated and signed out, and you delete it again. It cannot be undone, so ask users to [export their data](export-import.md) first if they want a copy.
+Deleting a user deletes the account and everything it owns: activities, their laps, streams, photos, thumbnails and stored source files, gear, health records, goals, notifications and the profile photo. The user is signed out and deactivated at once, and a background job erases their data, so a large account does not hold up the server; the request answers `202`, and `GET /users/{user_id}/deletion` reports the job's progress. If the job fails, the account stays deactivated and signed out, and Endurain queues the deletion again every hour, up to five times. After that, delete the account again yourself. Reactivating the account cancels a deletion that has not finished. It cannot be undone, so ask users to [export their data](export-import.md) first if they want a copy.
 
 ## For the person editing at the same time
 

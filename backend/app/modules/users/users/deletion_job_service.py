@@ -11,6 +11,7 @@ deletes the user row, which removes everything else through the database cascade
 repeated, so a job a worker died in is simply run again.
 """
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import jasil.providers as platform_providers
@@ -93,15 +94,10 @@ def request_deletion(
         )
         raise core_exceptions.ConflictError("An account deletion is already in progress")
 
-    payload = users_events.DeletionRequestedPayload(user_id=user_id)
     try:
         identity_service.delete_all_user_sessions(user_id)
-        users_crud.update_user(user_id, {"active": False}, db)
-        if core_config.settings.JOBS_ENABLED:
-            users_event_publishers.publish_deletion_requested(user_id, db, commit=db.commit)
-        else:
-            db.commit()
-            _deletion_pool.submit(run_deletion, payload, states, storage)
+        users_crud.stage_deletion_request(user_id, db)
+        _dispatch(user_id, states, storage, db, source=users_constants.DELETION_SOURCE_API)
     except BaseException:
         # The deletion never started, so nothing else would finish its claim.
         states.set_status(user_id, _Kind.ACCOUNT, _Status.FAILED)
@@ -109,6 +105,37 @@ def request_deletion(
 
     logger.info("Account deletion queued", extra=core_logger.context(user_id=user_id))
     return users_schema.UserDeletionStatus(status=_Status.QUEUED)
+
+
+def _dispatch(
+    user_id: int,
+    states: users_deletion_state_store.UserDeletionStateStore,
+    storage: platform_providers.StorageProvider,
+    db: Session,
+    *,
+    source: str,
+) -> None:
+    """Commit what the caller staged and hand the erasure to a worker, or to the in-process pool.
+
+    Args:
+        user_id: The user to delete.
+        states: Shared store of the deletion's state.
+        storage: The platform storage provider, for the in-process pool.
+        db: Database session holding the caller's staged writes.
+        source: Who asked for the deletion, as recorded on the event.
+
+    Raises:
+        PoolFullError: When there is no durable worker and the in-process pool is full.
+    """
+    if core_config.settings.JOBS_ENABLED:
+        users_event_publishers.publish_deletion_requested(user_id, db, commit=db.commit, source=source)
+        logger.debug("Account deletion queued for a worker", extra=core_logger.context(user_id=user_id, source=source))
+        return
+    db.commit()
+    _deletion_pool.submit(run_deletion, users_events.DeletionRequestedPayload(user_id=user_id), states, storage)
+    logger.debug(
+        "Account deletion queued on the in-process pool", extra=core_logger.context(user_id=user_id, source=source)
+    )
 
 
 def get_deletion_status(
@@ -238,3 +265,104 @@ def close_dead_lettered_deletion(
     """
     if states.close_pending(payload.user_id, _Kind.ACCOUNT):
         logger.error("An account deletion was dead-lettered", extra=core_logger.context(user_id=payload.user_id))
+
+
+def requeue_stalled_deletions(
+    states: users_deletion_state_store.UserDeletionStateStore,
+    storage: platform_providers.StorageProvider,
+    clock: platform_providers.ClockProvider,
+) -> int:
+    """Queue again the deletions that never finished, up to ``DELETION_SWEEP_MAX_ATTEMPTS`` times each.
+
+    The net for a deletion a worker dead-lettered, or whose in-process worker was lost with a restart:
+    both leave the account deactivated and marked, with no job left to erase it. The claim keeps the
+    sweep from queueing a deletion a live job still holds. An account the sweep has queued the maximum
+    number of times is left for an administrator, who deletes it again.
+
+    Args:
+        states: Shared store of the deletion's state.
+        storage: The platform storage provider, for the in-process pool.
+        clock: The platform clock.
+
+    Returns:
+        How many deletions were queued again.
+    """
+    cutoff = clock.now() - timedelta(seconds=users_constants.DELETION_STALL_AFTER_SECONDS)
+    queued = 0
+    after_id = 0
+    while True:
+        with core_database.SessionLocal() as db:
+            user_ids = users_crud.list_stalled_deletion_ids(
+                cutoff,
+                users_constants.DELETION_SWEEP_MAX_ATTEMPTS,
+                after_id,
+                users_constants.DELETION_SWEEP_BATCH_SIZE,
+                db,
+            )
+        if not user_ids:
+            break
+        after_id = user_ids[-1]
+        for user_id in user_ids:
+            try:
+                queued += _requeue(user_id, states, storage)
+            except core_local_pool.PoolFullError:
+                logger.warning("The deletion pool is full; the sweep stops until its next pass")
+                return queued
+    if queued:
+        logger.info("Queued stalled account deletions again", extra=core_logger.context(count=queued))
+    else:
+        logger.debug("No stalled account deletions")
+    return queued
+
+
+def _requeue(
+    user_id: int,
+    states: users_deletion_state_store.UserDeletionStateStore,
+    storage: platform_providers.StorageProvider,
+) -> int:
+    """Queue one stalled deletion again unless a job still holds it.
+
+    A failure to queue it is logged and left for the next pass, so one account cannot stop the rest.
+
+    Args:
+        user_id: The user to delete.
+        states: Shared store of the deletion's state.
+        storage: The platform storage provider, for the in-process pool.
+
+    Returns:
+        1 when the deletion was queued again, otherwise 0.
+
+    Raises:
+        PoolFullError: When there is no durable worker and the in-process pool is full.
+    """
+    if not core_config.settings.JOBS_ENABLED:
+        # Before the claim and the attempt are spent on a deletion nothing can run.
+        _deletion_pool.require_capacity()
+    if not states.begin(user_id, _Kind.ACCOUNT):
+        logger.debug("A stalled deletion is still held by a job", extra=core_logger.context(user_id=user_id))
+        return 0
+    try:
+        with core_database.SessionLocal() as db:
+            attempts = users_crud.record_deletion_attempt(user_id, db)
+            if attempts is None:
+                # Gone, or an administrator reactivated the account: nothing is left to queue.
+                states.set_status(user_id, _Kind.ACCOUNT, _Status.COMPLETED)
+                return 0
+            if attempts == users_constants.DELETION_SWEEP_MAX_ATTEMPTS:
+                logger.error(
+                    "Account deletion is on its last automatic attempt; an administrator must delete it again if "
+                    "this fails",
+                    extra=core_logger.context(user_id=user_id, attempts=attempts),
+                )
+            _dispatch(user_id, states, storage, db, source=users_constants.DELETION_SOURCE_SWEEP)
+    except core_local_pool.PoolFullError:
+        states.set_status(user_id, _Kind.ACCOUNT, _Status.FAILED)
+        raise
+    except Exception as err:
+        states.set_status(user_id, _Kind.ACCOUNT, _Status.FAILED)
+        logger.error(
+            "Could not queue a stalled account deletion again", exc_info=err, extra=core_logger.context(user_id=user_id)
+        )
+        return 0
+    logger.info("Queued a stalled account deletion again", extra=core_logger.context(user_id=user_id))
+    return 1

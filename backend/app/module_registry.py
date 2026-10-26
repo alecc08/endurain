@@ -49,6 +49,7 @@ import modules.server_settings.integration_service as server_settings_integratio
 import modules.strava.subscriber_registry as strava_subscriber_registry
 import modules.users.contributor_registry as users_contributor_registry
 import modules.users.contributors as users_contributors
+import modules.users.users.scheduled_jobs as users_scheduled_jobs
 import modules.users.users.subscriber_registry as users_subscriber_registry
 import modules.users.users_profile.integration_service as users_profile_integration
 import modules.users.users_profile.scheduled_jobs as users_profile_scheduled_jobs
@@ -212,6 +213,7 @@ MODULES: tuple[RuntimeModule, ...] = (
         name="users",
         register_durable=users_subscriber_registry.register_durable_handlers,
         nets=users_subscriber_registry.DURABLE_SUBSCRIBER_NETS,
+        recurring_jobs=users_scheduled_jobs.recurring_jobs,
     ),
     RuntimeModule(
         name="users_profile",

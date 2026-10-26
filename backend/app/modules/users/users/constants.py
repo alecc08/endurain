@@ -49,8 +49,24 @@ DELETION_POOL_WORKERS = 1
 #: Deletions the in-process pool holds, running and queued, before a new request is refused.
 DELETION_POOL_MAX_PENDING = 5
 
+#: How often the sweep looks for deletions that never finished, in minutes.
+DELETION_SWEEP_INTERVAL_MINUTES = 60
+
+#: A deletion queued longer ago than this and still not finished is stalled: it outlasts the claim, so no
+#: live job holds it.
+DELETION_STALL_AFTER_SECONDS = DELETION_STATE_TTL_SECONDS + 60 * 60
+
+#: Times the sweep queues one account's deletion again before it leaves the account for an administrator.
+DELETION_SWEEP_MAX_ATTEMPTS = 5
+
+#: Stalled deletions one sweep query reads.
+DELETION_SWEEP_BATCH_SIZE = 100
+
 #: Who asked for the deletion, as recorded on the event.
 DELETION_SOURCE_API = "api:delete_user"
+
+#: Who asked for a deletion the sweep queued again, as recorded on the event.
+DELETION_SOURCE_SWEEP = "scheduler:users_deletion_sweep"
 
 
 #: Where a queued deletion is; shared by every queued job's state.

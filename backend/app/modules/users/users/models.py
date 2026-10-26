@@ -1,8 +1,9 @@
 """User database models."""
 
 from datetime import date as date_type
+from datetime import datetime
 
-from sqlalchemy import String
+from sqlalchemy import DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
@@ -33,6 +34,10 @@ class Users(Base):
             been verified.
         pending_admin_approval: Whether the user is pending
             admin approval for activation.
+        deletion_requested_at: When the account was queued for
+            deletion, or None.
+        deletion_attempts: How many times the sweep queued the
+            deletion again.
         health_sleep: List of health sleep records.
         health_weight: List of health weight records.
         health_steps: List of health steps records.
@@ -142,6 +147,18 @@ class Users(Base):
         default=False,
         nullable=False,
         comment=("Whether the user is pending admin approval for activation (true - yes, false - no)"),
+    )
+
+    deletion_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="When the account was queued for deletion; null for an account that is not being deleted",
+    )
+    deletion_attempts: Mapped[int] = mapped_column(
+        nullable=False,
+        server_default="0",
+        default=0,
+        comment="How many times the sweep queued this account's deletion again",
     )
 
     version: Mapped[int] = mapped_column(

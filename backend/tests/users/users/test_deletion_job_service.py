@@ -1,11 +1,13 @@
 """Tests for users.deletion_job_service: accepting, running and closing account deletions."""
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 from jasil.backends.state_memory import MemoryState
 
 import core.exceptions as core_exceptions
+import core.local_pool as core_local_pool
 import modules.users.users.constants as users_constants
 import modules.users.users.deletion_job_service as job_service
 import modules.users.users.deletion_state_store as deletion_state_store
@@ -51,8 +53,10 @@ class TestRequestDeletion:
         assert result.status == _Status.QUEUED
         users_service.require_deletable_user.assert_called_once_with(1, mock_db)
         identity.delete_all_user_sessions.assert_called_once_with(1)
-        users_crud.update_user.assert_called_once_with(1, {"active": False}, mock_db)
-        publishers.publish_deletion_requested.assert_called_once_with(1, mock_db, commit=mock_db.commit)
+        users_crud.stage_deletion_request.assert_called_once_with(1, mock_db)
+        publishers.publish_deletion_requested.assert_called_once_with(
+            1, mock_db, commit=mock_db.commit, source=users_constants.DELETION_SOURCE_API
+        )
         pool.submit.assert_not_called()
         assert states.get(1, _Kind).status == _Status.QUEUED
 
@@ -106,7 +110,7 @@ class TestRequestDeletion:
                 job_service.request_deletion(1, identity, states, MagicMock(), mock_db)
 
         identity.delete_all_user_sessions.assert_not_called()
-        users_crud.update_user.assert_not_called()
+        users_crud.stage_deletion_request.assert_not_called()
         assert states.get(1, _Kind) is None
 
 
@@ -198,3 +202,83 @@ class TestStatusAndDeadLetter:
         job_service.close_dead_lettered_deletion(_payload(), states)
 
         assert states.get(1, _Kind).status == _Status.COMPLETED
+
+
+class TestRequeueStalledDeletions:
+    def _sweep(self, states, pages, *, attempts=1, jobs_enabled=True, publish_error=None):
+        clock = MagicMock()
+        clock.now.return_value = datetime(2026, 1, 1, tzinfo=UTC)
+        with (
+            patch(f"{_MODULE}.core_config.settings", MagicMock(JOBS_ENABLED=jobs_enabled)),
+            patch(f"{_MODULE}.core_database.SessionLocal"),
+            patch(f"{_MODULE}.users_crud") as users_crud,
+            patch(f"{_MODULE}.users_event_publishers") as publishers,
+            patch(f"{_MODULE}._deletion_pool") as pool,
+        ):
+            users_crud.list_stalled_deletion_ids.side_effect = [*pages, []]
+            users_crud.record_deletion_attempt.return_value = attempts
+            publishers.publish_deletion_requested.side_effect = publish_error
+            queued = job_service.requeue_stalled_deletions(states, MagicMock(), clock)
+        return queued, users_crud, publishers, pool
+
+    def test_queues_each_stalled_deletion_again_with_the_sweep_as_source(self, states):
+        queued, users_crud, publishers, _ = self._sweep(states, [[1, 2]])
+
+        assert queued == 2
+        assert [c.args[0] for c in publishers.publish_deletion_requested.call_args_list] == [1, 2]
+        assert publishers.publish_deletion_requested.call_args.kwargs["source"] == users_constants.DELETION_SOURCE_SWEEP
+        cutoff = users_crud.list_stalled_deletion_ids.call_args_list[0].args[0]
+        assert cutoff == datetime(2026, 1, 1, tzinfo=UTC) - timedelta(
+            seconds=users_constants.DELETION_STALL_AFTER_SECONDS
+        )
+
+    def test_pages_through_the_table_by_id(self, states):
+        _, users_crud, _, _ = self._sweep(states, [[1, 2], [3]])
+
+        assert [c.args[2] for c in users_crud.list_stalled_deletion_ids.call_args_list] == [0, 2, 3]
+
+    def test_a_deletion_a_live_job_holds_is_left_alone(self, states):
+        states.begin(1, _Kind)
+
+        queued, users_crud, publishers, _ = self._sweep(states, [[1]])
+
+        assert queued == 0
+        users_crud.record_deletion_attempt.assert_not_called()
+        publishers.publish_deletion_requested.assert_not_called()
+
+    def test_an_account_no_longer_queued_for_deletion_is_not_queued(self, states):
+        queued, _, publishers, _ = self._sweep(states, [[1]], attempts=None)
+
+        assert queued == 0
+        publishers.publish_deletion_requested.assert_not_called()
+        assert states.begin(1, _Kind) is True
+
+    def test_one_failure_does_not_stop_the_rest(self, states):
+        queued, _, publishers, _ = self._sweep(states, [[1, 2]], publish_error=[RuntimeError("boom"), None])
+
+        assert queued == 1
+        assert publishers.publish_deletion_requested.call_count == 2
+        assert states.get(1, _Kind).status == _Status.FAILED
+
+    def test_the_last_automatic_attempt_is_logged_as_an_error(self, states, caplog):
+        with caplog.at_level("ERROR"):
+            self._sweep(states, [[1]], attempts=users_constants.DELETION_SWEEP_MAX_ATTEMPTS)
+
+        assert "last automatic attempt" in caplog.text
+
+    def test_a_full_pool_stops_the_pass_before_an_attempt_is_spent(self, states):
+        clock = MagicMock()
+        with (
+            patch(f"{_MODULE}.core_config.settings", MagicMock(JOBS_ENABLED=False)),
+            patch(f"{_MODULE}.core_database.SessionLocal"),
+            patch(f"{_MODULE}.users_crud") as users_crud,
+            patch(f"{_MODULE}._deletion_pool") as pool,
+        ):
+            users_crud.list_stalled_deletion_ids.side_effect = [[1, 2], []]
+            pool.require_capacity.side_effect = core_local_pool.PoolFullError("full")
+
+            queued = job_service.requeue_stalled_deletions(states, MagicMock(), clock)
+
+        assert queued == 0
+        users_crud.record_deletion_attempt.assert_not_called()
+        assert states.get(1, _Kind) is None

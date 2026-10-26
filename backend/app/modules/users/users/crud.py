@@ -1,5 +1,6 @@
 """CRUD operations for users."""
 
+from datetime import datetime
 from typing import Any
 from urllib.parse import unquote
 
@@ -371,6 +372,10 @@ def update_user(
         if isinstance(class_attr, property) and class_attr.fset is None:
             continue
         setattr(db_user, key, value)
+    if changes.get("active") is True:
+        # Reactivating an account cancels a deletion queued for it, or the sweep would carry it out.
+        db_user.deletion_requested_at = None
+        db_user.deletion_attempts = 0
 
     try:
         db.flush()
@@ -379,6 +384,71 @@ def update_user(
         raise core_exceptions.ConflictError(_DUPLICATE_DETAIL) from err
 
     return users_serializers.to_read_schema(db_user)
+
+
+def stage_deletion_request(user_id: int, db: Session) -> None:
+    """Stage the deactivation of a user and the marker that its deletion is queued (flushed, not committed).
+
+    Args:
+        user_id: ID of the user being deleted.
+        db: Database session.
+
+    Raises:
+        NotFoundError: If the user does not exist.
+    """
+    db_user = _get_user_model_by_id(user_id, db)
+    db_user.active = False
+    db_user.deletion_requested_at = func.now()
+    db_user.deletion_attempts = 0
+    db.flush()
+
+
+def list_stalled_deletion_ids(
+    requested_before: datetime, max_attempts: int, after_id: int, limit: int, db: Session
+) -> list[int]:
+    """Return the ids of users whose queued deletion has not finished, oldest id first.
+
+    Args:
+        requested_before: Only deletions queued before this instant.
+        max_attempts: Only users the sweep has queued fewer times than this.
+        after_id: Return only ids above this, so a pass pages through the table.
+        limit: The most ids to return.
+        db: Database session.
+
+    Returns:
+        The user ids, ascending.
+    """
+    stmt = (
+        select(users_models.Users.id)
+        .where(
+            users_models.Users.deletion_requested_at < requested_before,
+            users_models.Users.deletion_attempts < max_attempts,
+            users_models.Users.id > after_id,
+        )
+        .order_by(users_models.Users.id)
+        .limit(limit)
+    )
+    return list(db.scalars(stmt).all())
+
+
+def record_deletion_attempt(user_id: int, db: Session) -> int | None:
+    """Stage one more automatic attempt at a user's deletion (flushed, not committed).
+
+    Args:
+        user_id: ID of the user being deleted.
+        db: Database session.
+
+    Returns:
+        The attempts made so far including this one, or None when the user is gone or no longer queued
+        for deletion (an administrator reactivated the account).
+    """
+    stmt = select(users_models.Users).where(users_models.Users.id == user_id).with_for_update()
+    db_user = db.execute(stmt).scalar_one_or_none()
+    if db_user is None or db_user.deletion_requested_at is None:
+        return None
+    db_user.deletion_attempts += 1
+    db.flush()
+    return db_user.deletion_attempts
 
 
 def delete_user(user_id: int, db: Session) -> None:

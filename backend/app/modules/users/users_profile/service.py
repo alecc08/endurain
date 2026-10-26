@@ -38,6 +38,8 @@ _NON_EXPORTED_USER_FIELDS = (
     "mfa_enabled",
     "email_verified",
     "pending_admin_approval",
+    "deletion_requested_at",
+    "deletion_attempts",
 )
 
 

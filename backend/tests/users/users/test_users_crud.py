@@ -1,5 +1,6 @@
 """Tests for users.users.crud module."""
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -190,6 +191,26 @@ class TestUpdateUser:
 
         assert row.name == "New"
 
+    def test_reactivating_an_account_cancels_its_queued_deletion(self, mock_db):
+        row = MagicMock(spec=users_models.Users)
+        row.deletion_requested_at = "2026-01-01"
+        row.deletion_attempts = 3
+        _one(mock_db, row)
+
+        users_crud.update_user(1, {"active": True}, mock_db)
+
+        assert row.deletion_requested_at is None
+        assert row.deletion_attempts == 0
+
+    def test_other_edits_leave_a_queued_deletion_alone(self, mock_db):
+        row = MagicMock(spec=users_models.Users)
+        row.deletion_requested_at = "2026-01-01"
+        _one(mock_db, row)
+
+        users_crud.update_user(1, {"name": "New", "active": False}, mock_db)
+
+        assert row.deletion_requested_at == "2026-01-01"
+
     def test_missing_user_is_not_found(self, mock_db):
         _one(mock_db, None)
 
@@ -220,3 +241,56 @@ class TestDeleteUser:
 
         with pytest.raises(core_exceptions.NotFoundError):
             users_crud.delete_user(1, mock_db)
+
+
+class TestStageDeletionRequest:
+    def test_deactivates_and_marks_the_user(self, mock_db):
+        row = MagicMock(spec=users_models.Users)
+        row.deletion_attempts = 4
+        _one(mock_db, row)
+
+        users_crud.stage_deletion_request(1, mock_db)
+
+        assert row.active is False
+        assert row.deletion_requested_at is not None
+        assert row.deletion_attempts == 0
+        mock_db.flush.assert_called_once()
+        mock_db.commit.assert_not_called()
+
+    def test_missing_user_is_not_found(self, mock_db):
+        _one(mock_db, None)
+
+        with pytest.raises(core_exceptions.NotFoundError):
+            users_crud.stage_deletion_request(1, mock_db)
+
+
+class TestRecordDeletionAttempt:
+    def test_counts_the_attempt(self, mock_db):
+        row = MagicMock(spec=users_models.Users)
+        row.deletion_requested_at = "2026-01-01"
+        row.deletion_attempts = 1
+        _one(mock_db, row)
+
+        assert users_crud.record_deletion_attempt(1, mock_db) == 2
+        mock_db.flush.assert_called_once()
+        mock_db.commit.assert_not_called()
+
+    def test_a_user_that_is_gone_is_none(self, mock_db):
+        _one(mock_db, None)
+
+        assert users_crud.record_deletion_attempt(1, mock_db) is None
+
+    def test_a_user_no_longer_queued_for_deletion_is_none(self, mock_db):
+        row = MagicMock(spec=users_models.Users)
+        row.deletion_requested_at = None
+        _one(mock_db, row)
+
+        assert users_crud.record_deletion_attempt(1, mock_db) is None
+        mock_db.flush.assert_not_called()
+
+
+class TestListStalledDeletionIds:
+    def test_returns_the_ids_the_query_found(self, mock_db):
+        mock_db.scalars.return_value.all.return_value = [3, 5]
+
+        assert users_crud.list_stalled_deletion_ids(datetime(2026, 1, 1, tzinfo=UTC), 5, 0, 100, mock_db) == [3, 5]
