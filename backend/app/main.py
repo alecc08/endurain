@@ -4,10 +4,6 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import cast
 
-from alembic.config import Config
-
-from alembic import command
-
 # Silence stravalib token warnings as early as
 # possible: this env var is consulted at import time by
 # stravalib, so it must be set before any module that
@@ -24,12 +20,10 @@ import jasil.settings as jasil_settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.middleware import SlowAPIMiddleware
-from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 
 import core.async_bridge as core_async_bridge
 import core.config as core_config
-import core.database as core_database
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.middleware as core_middleware
@@ -95,42 +89,6 @@ async def _safe_run_async[T, **P](
     except Exception as err:
         logger.error(f"Startup task '{label}' failed: {type(err).__name__}", exc_info=err)
         return None
-
-
-# Arbitrary constant identifying the migration lock among the database's advisory locks.
-_MIGRATION_LOCK_KEY = 7_203_419_001
-_MIGRATION_LOCK_TIMEOUT_SECONDS = 600
-
-
-def _run_alembic_migrations() -> None:
-    """Run Alembic upgrade to head.
-
-    Critical: failure here aborts startup because the
-    application cannot guarantee schema correctness.
-    """
-    alembic_cfg = Config("alembic.ini")
-    # Disable Alembic's own logger configuration to
-    # avoid conflicts with FastAPI / our main logger.
-    alembic_cfg.attributes["configure_logger"] = False
-    # Replicas start together; the session-level advisory lock makes one migrate while
-    # the others wait, then find the schema already at head.
-    # AUTOCOMMIT keeps the connection out of a transaction, so an idle-in-transaction timeout cannot end
-    # the session (and release the lock) during a slow migration.
-    with core_database.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as lock_connection:
-        locked = False
-        try:
-            # A replica waits for the one migrating, but not forever if that one hangs.
-            lock_connection.execute(text(f"SET lock_timeout = '{_MIGRATION_LOCK_TIMEOUT_SECONDS}s'"))
-            lock_connection.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _MIGRATION_LOCK_KEY})
-            locked = True
-            command.upgrade(alembic_cfg, "head")
-        finally:
-            # The connection goes back to the pool; do not leave the timeout on it, even when the wait timed out.
-            try:
-                if locked:
-                    lock_connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _MIGRATION_LOCK_KEY})
-            finally:
-                lock_connection.execute(text("RESET lock_timeout"))
 
 
 def _purge_expired_tokens() -> None:
@@ -243,6 +201,10 @@ async def startup_event(fastapi_app: FastAPI) -> None:
     strava_integration.register_activity_provider()
     garmin_integration.register_activity_provider()
 
+    # Phase 1: critical pre-flight tasks. Every migration step runs under one lock, and
+    # nothing consumes events or hints until the schema is current.
+    await core_migrations.migrate_schema_and_data()
+
     # Start the event bus. No-op for the in-process bus (local); starts the
     # Redis Streams consumer thread in distributed mode.
     platform.events.start()
@@ -253,10 +215,6 @@ async def startup_event(fastapi_app: FastAPI) -> None:
     runtime_module_registry.register_realtime_subscribers(platform.realtime)
     platform.realtime.start()
 
-    # Phase 1: critical pre-flight tasks.
-    _run_alembic_migrations()
-    core_migrations.bootstrap_substrate_schema()
-    await core_migrations.check_migrations()
     # Before anything can send mail: save deprecated environment variables into the database.
     with SessionLocal() as db:
         server_settings_integration.import_deprecated_env_settings(db)
