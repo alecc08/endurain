@@ -41,3 +41,16 @@ def upsert_health_steps(
         ConflictError: If the date's record cannot be created or found.
     """
     return health_steps_service.stage_upsert_health_steps(user_id, health_steps, db)
+
+
+def list_health_steps(user_id: int, db: Session) -> list[health_steps_schema.HealthStepsRead]:
+    """Return all of a user's steps records, newest first.
+
+    Args:
+        user_id: The records' owner.
+        db: Database session.
+
+    Returns:
+        The records.
+    """
+    return health_steps_crud.get_health_steps_by_user_id(user_id, db)

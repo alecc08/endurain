@@ -21,7 +21,7 @@ from io import BytesIO
 from typing import Any
 
 import jasil.providers as platform_providers
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
 import core.exceptions as core_exceptions
@@ -37,8 +37,18 @@ import modules.gears.gear.integration_service as gear_integration
 import modules.gears.gear.schema as gear_schema
 import modules.gears.gear_components.integration_service as gear_components_integration
 import modules.gears.gear_components.schema as gear_components_schema
+import modules.health.health_fasting.integration_service as health_fasting_integration
+import modules.health.health_fasting.schema as health_fasting_schema
+import modules.health.health_poop.integration_service as health_poop_integration
+import modules.health.health_poop.schema as health_poop_schema
+import modules.health.health_sleep.integration_service as health_sleep_integration
+import modules.health.health_sleep.schema as health_sleep_schema
+import modules.health.health_steps.integration_service as health_steps_integration
+import modules.health.health_steps.schema as health_steps_schema
 import modules.health.health_targets.integration_service as health_targets_integration
 import modules.health.health_targets.schema as health_targets_schema
+import modules.health.health_water.integration_service as health_water_integration
+import modules.health.health_water.schema as health_water_schema
 import modules.health.health_weight.integration_service as health_weight_integration
 import modules.health.health_weight.schema as health_weight_schema
 import modules.users.users.constants as users_constants
@@ -67,6 +77,16 @@ logger = core_logger.get_logger(__name__)
 
 #: What an archive carries of a row's identity: the exporting account's id, owner and version, none of which an import writes.
 _ROW_IDENTITY = frozenset({"id", "user_id", "version"})
+
+#: The health record kinds imported beside weight, each with its schema and the call that stages one
+#: for a user. The call returns whether it stored the record, so a record the user already has is not counted.
+_HEALTH_RECORD_IMPORTS: dict[str, tuple[type[BaseModel], Callable[[int, Any, Session], Any]]] = {
+    "health_sleep": (health_sleep_schema.HealthSleepCreate, health_sleep_integration.upsert_health_sleep),
+    "health_steps": (health_steps_schema.HealthStepsCreate, health_steps_integration.upsert_health_steps),
+    "health_water": (health_water_schema.HealthWaterCreate, health_water_integration.upsert_health_water),
+    "health_fasting": (health_fasting_schema.HealthFastingCreate, health_fasting_integration.import_health_fasting),
+    "health_poop": (health_poop_schema.HealthPoopCreate, health_poop_integration.import_health_poop),
+}
 
 #: Archive folders holding the files written after the database rows are committed.
 _FILE_FOLDERS = ("activity_files/", "activity_media/", "user_images/")
@@ -320,6 +340,12 @@ class ImportService:
 
                 await self.collect_and_import_health_weight(health_weight_data, health_targets_data)
                 del health_weight_data, health_targets_data
+
+                health_records = {
+                    name: self._load_single_json(zipf, f"data/{name}.json") for name in _HEALTH_RECORD_IMPORTS
+                }
+                await self.collect_and_import_health_records(health_records)
+                del health_records
 
                 # Guard: if nothing was imported and there are no files to write, fail visibly
                 # instead of returning a misleading "success" with zero counts.
@@ -1079,6 +1105,24 @@ class ImportService:
             logger.debug("Imported health targets", extra=core_logger.context(count=self.counts["health_targets"]))
         else:
             logger.debug("No health targets to import")
+
+    async def collect_and_import_health_records(self, records: dict[str, list[Any]]) -> None:
+        """Import sleep, steps, water, fasting and poop records.
+
+        Args:
+            records: The exported rows of each kind, keyed by kind (``health_sleep``, ...).
+        """
+        for name, rows in records.items():
+            schema, stage = _HEALTH_RECORD_IMPORTS[name]
+            for row in rows:
+                try:
+                    record = schema.model_validate(_without_row_identity(row))
+                except ValidationError:
+                    logger.warning("Skipped an invalid health record", extra=core_logger.context(kind=name))
+                    continue
+                if stage(self.user_id, record, self.db):
+                    self.counts[name] += 1
+            logger.debug("Imported health records", extra=core_logger.context(kind=name, count=self.counts[name]))
 
     async def add_activity_files_from_zip(
         self,

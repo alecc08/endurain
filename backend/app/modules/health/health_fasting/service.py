@@ -157,6 +157,32 @@ def create_health_fasting(
     return created
 
 
+def stage_import_health_fasting(
+    user_id: int, health_fasting: health_fasting_schema.HealthFastingCreate, db: Session
+) -> bool:
+    """Stage an imported fasting session unless the user already has it.
+
+    A session counts as already there when the user has one that started at the same time. A running
+    fast is skipped when the user already has one running, since only one may run at a time.
+
+    Args:
+        user_id: The session's owner.
+        health_fasting: The session to import.
+        db: Database session.
+
+    Returns:
+        True when the session was staged, False when it was skipped.
+    """
+    if health_fasting_crud.health_fasting_exists_at(user_id, health_fasting.fast_start_time, db):
+        return False
+    try:
+        with db.begin_nested():
+            health_fasting_crud.create_health_fasting(user_id, health_fasting, db)
+    except core_exceptions.ConflictError:
+        return False
+    return True
+
+
 def edit_health_fasting(
     user_id: int,
     health_fasting_id: int,

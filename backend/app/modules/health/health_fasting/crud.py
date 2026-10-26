@@ -258,6 +258,28 @@ def get_completed_fasting_dates_by_user_id(user_id: int, tz_name: str, db: Sessi
     return list(db.execute(stmt).scalars().all())
 
 
+def health_fasting_exists_at(user_id: int, fast_start_time: datetime, db: Session) -> bool:
+    """Tell whether a user already has a fasting session started at an exact time.
+
+    Args:
+        user_id: The session's owner.
+        fast_start_time: The session's start time.
+        db: Database session.
+
+    Returns:
+        True when the user has a session that started at that time.
+    """
+    stmt = select(
+        select(health_fasting_models.HealthFasting.id)
+        .where(
+            health_fasting_models.HealthFasting.user_id == user_id,
+            health_fasting_models.HealthFasting.fast_start_time == fast_start_time,
+        )
+        .exists()
+    )
+    return bool(db.execute(stmt).scalar())
+
+
 def create_health_fasting(
     user_id: int, health_fasting: health_fasting_schema.HealthFastingCreate, db: Session
 ) -> health_fasting_schema.HealthFastingRead:

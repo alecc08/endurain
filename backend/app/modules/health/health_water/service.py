@@ -131,6 +131,42 @@ def stage_add_health_water(
     )
 
 
+def stage_upsert_health_water(
+    user_id: int, health_water: health_water_schema.HealthWaterCreate, db: Session
+) -> health_water_schema.HealthWaterRead:
+    """Stage a water record, or replace the amount of the user's record for the same date.
+
+    Unlike :func:`stage_add_health_water` the amount is stored as given, so writing the same
+    record twice leaves the day unchanged.
+
+    A writer that creates the date first, on this replica or another, is not an error: the
+    record it created is updated instead.
+
+    Args:
+        user_id: The record's owner.
+        health_water: The record to store.
+        db: Database session.
+
+    Returns:
+        The staged record.
+
+    Raises:
+        ConflictError: If the date's record cannot be created or found.
+    """
+    if health_water.date is None:
+        # The request carries no timezone, so the day is the athlete's own.
+        health_water.date = users_integration.local_today(user_id, db)
+
+    day = health_water.date.isoformat()
+    update = health_water_schema.HealthWaterUpdate(**health_water.model_dump())
+    return health_computation.upsert_for_day(
+        find=lambda: health_water_crud.get_health_water_by_date_and_user_id(user_id, day, db),
+        create=lambda: health_water_crud.create_health_water(user_id, health_water, db),
+        edit=lambda record_id: stage_edit_health_water(user_id, record_id, update, db, if_match="*"),
+        db=db,
+    )
+
+
 def create_health_water(
     user_id: int, health_water: health_water_schema.HealthWaterCreate, db: Session
 ) -> health_water_schema.HealthWaterRead:

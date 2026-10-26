@@ -1,5 +1,5 @@
+from datetime import UTC, datetime
 from datetime import date as datetime_date
-from datetime import datetime
 from unittest.mock import patch
 
 import pytest
@@ -75,3 +75,24 @@ class TestListHealthPoop:
         health_poop_service.list_health_poop(1, mock_db)
 
         mock_number.assert_called_once_with(1, mock_db, None)
+
+
+class TestStageImportHealthPoop:
+    @patch(f"{_PREFIX}.health_poop_crud.create_health_poop")
+    @patch(f"{_PREFIX}.health_poop_crud.health_poop_exists_at", return_value=False)
+    def test_stages_a_record_the_user_does_not_have(self, _exists, mock_create, mock_db):
+        record = health_poop_schema.HealthPoopCreate(date_time=datetime(2024, 1, 15, 8, 0, tzinfo=UTC))
+
+        assert health_poop_service.stage_import_health_poop(1, record, mock_db) is True
+
+        mock_create.assert_called_once_with(1, record, mock_db)
+        mock_db.commit.assert_not_called()
+
+    @patch(f"{_PREFIX}.health_poop_crud.create_health_poop")
+    @patch(f"{_PREFIX}.health_poop_crud.health_poop_exists_at", return_value=True)
+    def test_skips_a_record_already_logged_at_that_time(self, _exists, mock_create, mock_db):
+        record = health_poop_schema.HealthPoopCreate(date_time=datetime(2024, 1, 15, 8, 0, tzinfo=UTC))
+
+        assert health_poop_service.stage_import_health_poop(1, record, mock_db) is False
+
+        mock_create.assert_not_called()

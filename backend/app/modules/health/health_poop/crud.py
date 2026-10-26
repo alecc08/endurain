@@ -1,6 +1,7 @@
 """CRUD operations for health poop (bowel movement) records."""
 
 from datetime import date as date_type
+from datetime import datetime
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.exc import IntegrityError
@@ -162,6 +163,28 @@ def get_health_poop_by_date_and_user_id(
     )
 
     return health_poop_serializers.to_read_schemas(list(db.execute(stmt).scalars().all()))
+
+
+def health_poop_exists_at(user_id: int, date_time: datetime, db: Session) -> bool:
+    """Tell whether a user already has a poop record at an exact time.
+
+    Args:
+        user_id: The record's owner.
+        date_time: The record's date and time.
+        db: Database session.
+
+    Returns:
+        True when the user has a record at that time.
+    """
+    stmt = select(
+        select(health_poop_models.HealthPoop.id)
+        .where(
+            health_poop_models.HealthPoop.user_id == user_id,
+            health_poop_models.HealthPoop.date_time == date_time,
+        )
+        .exists()
+    )
+    return bool(db.execute(stmt).scalar())
 
 
 def create_health_poop(

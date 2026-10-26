@@ -428,6 +428,64 @@ class TestExportServiceCollectHealthWeight:
                 service.collect_health_weight(z)
 
 
+class TestExportServiceCollectHealthRecords:
+    _NAMES = ("health_sleep", "health_steps", "health_water", "health_fasting", "health_poop")
+
+    def _service(self) -> profile_export_service.ExportService:
+        service = profile_export_service.ExportService(user_id=1, storage=MagicMock(), db=MagicMock(spec=Session))
+        service.performance_config.enable_memory_monitoring = False
+        return service
+
+    def _listers(self, rows: dict[str, list] | None = None, failure: Exception | None = None):
+        def lister(name: str):
+            if failure is not None:
+                return MagicMock(side_effect=failure)
+            return MagicMock(return_value=(rows or {}).get(name, []))
+
+        return patch.dict(profile_export_service._HEALTH_RECORD_LISTERS, {name: lister(name) for name in self._NAMES})
+
+    def test_writes_every_record_kind_to_its_own_file(self) -> None:
+        buf = io.BytesIO()
+        service = self._service()
+        rows = {name: [{"id": 1, "user_id": 1, "version": 1}] for name in self._NAMES}
+
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z, self._listers(rows):
+            service.collect_health_records(z)
+
+        with zipfile.ZipFile(buf) as z:
+            for name in self._NAMES:
+                assert json.loads(z.read(f"data/{name}.json")) == rows[name]
+        assert all(service.counts[name] == 1 for name in self._NAMES)
+
+    def test_a_kind_without_records_still_gets_an_empty_file(self) -> None:
+        buf = io.BytesIO()
+        service = self._service()
+
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z, self._listers():
+            service.collect_health_records(z)
+
+        with zipfile.ZipFile(buf) as z:
+            assert all(json.loads(z.read(f"data/{name}.json")) == [] for name in self._NAMES)
+
+    def test_a_failing_read_raises_data_collection_error(self) -> None:
+        buf = io.BytesIO()
+        with (
+            zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z,
+            self._listers(failure=Exception("boom")),
+            pytest.raises(DataCollectionError),
+        ):
+            self._service().collect_health_records(z)
+
+    def test_a_database_error_raises_database_connection_error(self) -> None:
+        buf = io.BytesIO()
+        with (
+            zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z,
+            self._listers(failure=SQLAlchemyError("db")),
+            pytest.raises(DatabaseConnectionError),
+        ):
+            self._service().collect_health_records(z)
+
+
 class TestExportServiceCollectUserSettings:
     def test_collect_settings_all_empty(self) -> None:
         buf = io.BytesIO()

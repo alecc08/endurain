@@ -175,3 +175,32 @@ class TestListHealthFasting:
         health_fasting_service.list_health_fasting(1, mock_db)
 
         mock_number.assert_called_once_with(1, mock_db, None)
+
+
+class TestStageImportHealthFasting:
+    def _record(self) -> health_fasting_schema.HealthFastingCreate:
+        return health_fasting_schema.HealthFastingCreate(
+            fast_start_time=datetime(2024, 1, 15, 20, 0, tzinfo=UTC), status="completed"
+        )
+
+    @patch(f"{_CRUD}.create_health_fasting")
+    @patch(f"{_CRUD}.health_fasting_exists_at", return_value=False)
+    def test_stages_a_session_the_user_does_not_have(self, _exists, mock_create, mock_db):
+        record = self._record()
+
+        assert health_fasting_service.stage_import_health_fasting(1, record, mock_db) is True
+
+        mock_create.assert_called_once_with(1, record, mock_db)
+        mock_db.commit.assert_not_called()
+
+    @patch(f"{_CRUD}.create_health_fasting")
+    @patch(f"{_CRUD}.health_fasting_exists_at", return_value=True)
+    def test_skips_a_session_already_started_at_that_time(self, _exists, mock_create, mock_db):
+        assert health_fasting_service.stage_import_health_fasting(1, self._record(), mock_db) is False
+
+        mock_create.assert_not_called()
+
+    @patch(f"{_CRUD}.create_health_fasting", side_effect=core_exceptions.ConflictError("active"))
+    @patch(f"{_CRUD}.health_fasting_exists_at", return_value=False)
+    def test_skips_a_running_fast_when_the_user_already_has_one(self, _exists, _create, mock_db):
+        assert health_fasting_service.stage_import_health_fasting(1, self._record(), mock_db) is False

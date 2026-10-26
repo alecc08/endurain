@@ -12,7 +12,7 @@ Export builds a ZIP archive named `user_<your id>_export.zip` in the background,
 - gear and gear components
 - activities with their laps, sets, streams, workout steps and other detail
 - the original activity files and activity media
-- weight records and health targets
+- weight, sleep, steps, water, fasting and bowel movement records, and health targets
 - your profile photo
 
 The archive does **not** include your password, MFA configuration, or other security settings. It also does not include your account's access level or status, so importing cannot be used to change them.
@@ -26,6 +26,7 @@ Choose **Import data** and select a `.zip` archive created by an export. The imp
 
 - **adds** the data to your current account. It does not replace or delete what you already have.
 - creates new gear and activities, and relinks activities to the imported gear.
+- adds health records. Weight, sleep, steps and water replace your record for the same date; fasting sessions and bowel movements you already have at the same time are skipped.
 - updates your profile fields, goals and privacy settings from the archive.
 - finishes with a count of what was imported. An archive with nothing importable is rejected with an error.
 

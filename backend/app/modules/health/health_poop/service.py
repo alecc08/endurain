@@ -122,6 +122,23 @@ def create_health_poop(
     return created
 
 
+def stage_import_health_poop(user_id: int, health_poop: health_poop_schema.HealthPoopCreate, db: Session) -> bool:
+    """Stage an imported poop record unless the user already has one at that time.
+
+    Args:
+        user_id: The record's owner.
+        health_poop: The record to import.
+        db: Database session.
+
+    Returns:
+        True when the record was staged, False when the user already had it.
+    """
+    if health_poop_crud.health_poop_exists_at(user_id, health_poop.date_time, db):
+        return False
+    health_poop_crud.create_health_poop(user_id, health_poop, db)
+    return True
+
+
 def edit_health_poop(
     user_id: int, health_poop_id: int, health_poop: health_poop_schema.HealthPoopUpdate, db: Session, *, if_match: str
 ) -> health_poop_schema.HealthPoopRead:

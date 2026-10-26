@@ -16,6 +16,7 @@ import os
 import tempfile
 import time
 import zipfile
+from collections.abc import Callable
 from typing import IO, Any
 
 import jasil.providers as platform_providers
@@ -29,7 +30,12 @@ import modules.activities.activity_media.integration_service as activity_media_i
 import modules.activities.contributor_registry as activities_contributor_registry
 import modules.gears.gear.integration_service as gear_integration
 import modules.gears.gear_components.integration_service as gear_components_integration
+import modules.health.health_fasting.integration_service as health_fasting_integration
+import modules.health.health_poop.integration_service as health_poop_integration
+import modules.health.health_sleep.integration_service as health_sleep_integration
+import modules.health.health_steps.integration_service as health_steps_integration
 import modules.health.health_targets.integration_service as health_targets_integration
+import modules.health.health_water.integration_service as health_water_integration
 import modules.health.health_weight.integration_service as health_weight_integration
 import modules.users.users.constants as users_constants
 import modules.users.users_default_gear.integration_service as users_default_gear_integration
@@ -49,6 +55,15 @@ from modules.users.users_profile.exceptions import (
 )
 
 logger = core_logger.get_logger(__name__)
+
+#: The health record kinds exported beside weight, each with the call that lists a user's records.
+_HEALTH_RECORD_LISTERS: dict[str, Callable[[int, Session], list[Any]]] = {
+    "health_sleep": health_sleep_integration.list_health_sleep,
+    "health_steps": health_steps_integration.list_health_steps,
+    "health_water": health_water_integration.list_health_water,
+    "health_fasting": health_fasting_integration.list_health_fasting,
+    "health_poop": health_poop_integration.list_health_poop,
+}
 
 
 class ExportPerformanceConfig(users_profile_utils.BasePerformanceConfig):
@@ -581,6 +596,30 @@ class ExportService:
         except SQLAlchemyError as err:
             raise DatabaseConnectionError(f"Failed to collect health data: {err}") from err
 
+    def collect_health_records(self, zipf: zipfile.ZipFile) -> None:
+        """Collect and write sleep, steps, water, fasting and poop records to ZIP.
+
+        Args:
+            zipf: ZipFile instance to write to.
+
+        Raises:
+            DataCollectionError: If a kind of record cannot be collected.
+            DatabaseConnectionError: If database error occurs.
+        """
+        try:
+            for name, list_records in _HEALTH_RECORD_LISTERS.items():
+                try:
+                    records = [
+                        users_profile_utils.sqlalchemy_obj_to_dict(r) for r in list_records(self.user_id, self.db)
+                    ]
+                except SQLAlchemyError:
+                    raise
+                except Exception as err:
+                    raise DataCollectionError(f"Failed to collect {name}: {err}") from err
+                users_profile_utils.write_json_to_zip(zipf, f"data/{name}.json", records, self.counts)
+        except SQLAlchemyError as err:
+            raise DatabaseConnectionError(f"Failed to collect health records: {err}") from err
+
     def collect_user_settings_data(self, zipf: zipfile.ZipFile) -> None:
         """Collect and write user settings to ZIP.
 
@@ -857,6 +896,9 @@ class ExportService:
 
                 users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
                 self.collect_health_weight(zipf)
+
+                users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
+                self.collect_health_records(zipf)
 
                 users_profile_utils.check_timeout(timeout_seconds, start_time, ExportTimeoutError, "Export")
                 self.collect_user_settings_data(zipf)

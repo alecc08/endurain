@@ -118,3 +118,30 @@ class TestMissingDate:
 
         assert mock_create.call_args.args[1].date == datetime_date(2024, 1, 15)
         mock_today.assert_called_once_with(1, mock_db)
+
+
+class TestStageUpsertHealthWater:
+    @patch(f"{_PREFIX}.health_water_crud.add_health_water_amount")
+    @patch(f"{_PREFIX}.health_water_crud.edit_health_water")
+    @patch(f"{_PREFIX}.health_water_crud.get_health_water_by_date_and_user_id")
+    def test_replaces_the_amount_of_the_date_instead_of_adding_to_it(
+        self, mock_get_by_date, mock_edit, mock_add, mock_db
+    ):
+        mock_get_by_date.return_value = MagicMock(id=7)
+        record = health_water_schema.HealthWaterCreate(date=datetime_date(2024, 1, 15), amount_ml=1500)
+
+        health_water_service.stage_upsert_health_water(1, record, mock_db)
+
+        assert mock_edit.call_args.args[:2] == (1, 7)
+        assert mock_edit.call_args.args[2].amount_ml == 1500
+        mock_add.assert_not_called()
+        mock_db.commit.assert_not_called()
+
+    @patch(f"{_PREFIX}.health_water_crud.create_health_water")
+    @patch(f"{_PREFIX}.health_water_crud.get_health_water_by_date_and_user_id", return_value=None)
+    def test_creates_the_record_when_the_date_is_free(self, _get_by_date, mock_create, mock_db):
+        record = health_water_schema.HealthWaterCreate(date=datetime_date(2024, 1, 15), amount_ml=1500)
+
+        result = health_water_service.stage_upsert_health_water(1, record, mock_db)
+
+        assert result is mock_create.return_value

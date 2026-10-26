@@ -4,12 +4,18 @@ import contextlib
 import json
 import zipfile
 from io import BytesIO
+from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from sqlalchemy.orm import Session
 
 import core.exceptions as core_exceptions
+import modules.health.health_fasting.schema as health_fasting_schema
+import modules.health.health_poop.schema as health_poop_schema
+import modules.health.health_sleep.schema as health_sleep_schema
+import modules.health.health_steps.schema as health_steps_schema
+import modules.health.health_water.schema as health_water_schema
 import modules.users.users_profile.import_service as profile_import_service
 import modules.users.users_profile.utils as profile_utils
 from modules.users.users_profile.exceptions import (
@@ -694,6 +700,79 @@ class TestImportServiceUserData:
         mock_edit_profile.assert_called_once()
         assert service.counts["user"] == 1
         assert service.counts.get("user_identity_providers", 0) == 0
+
+
+class TestImportServiceHealthRecords:
+    _SCHEMAS: ClassVar[dict[str, type]] = {
+        "health_sleep": health_sleep_schema.HealthSleepCreate,
+        "health_steps": health_steps_schema.HealthStepsCreate,
+        "health_water": health_water_schema.HealthWaterCreate,
+        "health_fasting": health_fasting_schema.HealthFastingCreate,
+        "health_poop": health_poop_schema.HealthPoopCreate,
+    }
+
+    def _service(self) -> profile_import_service.ImportService:
+        return profile_import_service.ImportService(user_id=1, storage=MagicMock(), db=MagicMock(spec=Session))
+
+    def _writers(self, stored: bool = True) -> tuple[dict[str, MagicMock], Any]:
+        writers = {name: MagicMock(return_value=stored) for name in self._SCHEMAS}
+        patched = patch.dict(
+            profile_import_service._HEALTH_RECORD_IMPORTS,
+            {name: (schema, writers[name]) for name, schema in self._SCHEMAS.items()},
+        )
+        return writers, patched
+
+    async def test_imports_each_kind_without_the_row_identity(self) -> None:
+        service = self._service()
+        identity = {"id": 9, "user_id": 999, "version": 4}
+        records = {
+            "health_sleep": [{"date": "2024-01-15", "total_sleep_seconds": 28800, **identity}],
+            "health_steps": [{"date": "2024-01-15", "steps": 9000, **identity}],
+            "health_water": [{"date": "2024-01-15", "amount_ml": 1500, **identity}],
+            "health_fasting": [{"fast_start_time": "2024-01-15T20:00:00Z", "status": "completed", **identity}],
+            "health_poop": [{"date_time": "2024-01-15T08:00:00Z", **identity}],
+        }
+        writers, patched = self._writers()
+
+        with patched:
+            await service.collect_and_import_health_records(records)
+
+        for writer in writers.values():
+            writer.assert_called_once()
+            assert writer.call_args.args[0] == 1
+        assert writers["health_sleep"].call_args.args[1].total_sleep_seconds == 28800
+        assert writers["health_steps"].call_args.args[1].steps == 9000
+        assert all(service.counts[name] == 1 for name in records)
+
+    async def test_a_skipped_duplicate_is_not_counted(self) -> None:
+        service = self._service()
+        _, patched = self._writers(stored=False)
+
+        with patched:
+            await service.collect_and_import_health_records({"health_poop": [{"date_time": "2024-01-15T08:00:00Z"}]})
+
+        assert service.counts["health_poop"] == 0
+
+    async def test_an_invalid_row_is_skipped_and_the_rest_imported(self) -> None:
+        service = self._service()
+        writers, patched = self._writers()
+
+        with patched:
+            await service.collect_and_import_health_records(
+                {"health_steps": [{"steps": "many"}, {"unknown": 1}, {"date": "2024-01-16", "steps": 100}]}
+            )
+
+        writers["health_steps"].assert_called_once()
+        assert service.counts["health_steps"] == 1
+
+    async def test_an_archive_without_the_files_imports_nothing(self) -> None:
+        service = self._service()
+        writers, patched = self._writers()
+
+        with patched:
+            await service.collect_and_import_health_records({})
+
+        assert not any(writer.called for writer in writers.values())
 
 
 class TestImportServiceHealth:

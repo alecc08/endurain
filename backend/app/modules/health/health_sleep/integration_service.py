@@ -42,3 +42,16 @@ def upsert_health_sleep(
         ConflictError: If the date's record cannot be created or found.
     """
     return health_sleep_service.stage_upsert_health_sleep(user_id, health_sleep, db)
+
+
+def list_health_sleep(user_id: int, db: Session) -> list[health_sleep_schema.HealthSleepRead]:
+    """Return all of a user's sleep records, newest first.
+
+    Args:
+        user_id: The records' owner.
+        db: Database session.
+
+    Returns:
+        The records.
+    """
+    return health_sleep_crud.get_health_sleep_by_user_id(user_id, db)
