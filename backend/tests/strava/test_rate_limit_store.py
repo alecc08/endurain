@@ -50,7 +50,7 @@ class TestRateLimitStoreIsSharedState:
 
     def test_the_flag_expires_on_its_own(self, tracker):
         tracker.mark_rate_limited("app-a", is_long_term=False)
-        platform_runtime.get_state().delete(strava_rate_limit_store._SHORT_TERM_KEY.format(client_id="app-a"))
+        platform_runtime.get_state().delete("strava:rate_limited:short:app-a")
 
         assert tracker.is_rate_limited("app-a") is False
 
@@ -128,9 +128,7 @@ class TestRateLimitedUntil:
         assert tracker.rate_limited_until("app-w") >= long_term
 
     def test_a_flag_without_a_readable_expiry_still_defers_for_the_short_cooldown(self, tracker):
-        platform_runtime.get_state().set(
-            strava_rate_limit_store._SHORT_TERM_KEY.format(client_id="app-v"), b"1", ttl_seconds=60
-        )
+        platform_runtime.get_state().set("strava:rate_limited:short:app-v", b"1", ttl_seconds=60)
 
         until = tracker.rate_limited_until("app-v")
 

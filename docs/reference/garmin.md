@@ -51,6 +51,13 @@ Garmin Connect linking and sync. See [Integrations](../features/integrations.md)
     options:
       docstring_style: google
 
+## Rate limits
+
+::: backend.app.modules.garmin.rate_limit_store
+    handler: python
+    options:
+      docstring_style: google
+
 ## Schemas
 
 ::: backend.app.modules.garmin.schema

@@ -7,7 +7,6 @@ Linking lives in :mod:`modules.garmin.link_service`. The activity, gear and heal
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime, timedelta
 from typing import NamedTuple
 
 import garminconnect
@@ -16,7 +15,7 @@ from sqlalchemy.orm import Session
 import core.database as core_database
 import core.exceptions as core_exceptions
 import core.logger as core_logger
-import modules.garmin.constants as garmin_constants
+import modules.garmin.rate_limit_store as garmin_rate_limit_store
 import modules.garmin.token_utils as garmin_token_utils
 import modules.notifications.integration_service as notifications_integration
 import modules.users.users_integrations.integration_service as user_integrations_integration
@@ -110,7 +109,9 @@ def get_user_garminconnect_session(user_id: int, db: Session) -> GarminSession |
 
 
 @contextmanager
-def linked_session(user_id: int) -> Iterator[GarminSession | None]:
+def linked_session(
+    user_id: int, rate_limits: garmin_rate_limit_store.GarminRateLimitStore
+) -> Iterator[GarminSession | None]:
     """Yield a linked user's session with no database session open, then store its refreshed token.
 
     The token is stored whether the body succeeds or raises, so the next sync restores a live one.
@@ -118,10 +119,15 @@ def linked_session(user_id: int) -> Iterator[GarminSession | None]:
 
     Args:
         user_id: The user whose Garmin Connect account to use.
+        rate_limits: The shared Garmin Connect rate-limit state, checked before the session is restored.
 
     Yields:
         The session, or ``None`` when Garmin Connect is not linked or the stored session is rejected.
+
+    Raises:
+        TooManyRequestsError: When the account is rate limited.
     """
+    raise_if_rate_limited(user_id, rate_limits)
     with core_database.SessionLocal() as db:
         session = get_user_garminconnect_session(user_id, db)
     if session is None:
@@ -192,22 +198,47 @@ def linked_user_ids(after_id: int, limit: int) -> list[int]:
         return user_integrations_integration.list_user_ids_with_garminconnect_linked(after_id, limit, db)
 
 
-def rate_limit_error(err: Exception) -> core_exceptions.TooManyRequestsError:
-    """Build the error for Garmin Connect refusing a call as rate limited.
+def rate_limit_error(
+    err: Exception, user_id: int, rate_limits: garmin_rate_limit_store.GarminRateLimitStore
+) -> core_exceptions.TooManyRequestsError:
+    """Record that Garmin Connect refused a call as rate limited, and build the error for it.
 
-    Garmin Connect reports no reset time, so the refresh waits one cooldown before it tries again.
+    Garmin Connect reports no reset time, so the account is left alone for one cooldown, in every
+    process, and the refresh waits that long before it tries again.
 
     Args:
         err: The rate-limit error Garmin Connect raised.
+        user_id: The user whose account was limited.
+        rate_limits: The shared Garmin Connect rate-limit state.
 
     Returns:
         The error to raise, carrying when the refresh may run again.
     """
-    logger.warning("Garmin Connect rate limit hit", exc_info=err)
+    logger.warning("Garmin Connect rate limit hit", exc_info=err, extra=core_logger.context(user_id=user_id))
     return core_exceptions.TooManyRequestsError(
         "Garmin Connect rate limit exceeded. Please try again later.",
-        retry_at=datetime.now(UTC) + timedelta(seconds=garmin_constants.RATE_LIMIT_COOLDOWN_SECONDS),
+        retry_at=rate_limits.mark_rate_limited(user_id),
     )
+
+
+def raise_if_rate_limited(user_id: int, rate_limits: garmin_rate_limit_store.GarminRateLimitStore) -> None:
+    """Refuse a Garmin Connect call while the user's account is rate limited.
+
+    Args:
+        user_id: The user about to be synced.
+        rate_limits: The shared Garmin Connect rate-limit state.
+
+    Raises:
+        TooManyRequestsError: When the account is rate limited, carrying when the limit clears.
+    """
+    retry_at = rate_limits.rate_limited_until(user_id)
+    if retry_at is not None:
+        logger.warning(
+            "Garmin Connect rate limit active, skipping the call", extra=core_logger.context(user_id=user_id)
+        )
+        raise core_exceptions.TooManyRequestsError(
+            "Garmin Connect rate limit exceeded. Please try again later.", retry_at=retry_at
+        )
 
 
 def handle_rejected_token(user_id: int, session: GarminSession, err: Exception) -> None:

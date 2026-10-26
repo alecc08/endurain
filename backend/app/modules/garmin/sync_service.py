@@ -24,6 +24,7 @@ import modules.garmin.event_publishers as garmin_event_publishers
 import modules.garmin.events as garmin_events
 import modules.garmin.gear_service as garmin_gear_service
 import modules.garmin.health_service as garmin_health_service
+import modules.garmin.rate_limit_store as garmin_rate_limit_store
 import modules.garmin.schema as garmin_schema
 import modules.garmin.service as garmin_service
 import modules.garmin.sync_state_store as garmin_sync_state_store
@@ -70,6 +71,7 @@ def _validate_range(start_date: date, end_date: date, max_days: int, today: date
 def run_sync(
     payload: garmin_events.SyncRequestedPayload,
     states: garmin_sync_state_store.GarminSyncStateStore,
+    rate_limits: garmin_rate_limit_store.GarminRateLimitStore,
     *,
     will_retry: bool = False,
 ) -> None:
@@ -86,6 +88,7 @@ def run_sync(
     Args:
         payload: What to sync.
         states: Shared store of the sync's state.
+        rate_limits: The shared Garmin Connect rate-limit state.
         will_retry: Whether a durable worker runs this again if it raises.
 
     Raises:
@@ -95,12 +98,19 @@ def run_sync(
     synced = False
     try:
         if payload.kind == garmin_constants.SyncKind.GEAR:
-            synced = garmin_gear_service.get_user_gear(payload.user_id)
+            synced = garmin_gear_service.get_user_gear(payload.user_id, rate_limits)
         elif payload.start_date is not None and payload.end_date is not None:
-            synced = garmin_health_service.sync_health_for_dates(payload.start_date, payload.end_date, payload.user_id)
-    except garminconnect.GarminConnectTooManyRequestsError:
+            synced = garmin_health_service.sync_health_for_dates(
+                payload.start_date, payload.end_date, payload.user_id, rate_limits
+            )
+    except garminconnect.GarminConnectTooManyRequestsError as err:
+        # Recorded for every process, so the next sync waits out the cooldown instead of meeting the limit again.
+        garmin_service.rate_limit_error(err, payload.user_id, rate_limits)
+        states.set_status(payload.user_id, payload.kind, garmin_constants.SyncStatus.FAILED)
+        return
+    except core_exceptions.TooManyRequestsError:
         logger.warning(
-            "Garmin Connect refused the sync: too many requests",
+            "Garmin Connect rate limit active; the sync was not attempted",
             extra=core_logger.context(user_id=payload.user_id, kind=payload.kind),
         )
         states.set_status(payload.user_id, payload.kind, garmin_constants.SyncStatus.FAILED)
@@ -142,6 +152,7 @@ def _queue(
     start_date: date | None,
     end_date: date | None,
     states: garmin_sync_state_store.GarminSyncStateStore,
+    rate_limits: garmin_rate_limit_store.GarminRateLimitStore,
     db: Session,
     *,
     source: str = garmin_constants.SYNC_SOURCE_API,
@@ -155,6 +166,7 @@ def _queue(
         start_date: First day of the range, for a health sync.
         end_date: Last day of the range, for a health sync.
         states: Shared store of the sync's state.
+        rate_limits: The shared Garmin Connect rate-limit state, for the in-process pool.
         db: Database session.
         source: Who asked for the sync, as recorded on the event.
         wait_seconds: How long to wait for a pool slot when the pool is full.
@@ -180,7 +192,7 @@ def _queue(
             payload = garmin_events.SyncRequestedPayload(
                 user_id=user_id, kind=kind, start_date=start_date, end_date=end_date
             )
-            _sync_pool.submit(run_sync, payload, states, wait_seconds=wait_seconds)
+            _sync_pool.submit(run_sync, payload, states, rate_limits, wait_seconds=wait_seconds)
             logger.info(
                 "Garmin Connect sync queued on the in-process pool",
                 extra=core_logger.context(user_id=user_id, kind=kind),
@@ -193,19 +205,23 @@ def _queue(
 
 
 def request_gear_sync(
-    user_id: int, states: garmin_sync_state_store.GarminSyncStateStore, db: Session
+    user_id: int,
+    states: garmin_sync_state_store.GarminSyncStateStore,
+    rate_limits: garmin_rate_limit_store.GarminRateLimitStore,
+    db: Session,
 ) -> garmin_schema.GarminSyncStatus:
     """Queue a sync of the user's Garmin Connect gear.
 
     Args:
         user_id: The user to sync.
         states: Shared store of the sync's state.
+        rate_limits: The shared Garmin Connect rate-limit state.
         db: Database session.
 
     Returns:
         The sync's initial status.
     """
-    return _queue(user_id, garmin_constants.SyncKind.GEAR, None, None, states, db)
+    return _queue(user_id, garmin_constants.SyncKind.GEAR, None, None, states, rate_limits, db)
 
 
 def request_health_sync(
@@ -213,6 +229,7 @@ def request_health_sync(
     start_date: date,
     end_date: date,
     states: garmin_sync_state_store.GarminSyncStateStore,
+    rate_limits: garmin_rate_limit_store.GarminRateLimitStore,
     db: Session,
 ) -> garmin_schema.GarminSyncStatus:
     """Queue a sync of the user's Garmin Connect health data for a range of days.
@@ -222,6 +239,7 @@ def request_health_sync(
         start_date: First day of the range.
         end_date: Last day of the range.
         states: Shared store of the sync's state.
+        rate_limits: The shared Garmin Connect rate-limit state.
         db: Database session.
 
     Returns:
@@ -237,7 +255,7 @@ def request_health_sync(
         garmin_constants.MAX_HEALTH_RANGE_DAYS,
         users_integration.local_today(user_id, db),
     )
-    return _queue(user_id, garmin_constants.SyncKind.HEALTH, start_date, end_date, states, db)
+    return _queue(user_id, garmin_constants.SyncKind.HEALTH, start_date, end_date, states, rate_limits, db)
 
 
 def get_sync_status(
@@ -310,7 +328,11 @@ def request_activities_sync(
     return job
 
 
-def _sync_recent_health_for_user(user_id: int, states: garmin_sync_state_store.GarminSyncStateStore) -> None:
+def _sync_recent_health_for_user(
+    user_id: int,
+    states: garmin_sync_state_store.GarminSyncStateStore,
+    rate_limits: garmin_rate_limit_store.GarminRateLimitStore,
+) -> None:
     """Queue one user's recent health data for a worker, or for the in-process pool without durable jobs.
 
     The window is yesterday and today in the user's own timezone, as Garmin Connect dates its
@@ -320,6 +342,7 @@ def _sync_recent_health_for_user(user_id: int, states: garmin_sync_state_store.G
     Args:
         user_id: The user to sync.
         states: Shared store of the sync's state.
+        rate_limits: The shared Garmin Connect rate-limit state.
 
     Raises:
         PoolFullError: When the in-process pool stayed full for the whole wait.
@@ -333,6 +356,7 @@ def _sync_recent_health_for_user(user_id: int, states: garmin_sync_state_store.G
                 end_date - timedelta(days=1),
                 end_date,
                 states,
+                rate_limits,
                 db,
                 source=garmin_constants.SYNC_SOURCE_SCHEDULER,
                 wait_seconds=garmin_constants.SCHEDULED_SLOT_WAIT_SECONDS,
@@ -341,7 +365,10 @@ def _sync_recent_health_for_user(user_id: int, states: garmin_sync_state_store.G
             logger.debug("Garmin Connect health sync already pending", extra=core_logger.context(user_id=user_id))
 
 
-def sync_recent_health(states: garmin_sync_state_store.GarminSyncStateStore) -> None:
+def sync_recent_health(
+    states: garmin_sync_state_store.GarminSyncStateStore,
+    rate_limits: garmin_rate_limit_store.GarminRateLimitStore,
+) -> None:
     """Sync the last day of Garmin Connect health stats for every linked user.
 
     Each user's sync is queued, for a worker with durable jobs or for the in-process pool without
@@ -351,6 +378,7 @@ def sync_recent_health(states: garmin_sync_state_store.GarminSyncStateStore) -> 
 
     Args:
         states: Shared store of the syncs' state.
+        rate_limits: The shared Garmin Connect rate-limit state.
     """
     after_id = 0
     while True:
@@ -363,7 +391,7 @@ def sync_recent_health(states: garmin_sync_state_store.GarminSyncStateStore) -> 
             return
         for user_id in user_ids:
             try:
-                _sync_recent_health_for_user(user_id, states)
+                _sync_recent_health_for_user(user_id, states, rate_limits)
             except core_local_pool.PoolFullError:
                 logger.warning(
                     "Garmin Connect health pull stopped: the in-process pool stayed full",

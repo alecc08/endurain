@@ -6,6 +6,7 @@ the source types they need to describe where a file came from, including the
 :class:`BulkImportSource` base a provider export subclasses.
 """
 
+from collections.abc import Callable, Iterable
 from datetime import datetime
 
 import jasil.providers as platform_providers
@@ -19,6 +20,7 @@ import modules.activities.activity_ingestion.provider_entry_service as activity_
 import modules.activities.activity_ingestion.provider_registry as activity_ingestion_provider_registry
 import modules.activities.activity_ingestion.schema as activity_ingestion_schema
 import modules.activities.activity_ingestion.service as activity_ingestion_service
+import modules.activities.activity_ingestion.window_service as activity_ingestion_window_service
 
 #: Where a file came from, and the metadata that source carries. Re-exported so a
 #: provider names one module rather than reaching for the package internals.
@@ -28,6 +30,7 @@ BulkImportSource = activity_ingestion_contracts.BulkImportSource
 BulkImportFormat = activity_ingestion_contracts.BulkImportFormat
 ArchiveMemberReader = activity_ingestion_contracts.ArchiveMemberReader
 IngestionSource = activity_ingestion_contracts.IngestionSource
+WindowStoppedError = activity_ingestion_contracts.WindowStoppedError
 build_import_record = activity_ingestion_contracts.build_import_record
 
 
@@ -78,6 +81,41 @@ def register_activity_provider(
     """
     activity_ingestion_provider_registry.register(
         activity_ingestion_provider_registry.ActivityProvider(name, fetch_window, linked_user_ids)
+    )
+
+
+def run_provider_window[ItemT, ResultT](
+    items: Iterable[ItemT],
+    process: Callable[[ItemT], ResultT],
+    *,
+    provider: str,
+    user_id: int,
+    describe: Callable[[ItemT], dict[str, object]],
+    propagate: tuple[type[BaseException], ...] = (),
+) -> list[ResultT]:
+    """Process each activity of a provider's window, raising the first failure once the window is done.
+
+    An activity that cannot be processed is logged and skipped so the rest of the window is stored; the
+    refresh job then fails and is retried, resuming past what is already stored.
+
+    Args:
+        items: The provider's activities for the window.
+        process: Handles one activity and returns what it produced. It may raise ``WindowStoppedError`` to end
+            the window early.
+        provider: The provider's name, for the log.
+        user_id: The user whose window it is, for the log.
+        describe: Names an activity for the log, such as its provider id.
+        propagate: Failures that end the window at once and are raised as they are.
+
+    Returns:
+        What ``process`` returned for each activity it handled.
+
+    Raises:
+        BaseException: Whatever ``propagate`` names, as soon as it is raised.
+        Exception: The first failure of an activity, after the rest of the window was processed.
+    """
+    return activity_ingestion_window_service.run_window(
+        items, process, provider=provider, user_id=user_id, describe=describe, propagate=propagate
     )
 
 

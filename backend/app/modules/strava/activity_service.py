@@ -14,11 +14,13 @@ import modules.activities.activity.constants as activity_constants
 import modules.activities.activity.contracts as activity_contracts
 import modules.activities.activity.integration_service as activity_integration
 import modules.activities.activity.schema as activity_schema
+import modules.activities.activity_ingestion.integration_service as activity_ingestion_integration
 import modules.activities.activity_streams.constants as activity_streams_constants
 import modules.activities.activity_streams.contracts as activity_streams_contracts
 import modules.activities.computation as activities_computation
 import modules.gears.gear.integration_service as gears_integration
 import modules.strava.client_service as strava_client_service
+import modules.strava.constants as strava_constants
 import modules.strava.rate_limit_store as strava_rate_limit_store
 import modules.users.users.integration_service as users_integration
 import modules.users.users_default_gear.integration_service as users_default_gear_integration
@@ -58,6 +60,7 @@ def fetch_and_process_activities(
 
     Raises:
         DomainError: When Strava rejects the request or the user is missing.
+        Exception: The first failure of an activity, once the rest of the window was processed.
     """
     client_id = strava_client_service.get_client_id(user_integrations)
     strava_client_service.raise_if_rate_limit_active(client_id, user_id, rate_limits)
@@ -85,31 +88,16 @@ def fetch_and_process_activities(
     # the athlete's own timezone over the server's, which is meaningless on another continent.
     timezone = user.timezone or core_config.settings.TZ
 
-    processed: list[activity_schema.ActivityRead | None] = []
-    failed = 0
-    for activity in strava_activities:
-        try:
-            processed.append(
-                process_activity(
-                    activity, user_id, user_privacy_settings, timezone, strava_client, user_integrations, rate_limits
-                )
-            )
-        except (core_exceptions.TooManyRequestsError, strava_client_service.StravaTokenRejectedError):
-            raise
-        except Exception as err:
-            # One activity Strava or the parser cannot handle must not stop the rest of the window;
-            # it is not stored, so the next sync of the window tries it again.
-            failed += 1
-            logger.error(
-                "Skipping a Strava activity that could not be processed",
-                extra=core_logger.context(user_id=user_id, strava_activity_id=activity.id),
-                exc_info=err,
-            )
-    if failed:
-        logger.warning(
-            "Some Strava activities were not processed", extra=core_logger.context(user_id=user_id, failed=failed)
-        )
-    return processed
+    return activity_ingestion_integration.run_provider_window(
+        strava_activities,
+        lambda activity: process_activity(
+            activity, user_id, user_privacy_settings, timezone, strava_client, user_integrations, rate_limits
+        ),
+        provider=strava_constants.PROVIDER_NAME,
+        user_id=user_id,
+        describe=lambda activity: {"strava_activity_id": activity.id},
+        propagate=(core_exceptions.TooManyRequestsError, strava_client_service.StravaTokenRejectedError),
+    )
 
 
 def parse_activity(

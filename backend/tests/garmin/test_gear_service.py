@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import garminconnect
 
 import modules.garmin.gear_service as garmin_gear_service
+from tests._helpers import garmin as garmin_helpers
 
 
 def _patched(client):
@@ -20,7 +21,7 @@ def _patched(client):
 def _run(client):
     session, get_client, set_sync, unlink = _patched(client)
     with session, get_client, set_sync as sync_flag, unlink as unlink_mock:
-        synced = garmin_gear_service.get_user_gear(1)
+        synced = garmin_gear_service.get_user_gear(1, garmin_helpers.rate_limits())
     return sync_flag, unlink_mock, synced
 
 
@@ -57,7 +58,7 @@ def test_gear_sync_turns_on_once_the_gear_was_fetched():
         patch.object(garmin_gear_service, "set_activities_gear", return_value=0),
         patch.object(garmin_gear_service.garmin_service, "get_linked_user_integrations", return_value=MagicMock()),
     ):
-        synced = garmin_gear_service.get_user_gear(1)
+        synced = garmin_gear_service.get_user_gear(1, garmin_helpers.rate_limits())
 
     assert synced is True
     sync_flag.assert_called_once()
@@ -78,7 +79,7 @@ def test_gear_sync_stays_off_when_the_account_was_unlinked_meanwhile():
         patch.object(garmin_gear_service.gears_integration, "create_multiple_gears"),
         patch.object(garmin_gear_service.garmin_service, "get_linked_user_integrations", return_value=None),
     ):
-        synced = garmin_gear_service.get_user_gear(1)
+        synced = garmin_gear_service.get_user_gear(1, garmin_helpers.rate_limits())
 
     assert synced is False
     sync_flag.assert_not_called()

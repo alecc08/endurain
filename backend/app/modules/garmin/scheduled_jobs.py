@@ -8,6 +8,7 @@ can collect it without ``core.scheduler`` importing a provider.
 import jasil.runtime as platform_runtime
 
 import core.scheduler as core_scheduler
+import modules.garmin.rate_limit_store as garmin_rate_limit_store
 import modules.garmin.sync_service as garmin_sync_service
 import modules.garmin.sync_state_store as garmin_sync_state_store
 
@@ -16,7 +17,10 @@ HEALTH_SYNC_LOCK = "garmin_health_sync"
 
 def sync_recent_health() -> None:
     """Queue the last day of Garmin Connect health stats for every linked user."""
-    garmin_sync_service.sync_recent_health(garmin_sync_state_store.GarminSyncStateStore(platform_runtime.get_state()))
+    state = platform_runtime.get_state()
+    garmin_sync_service.sync_recent_health(
+        garmin_sync_state_store.GarminSyncStateStore(state), garmin_rate_limit_store.GarminRateLimitStore(state)
+    )
 
 
 def recurring_jobs() -> tuple[core_scheduler.ScheduledJob, ...]:

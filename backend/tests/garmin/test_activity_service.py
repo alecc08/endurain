@@ -10,6 +10,7 @@ import pytest
 
 import modules.garmin.activity_service as activity_utils
 import modules.garmin.service as garmin_service
+from tests._helpers import garmin as garmin_helpers
 
 
 def _make_garminconnect_client(activity_id: int = 12345) -> Mock:
@@ -30,6 +31,7 @@ def _call(client: Mock, user_id: int = 1) -> list | None:
         start_date=datetime(2026, 1, 1, tzinfo=UTC),
         end_date=datetime(2026, 1, 2, tzinfo=UTC),
         user_id=user_id,
+        rate_limits=garmin_helpers.rate_limits(),
     )
 
 
@@ -209,7 +211,9 @@ def test_an_auth_rejection_while_downloading_unlinks_the_account_and_stops_the_w
         ) as download,
         patch.object(garmin_service, "handle_rejected_token") as unlink,
     ):
-        activity_utils.fetch_and_process_activities_by_dates(session, datetime(2026, 1, 1), datetime(2026, 1, 2), 1)
+        activity_utils.fetch_and_process_activities_by_dates(
+            session, datetime(2026, 1, 1), datetime(2026, 1, 2), 1, garmin_helpers.rate_limits()
+        )
 
     unlink.assert_called_once()
     download.assert_called_once()
@@ -224,7 +228,9 @@ def test_a_failed_sync_still_stores_the_refreshed_token_and_reaches_the_caller()
         patch.object(garmin_service, "save_refreshed_token") as save,
         pytest.raises(RuntimeError),
     ):
-        activity_utils.get_user_garminconnect_activities_by_dates(1, datetime(2026, 1, 1), datetime(2026, 1, 2))
+        activity_utils.get_user_garminconnect_activities_by_dates(
+            1, datetime(2026, 1, 1), datetime(2026, 1, 2), garmin_helpers.rate_limits()
+        )
 
     save.assert_called_once()
 
@@ -262,3 +268,38 @@ class TestRateLimit:
             _call(client)
 
         assert client.download_activity.call_count == 1
+
+
+def test_a_limited_account_is_refused_before_garmin_is_called():
+    import core.exceptions as core_exceptions
+
+    rate_limits = garmin_helpers.rate_limits()
+    until = rate_limits.mark_rate_limited(1)
+    with (
+        patch.object(garmin_service, "get_user_garminconnect_session") as restore,
+        pytest.raises(core_exceptions.TooManyRequestsError) as raised,
+    ):
+        activity_utils.get_user_garminconnect_activities_by_dates(
+            1, datetime(2026, 1, 1), datetime(2026, 1, 2), rate_limits
+        )
+
+    assert raised.value.retry_at == until
+    restore.assert_not_called()
+
+
+def test_a_rate_limited_window_records_the_limit_for_every_replica():
+    import garminconnect
+
+    import core.exceptions as core_exceptions
+
+    rate_limits = garmin_helpers.rate_limits()
+    client = _make_garminconnect_client()
+    client.get_activities_by_date.side_effect = garminconnect.GarminConnectTooManyRequestsError("429")
+    session = garmin_service.GarminSession(client, {"di_token": "enc"})
+
+    with pytest.raises(core_exceptions.TooManyRequestsError):
+        activity_utils.fetch_and_process_activities_by_dates(
+            session, datetime(2026, 1, 1, tzinfo=UTC), datetime(2026, 1, 2, tzinfo=UTC), 1, rate_limits
+        )
+
+    assert rate_limits.rate_limited_until(1) is not None

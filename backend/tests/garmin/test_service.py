@@ -7,6 +7,7 @@ import pytest
 
 import core.exceptions as core_exceptions
 import modules.garmin.service as garmin_service
+from tests._helpers import garmin as garmin_helpers
 
 
 class TestFetchUserIntegrationsAndValidateToken:
@@ -166,7 +167,7 @@ class TestLinkedSession:
             patch.object(garmin_service.core_database, "SessionLocal"),
             patch.object(garmin_service, "get_user_garminconnect_session", return_value=None),
             patch.object(garmin_service, "save_refreshed_token") as save,
-            garmin_service.linked_session(1) as session,
+            garmin_service.linked_session(1, garmin_helpers.rate_limits()) as session,
         ):
             assert session is None
 
@@ -178,7 +179,7 @@ class TestLinkedSession:
             patch.object(garmin_service.core_database, "SessionLocal"),
             patch.object(garmin_service, "get_user_garminconnect_session", return_value=linked),
             patch.object(garmin_service, "save_refreshed_token") as save,
-            garmin_service.linked_session(1) as session,
+            garmin_service.linked_session(1, garmin_helpers.rate_limits()) as session,
         ):
             assert session is linked
 
@@ -191,7 +192,7 @@ class TestLinkedSession:
             patch.object(garmin_service, "get_user_garminconnect_session", return_value=linked),
             patch.object(garmin_service, "save_refreshed_token") as save,
             pytest.raises(RuntimeError),
-            garmin_service.linked_session(1),
+            garmin_service.linked_session(1, garmin_helpers.rate_limits()),
         ):
             raise RuntimeError("boom")
 
@@ -203,6 +204,43 @@ class TestLinkedSession:
             patch.object(garmin_service.core_database, "SessionLocal") as session_local,
             patch.object(garmin_service, "get_user_garminconnect_session", return_value=linked),
             patch.object(garmin_service, "save_refreshed_token"),
-            garmin_service.linked_session(1),
+            garmin_service.linked_session(1, garmin_helpers.rate_limits()),
         ):
             session_local.return_value.__exit__.assert_called_once()
+
+
+class TestRateLimit:
+    """A Garmin Connect 429 is remembered for every process, and refuses the calls that follow."""
+
+    def test_a_rate_limit_is_recorded_and_its_clearing_time_returned(self):
+        rate_limits = garmin_helpers.rate_limits()
+
+        error = garmin_service.rate_limit_error(RuntimeError("429"), 1, rate_limits)
+
+        assert isinstance(error, core_exceptions.TooManyRequestsError)
+        assert error.retry_at == rate_limits.rate_limited_until(1)
+
+    def test_a_call_is_refused_while_the_account_is_limited(self):
+        rate_limits = garmin_helpers.rate_limits()
+        until = rate_limits.mark_rate_limited(1)
+
+        with pytest.raises(core_exceptions.TooManyRequestsError) as raised:
+            garmin_service.raise_if_rate_limited(1, rate_limits)
+
+        assert raised.value.retry_at == until
+
+    def test_a_call_is_allowed_when_nothing_is_limited(self):
+        garmin_service.raise_if_rate_limited(1, garmin_helpers.rate_limits())
+
+    def test_a_limited_account_gets_no_session_and_no_token_is_restored(self):
+        rate_limits = garmin_helpers.rate_limits()
+        rate_limits.mark_rate_limited(1)
+
+        with (
+            patch.object(garmin_service, "get_user_garminconnect_session") as restore,
+            pytest.raises(core_exceptions.TooManyRequestsError),
+            garmin_service.linked_session(1, rate_limits),
+        ):
+            pass
+
+        restore.assert_not_called()

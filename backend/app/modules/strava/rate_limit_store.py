@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import jasil.providers as platform_providers
 
 import core.logger as core_logger
+import core.provider_rate_limit as core_provider_rate_limit
 import modules.strava.constants as strava_constants
 
 logger = core_logger.get_logger(__name__)
@@ -12,8 +13,8 @@ logger = core_logger.get_logger(__name__)
 #: Short-term limits reset every 15 minutes.
 SHORT_TERM_COOLDOWN_SECONDS = 15 * 60
 
-_SHORT_TERM_KEY = "strava:rate_limited:short:{client_id}"
-_LONG_TERM_KEY = "strava:rate_limited:long:{client_id}"
+_SHORT_TERM_SUBJECT = "short:{client_id}"
+_LONG_TERM_SUBJECT = "long:{client_id}"
 _REFRESH_CLAIM_KEY = "strava:token_refresh:{user_id}"
 
 
@@ -41,6 +42,7 @@ class StravaRateLimitStore:
             state: The platform state provider.
         """
         self._state = state
+        self._limits = core_provider_rate_limit.ProviderRateLimitStore(state, "strava")
 
     def mark_rate_limited(self, client_id: str, is_long_term: bool = False) -> datetime:
         """Record that a rate limit was hit.
@@ -58,31 +60,28 @@ class StravaRateLimitStore:
         now = datetime.now(UTC)
         if is_long_term:
             expires_at = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-            key, ttl = _LONG_TERM_KEY.format(client_id=client_id), max(1, int((expires_at - now).total_seconds()))
             logger.warning(
                 "Strava daily rate limit hit, skipping until it resets",
                 extra=core_logger.context(client_id=client_id, resets_at=expires_at),
             )
         else:
-            ttl = SHORT_TERM_COOLDOWN_SECONDS
-            expires_at = now + timedelta(seconds=ttl)
-            key = _SHORT_TERM_KEY.format(client_id=client_id)
+            expires_at = now + timedelta(seconds=SHORT_TERM_COOLDOWN_SECONDS)
             logger.warning(
                 "Strava 15-minute rate limit hit, skipping for the cooldown",
-                extra=core_logger.context(client_id=client_id, cooldown_seconds=ttl),
+                extra=core_logger.context(client_id=client_id, cooldown_seconds=SHORT_TERM_COOLDOWN_SECONDS),
             )
-        try:
-            self._state.set(key, expires_at.isoformat().encode(), ttl_seconds=ttl)
-        except platform_providers.StateBackendUnavailableError as err:
-            logger.error("Could not record the Strava rate limit", exc_info=err)
+        self._limits.mark(
+            _LONG_TERM_SUBJECT.format(client_id=client_id)
+            if is_long_term
+            else _SHORT_TERM_SUBJECT.format(client_id=client_id),
+            expires_at,
+        )
         return expires_at
 
     def is_rate_limited(self, client_id: str) -> bool:
         """Check if Strava API calls should be skipped for an application.
 
-        Fails open when the shared state is unreachable: a missed back-off costs
-        one rejected call, which marks the limit again, whereas failing closed
-        would stop every sync for as long as the state store is down.
+        Fails open when the shared state is unreachable.
 
         Args:
             client_id: The Strava application (client ID) about to be called.
@@ -90,20 +89,10 @@ class StravaRateLimitStore:
         Returns:
             True if currently rate-limited.
         """
-        try:
-            return (
-                self._state.get(_LONG_TERM_KEY.format(client_id=client_id)) is not None
-                or self._state.get(_SHORT_TERM_KEY.format(client_id=client_id)) is not None
-            )
-        except platform_providers.StateBackendUnavailableError as err:
-            logger.warning("Could not read the Strava rate limit state; assuming not limited", exc_info=err)
-            return False
+        return self.rate_limited_until(client_id) is not None
 
     def rate_limited_until(self, client_id: str) -> datetime | None:
         """Return when an application's active rate limit clears.
-
-        A flag whose expiry cannot be read (one written before expiries were recorded) counts as
-        the 15-minute cooldown from now, so a sync that waits never waits for less than a limit lasts.
 
         Args:
             client_id: The Strava application (client ID).
@@ -111,24 +100,12 @@ class StravaRateLimitStore:
         Returns:
             The later expiry of the active limits, or ``None`` when none is active or the state is unreachable.
         """
-        try:
-            values = [
-                self._state.get(_LONG_TERM_KEY.format(client_id=client_id)),
-                self._state.get(_SHORT_TERM_KEY.format(client_id=client_id)),
-            ]
-        except platform_providers.StateBackendUnavailableError as err:
-            logger.warning("Could not read the Strava rate limit state; no expiry known", exc_info=err)
-            return None
-        expiries = [self._parse_expiry(value) for value in values if value is not None]
+        expiries = [
+            expiry
+            for subject in (_LONG_TERM_SUBJECT, _SHORT_TERM_SUBJECT)
+            if (expiry := self._limits.expiry(subject.format(client_id=client_id))) is not None
+        ]
         return max(expiries) if expiries else None
-
-    @staticmethod
-    def _parse_expiry(value: bytes) -> datetime:
-        """Read a flag's recorded expiry, falling back to the 15-minute cooldown from now."""
-        try:
-            return datetime.fromisoformat(value.decode())
-        except ValueError:
-            return datetime.now(UTC) + timedelta(seconds=SHORT_TERM_COOLDOWN_SECONDS)
 
     def claim_token_refresh(self, user_id: int) -> bool:
         """Claim the right to refresh a user's Strava token.

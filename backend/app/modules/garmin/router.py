@@ -108,13 +108,14 @@ def garminconnect_retrieve_gear(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
     sync_states: garmin_dependencies.GarminSyncStateStoreDep,
+    rate_limits: garmin_dependencies.GarminRateLimitStoreDep,
 ) -> garmin_schema.GarminSyncStatus:
     """Queue a sync of the user's Garmin Connect gear; a background job runs it.
 
     Poll ``GET /garminconnect/sync/gear`` for the outcome. A second request while one is
     pending is answered 409.
     """
-    return garmin_sync_service.request_gear_sync(token_user_id, sync_states, db)
+    return garmin_sync_service.request_gear_sync(token_user_id, sync_states, rate_limits, db)
 
 
 @router.post(
@@ -131,6 +132,7 @@ def garminconnect_retrieve_health_days(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
     sync_states: garmin_dependencies.GarminSyncStateStoreDep,
+    rate_limits: garmin_dependencies.GarminRateLimitStoreDep,
 ) -> garmin_schema.GarminSyncStatus:
     """Queue a sync of the user's Garmin Connect health data for a date range.
 
@@ -138,7 +140,7 @@ def garminconnect_retrieve_health_days(
     ``GET /garminconnect/sync/health`` for the outcome. A second request while one is pending is
     answered 409.
     """
-    return garmin_sync_service.request_health_sync(token_user_id, start_date, end_date, sync_states, db)
+    return garmin_sync_service.request_health_sync(token_user_id, start_date, end_date, sync_states, rate_limits, db)
 
 
 @router.get(

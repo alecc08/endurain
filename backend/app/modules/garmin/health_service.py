@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 import core.database as core_database
 import core.logger as core_logger
+import modules.garmin.rate_limit_store as garmin_rate_limit_store
 import modules.garmin.service as garmin_service
 import modules.health.health_sleep.integration_service as health_sleep_integration
 import modules.health.health_sleep.schema as health_sleep_schema
@@ -396,6 +397,7 @@ def get_user_garminconnect_health_by_dates(
     start_date: datetime,
     end_date: datetime,
     user_id: int,
+    rate_limits: garmin_rate_limit_store.GarminRateLimitStore,
 ) -> bool:
     """Fetch and store one user's Garmin Connect health data for a window.
 
@@ -407,12 +409,13 @@ def get_user_garminconnect_health_by_dates(
         start_date: Start of the window.
         end_date: End of the window.
         user_id: The user to sync.
+        rate_limits: The shared Garmin Connect rate-limit state.
 
     Returns:
         True when the data was synced, False when the account is not linked or Garmin Connect
         rejected its token.
     """
-    with garmin_service.linked_session(user_id) as session:
+    with garmin_service.linked_session(user_id, rate_limits) as session:
         if session is None:
             return False
 
@@ -437,13 +440,16 @@ def get_user_garminconnect_health_by_dates(
     return True
 
 
-def sync_health_for_dates(start_date: date, end_date: date, user_id: int) -> bool:
+def sync_health_for_dates(
+    start_date: date, end_date: date, user_id: int, rate_limits: garmin_rate_limit_store.GarminRateLimitStore
+) -> bool:
     """Fetch and store one user's Garmin Connect health data for whole days.
 
     Args:
         start_date: First day to fetch.
         end_date: Last day to fetch, inclusive.
         user_id: The user to sync.
+        rate_limits: The shared Garmin Connect rate-limit state.
 
     Returns:
         True when the data was synced, False when the account is not linked or was rejected.
@@ -452,4 +458,5 @@ def sync_health_for_dates(start_date: date, end_date: date, user_id: int) -> boo
         datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
         datetime.combine(end_date, datetime.max.time(), tzinfo=UTC),
         user_id,
+        rate_limits,
     )

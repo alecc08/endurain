@@ -9,6 +9,7 @@ import pytest
 
 import modules.garmin.health_service as health_utils
 import modules.health.health_sleep.schema as health_sleep_schema
+from tests._helpers import garmin as garmin_helpers
 
 DAY = datetime(2026, 9, 29, tzinfo=UTC)
 
@@ -132,7 +133,7 @@ class TestExpiredToken:
             patch.object(health_utils.garmin_service, "get_user_garminconnect_session", return_value=session),
             patch.object(health_utils.garmin_service, "handle_rejected_token") as unlink,
         ):
-            health_utils.get_user_garminconnect_health_by_dates(DAY, DAY, 1)
+            health_utils.get_user_garminconnect_health_by_dates(DAY, DAY, 1, garmin_helpers.rate_limits())
 
         unlink.assert_called_once()
         assert unlink.call_args.args[:2] == (1, session)
@@ -143,7 +144,7 @@ class TestExpiredToken:
             patch.object(health_utils.garmin_service, "get_user_garminconnect_session", return_value=None),
             patch.object(health_utils, "fetch_and_process_bc_by_dates") as fetch,
         ):
-            health_utils.get_user_garminconnect_health_by_dates(DAY, DAY, 1)
+            health_utils.get_user_garminconnect_health_by_dates(DAY, DAY, 1, garmin_helpers.rate_limits())
 
         fetch.assert_not_called()
 
@@ -158,7 +159,7 @@ class TestFailuresPropagate:
             patch.object(health_utils.garmin_service, "save_refreshed_token") as save,
             pytest.raises(RuntimeError),
         ):
-            health_utils.get_user_garminconnect_health_by_dates(DAY, DAY, 1)
+            health_utils.get_user_garminconnect_health_by_dates(DAY, DAY, 1, garmin_helpers.rate_limits())
 
         save.assert_called_once()
 
@@ -308,10 +309,14 @@ class TestFetchFailures:
             patch.object(health_utils, "fetch_and_process_sleep_by_dates", return_value=0),
             patch.object(health_utils.garmin_service, "save_refreshed_token"),
         ):
-            assert health_utils.get_user_garminconnect_health_by_dates(DAY, DAY, 1) is True
+            assert (
+                health_utils.get_user_garminconnect_health_by_dates(DAY, DAY, 1, garmin_helpers.rate_limits()) is True
+            )
 
         with (
             patch.object(health_utils.core_database, "SessionLocal"),
             patch.object(health_utils.garmin_service, "get_user_garminconnect_session", return_value=None),
         ):
-            assert health_utils.get_user_garminconnect_health_by_dates(DAY, DAY, 1) is False
+            assert (
+                health_utils.get_user_garminconnect_health_by_dates(DAY, DAY, 1, garmin_helpers.rate_limits()) is False
+            )

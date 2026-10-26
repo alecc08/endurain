@@ -402,7 +402,7 @@ class TestStreamsConversion:
 
 
 class TestFetchAndProcessActivitiesIsolation:
-    """One activity that cannot be processed does not stop the rest of the window."""
+    """One activity that cannot be processed does not stop the rest of the window, and the window then fails."""
 
     def _run(self, monkeypatch, rate_limits, process):
         monkeypatch.setattr(rate_limits, "is_rate_limited", lambda client_id: False)
@@ -421,13 +421,19 @@ class TestFetchAndProcessActivitiesIsolation:
             client, datetime(2026, 1, 1), datetime(2026, 1, 2), 1, _integrations(), rate_limits
         )
 
-    def test_a_failing_activity_is_skipped_and_the_others_are_processed(self, monkeypatch, rate_limits):
+    def test_a_failing_activity_does_not_stop_the_others_but_fails_the_window(self, monkeypatch, rate_limits):
+        processed = []
+
         def process(activity, *_args):
+            processed.append(activity.id)
             if activity.id == 2:
                 raise TypeError("calories is None")
             return f"stored-{activity.id}"
 
-        assert self._run(monkeypatch, rate_limits, process) == ["stored-1", "stored-3"]
+        with pytest.raises(TypeError, match="calories is None"):
+            self._run(monkeypatch, rate_limits, process)
+
+        assert processed == [1, 2, 3]
 
     def test_a_rate_limit_still_stops_the_window(self, monkeypatch, rate_limits):
         def process(activity, *_args):

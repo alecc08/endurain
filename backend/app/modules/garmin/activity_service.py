@@ -7,12 +7,15 @@ from datetime import datetime
 import garminconnect
 
 import core.database as core_database
+import core.exceptions as core_exceptions
 import core.file_uploads as file_uploads
 import core.logger as core_logger
 import modules.activities.activity.integration_service as activity_integration
 import modules.activities.activity.schema as activity_schema
 import modules.activities.activity_ingestion.integration_service as activity_ingestion_integration
+import modules.garmin.constants as garmin_constants
 import modules.garmin.gear_service as garmin_gear_service
+import modules.garmin.rate_limit_store as garmin_rate_limit_store
 import modules.garmin.service as garmin_service
 
 logger = core_logger.get_logger(__name__)
@@ -102,11 +105,56 @@ def _download_and_ingest_activity(
     return stored
 
 
+def _process_listed_activity(
+    session: garmin_service.GarminSession,
+    activity: dict,
+    user_id: int,
+    rate_limits: garmin_rate_limit_store.GarminRateLimitStore,
+) -> list[activity_schema.ActivityRead]:
+    """Download and store one activity of a window, unless it is already stored.
+
+    Args:
+        session: The user's authenticated Garmin Connect session.
+        activity: The Garmin activity summary.
+        user_id: The user the activity belongs to.
+        rate_limits: The shared Garmin Connect rate-limit state.
+
+    Returns:
+        The activities stored from it.
+
+    Raises:
+        WindowStoppedError: When Garmin Connect rejected the token, which has been dealt with: the account is
+            unlinked, so no other activity of the window can be fetched.
+        TooManyRequestsError: When Garmin Connect rate limits the account.
+    """
+    activity_id = activity["activityId"]
+
+    with core_database.SessionLocal() as db:
+        already_stored = activity_integration.get_activity_by_garminconnect_id(activity_id, user_id, db)
+    if already_stored:
+        logger.debug(
+            "Activity already stored in the database",
+            extra=core_logger.context(user_id=user_id, activity_id=activity_id),
+        )
+        return []
+
+    logger.debug("Processing activity", extra=core_logger.context(user_id=user_id, activity_id=activity_id))
+    try:
+        return _download_and_ingest_activity(session.client, activity, user_id)
+    except garminconnect.GarminConnectAuthenticationError as err:
+        garmin_service.handle_rejected_token(user_id, session, err)
+        raise activity_ingestion_integration.WindowStoppedError from err
+    except garminconnect.GarminConnectTooManyRequestsError as err:
+        # Ingestion skips what is already stored, so the deferred refresh resumes where this stopped.
+        raise garmin_service.rate_limit_error(err, user_id, rate_limits) from err
+
+
 def fetch_and_process_activities_by_dates(
     session: garmin_service.GarminSession,
     start_date: datetime,
     end_date: datetime,
     user_id: int,
+    rate_limits: garmin_rate_limit_store.GarminRateLimitStore,
 ) -> list[activity_schema.ActivityRead] | None:
     """Fetch a user's Garmin Connect activities in a window and store the new ones.
 
@@ -121,6 +169,7 @@ def fetch_and_process_activities_by_dates(
         start_date: Start of the window.
         end_date: End of the window.
         user_id: The user the activities belong to.
+        rate_limits: The shared Garmin Connect rate-limit state.
 
     Returns:
         The stored activities, or ``None`` when there were none.
@@ -129,9 +178,8 @@ def fetch_and_process_activities_by_dates(
         TooManyRequestsError: When Garmin Connect rate limits the window; the refresh is deferred.
         Exception: The first failure of the window fetch or of an activity.
     """
-    garminconnect_client = session.client
     try:
-        garmin_activities = garminconnect_client.get_activities_by_date(
+        garmin_activities = session.client.get_activities_by_date(
             str(start_date.date()),
             str(end_date.date()),
         )
@@ -139,7 +187,7 @@ def fetch_and_process_activities_by_dates(
         garmin_service.handle_rejected_token(user_id, session, err)
         return None
     except garminconnect.GarminConnectTooManyRequestsError as err:
-        raise garmin_service.rate_limit_error(err) from err
+        raise garmin_service.rate_limit_error(err, user_id, rate_limits) from err
 
     if garmin_activities is None:
         logger.info(
@@ -148,42 +196,15 @@ def fetch_and_process_activities_by_dates(
         )
         return None
 
-    parsed_activities: list[activity_schema.ActivityRead] = []
-    first_failure: Exception | None = None
-    for activity in garmin_activities:
-        activity_id = activity["activityId"]
-
-        with core_database.SessionLocal() as db:
-            already_stored = activity_integration.get_activity_by_garminconnect_id(activity_id, user_id, db)
-        if already_stored:
-            logger.debug(
-                "Activity already stored in the database",
-                extra=core_logger.context(user_id=user_id, activity_id=activity_id),
-            )
-            continue
-
-        logger.debug(
-            "Processing activity",
-            extra=core_logger.context(user_id=user_id, activity_id=activity_id),
-        )
-        try:
-            parsed_activities.extend(_download_and_ingest_activity(garminconnect_client, activity, user_id))
-        except garminconnect.GarminConnectAuthenticationError as err:
-            garmin_service.handle_rejected_token(user_id, session, err)
-            break
-        except garminconnect.GarminConnectTooManyRequestsError as err:
-            # Ingestion skips what is already stored, so the deferred refresh resumes where this stopped.
-            raise garmin_service.rate_limit_error(err) from err
-        except Exception as err:
-            logger.warning(
-                "Error processing Garmin Connect activity",
-                exc_info=err,
-                extra=core_logger.context(user_id=user_id, activity_id=activity_id),
-            )
-            first_failure = first_failure or err
-
-    if first_failure is not None:
-        raise first_failure
+    stored = activity_ingestion_integration.run_provider_window(
+        garmin_activities,
+        lambda activity: _process_listed_activity(session, activity, user_id, rate_limits),
+        provider=garmin_constants.PROVIDER_NAME,
+        user_id=user_id,
+        describe=lambda activity: {"activity_id": activity["activityId"]},
+        propagate=(core_exceptions.TooManyRequestsError,),
+    )
+    parsed_activities = [parsed for activity_result in stored for parsed in activity_result]
     return parsed_activities if parsed_activities else None
 
 
@@ -191,6 +212,7 @@ def get_user_garminconnect_activities_by_dates(
     user_id: int,
     start_date: datetime,
     end_date: datetime,
+    rate_limits: garmin_rate_limit_store.GarminRateLimitStore,
 ) -> list[activity_schema.ActivityRead] | None:
     """Fetch and store one user's Garmin Connect activities recorded in a window.
 
@@ -198,15 +220,17 @@ def get_user_garminconnect_activities_by_dates(
         user_id: The user to sync.
         start_date: Start of the window.
         end_date: End of the window.
+        rate_limits: The shared Garmin Connect rate-limit state.
 
     Returns:
         The stored activities, or ``None`` when Garmin Connect is not linked or
         nothing new came back.
 
     Raises:
+        TooManyRequestsError: When Garmin Connect rate limits the account.
         Exception: Whatever the sync raised, so the refresh job fails and is retried.
     """
-    with garmin_service.linked_session(user_id) as session:
+    with garmin_service.linked_session(user_id, rate_limits) as session:
         if session is None:
             return None
 
@@ -214,7 +238,7 @@ def get_user_garminconnect_activities_by_dates(
             "Started Garmin Connect activities processing for date range to",
             extra=core_logger.context(user_id=user_id, start_date=start_date.date(), end_date=end_date.date()),
         )
-        processed = fetch_and_process_activities_by_dates(session, start_date, end_date, user_id)
+        processed = fetch_and_process_activities_by_dates(session, start_date, end_date, user_id, rate_limits)
         logger.info(
             "Garmin Connect activities processed",
             extra=core_logger.context(user_id=user_id, count=len(processed) if processed else 0),

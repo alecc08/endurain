@@ -12,6 +12,7 @@ from jasil.jobs.registry import JobHandlerRegistry
 
 import core.logger as core_logger
 import modules.garmin.events as garmin_events
+import modules.garmin.rate_limit_store as garmin_rate_limit_store
 import modules.garmin.sync_service as garmin_sync_service
 import modules.garmin.sync_state_store as garmin_sync_state_store
 
@@ -27,9 +28,11 @@ def process_sync_requested_for_event(event: Event) -> None:
         event: The ``garmin.sync_requested`` event.
     """
     payload = platform_event_versioning.parse_payload(garmin_events.SyncRequestedPayload, event)
+    state = platform_runtime.get_state()
     garmin_sync_service.run_sync(
         payload,
-        garmin_sync_state_store.GarminSyncStateStore(platform_runtime.get_state()),
+        garmin_sync_state_store.GarminSyncStateStore(state),
+        garmin_rate_limit_store.GarminRateLimitStore(state),
         will_retry=not event.is_last_attempt,
     )
     logger.debug(

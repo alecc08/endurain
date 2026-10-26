@@ -7,6 +7,7 @@ import core.database as core_database
 import core.logger as core_logger
 import modules.activities.activity.integration_service as activity_integration
 import modules.activities.activity.schema as activity_schema
+import modules.garmin.rate_limit_store as garmin_rate_limit_store
 import modules.garmin.service as garmin_service
 import modules.gears.gear.integration_service as gears_integration
 import modules.gears.gear.schema as gears_schema
@@ -160,7 +161,7 @@ def set_activities_gear(user_id: int, db: Session) -> int:
     return len(gear_assignments)
 
 
-def get_user_gear(user_id: int) -> bool:
+def get_user_gear(user_id: int, rate_limits: garmin_rate_limit_store.GarminRateLimitStore) -> bool:
     """Fetch a user's Garmin Connect gear, store it and assign it to their activities.
 
     An expired token unlinks the account and notifies the user. Gear sync is switched on only
@@ -168,6 +169,7 @@ def get_user_gear(user_id: int) -> bool:
 
     Args:
         user_id: The user to sync.
+        rate_limits: The shared Garmin Connect rate-limit state.
 
     Returns:
         True when the gear was synced, False when the account is not linked, was unlinked, or
@@ -178,7 +180,7 @@ def get_user_gear(user_id: int) -> bool:
         extra=core_logger.context(user_id=user_id),
     )
 
-    with garmin_service.linked_session(user_id) as session:
+    with garmin_service.linked_session(user_id, rate_limits) as session:
         if session is None:
             return False
         try:

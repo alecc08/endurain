@@ -21,6 +21,15 @@ from sqlalchemy.orm import Session
 import modules.activities.activity.contracts as activity_contracts
 import modules.activities.activity.schema as activity_schema
 
+
+class WindowStoppedError(Exception):
+    """Raised by an activity processor to end the window early, keeping what was already processed.
+
+    For a provider that has dealt with the cause itself, such as unlinking an account whose token was
+    rejected, so none of the activities that follow would succeed.
+    """
+
+
 #: Fetch a user's activities recorded in ``[window_start, window_end]``, storing
 #: each through the ingestion seam and returning what it stored. Returns an empty
 #: list (or ``None``) when the user has not linked this provider — an unlinked
