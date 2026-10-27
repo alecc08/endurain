@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime
 from unittest.mock import patch
 
 from fastapi import FastAPI
