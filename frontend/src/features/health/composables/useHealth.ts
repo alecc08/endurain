@@ -6,7 +6,7 @@
 
 import { computed, type MaybeRefOrGetter, toValue } from 'vue'
 import { storeToRefs } from 'pinia'
-import { keepPreviousData, useQuery } from '@tanstack/vue-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/vue-query'
 
 import type {
   FastingEntry,
@@ -68,6 +68,9 @@ import {
   updateSleepTarget,
 } from '@/features/health/services/health'
 
+/** Freshness window for mutable health reads; health writes and sync events invalidate them. */
+const HEALTH_QUERY_STALE_TIME_MS = 60_000
+
 /**
  * The authenticated user's health targets, used to annotate each dashboard card
  * with its metric's target and direction. Gated on authentication.
@@ -80,23 +83,31 @@ export function useHealthTargetsQuery() {
   return useQuery({
     queryKey: queryKeys.health.targets(),
     queryFn: ({ signal }) => fetchHealthTargets(signal),
+    staleTime: HEALTH_QUERY_STALE_TIME_MS,
     enabled: isAuthenticated,
   })
 }
 
 /**
- * The authenticated user's consolidated daily health dashboard (today's sleep,
- * resting HR, steps, weight, fasting, water and bowel-movement metrics). Gated
- * on authentication.
+ * The authenticated user's consolidated daily health dashboard and health targets.
+ * The response also seeds the targets query cache for other health views.
  *
- * @returns The TanStack Query result for the daily health dashboard.
+ * @returns The TanStack Query result for the dashboard and targets.
  */
 export function useHealthDashboardQuery() {
   const { isAuthenticated } = storeToRefs(useAuthStore())
+  const client = useQueryClient()
 
   return useQuery({
     queryKey: queryKeys.health.dashboard(),
-    queryFn: ({ signal }) => fetchHealthDashboard(signal),
+    queryFn: async ({ signal }) => {
+      const dashboard = await fetchHealthDashboard(signal)
+      if (dashboard.targets) {
+        client.setQueryData(queryKeys.health.targets(), dashboard.targets)
+      }
+      return dashboard
+    },
+    staleTime: HEALTH_QUERY_STALE_TIME_MS,
     enabled: isAuthenticated,
   })
 }
@@ -148,6 +159,7 @@ function useHealthEntriesQuery<Page, Interval extends string>(
         },
         signal,
       ),
+    staleTime: HEALTH_QUERY_STALE_TIME_MS,
     placeholderData: keepPreviousData,
     enabled: isAuthenticated,
   })
@@ -519,6 +531,7 @@ export function useActiveFastingQuery() {
   return useQuery({
     queryKey: queryKeys.health.fastingActive(),
     queryFn: ({ signal }) => fetchActiveFasting(signal),
+    staleTime: HEALTH_QUERY_STALE_TIME_MS,
     enabled: isAuthenticated,
   })
 }
@@ -535,6 +548,7 @@ export function useFastingStatsQuery() {
   return useQuery({
     queryKey: queryKeys.health.fastingStats(),
     queryFn: ({ signal }) => fetchFastingStats(signal),
+    staleTime: HEALTH_QUERY_STALE_TIME_MS,
     enabled: isAuthenticated,
   })
 }

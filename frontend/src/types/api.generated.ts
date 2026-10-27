@@ -147,6 +147,9 @@ export interface paths {
         /**
          * List Following Feed
          * @description List a keyset slice of the authenticated user's following feed.
+         *
+         *     The slice also carries the public profile of each owner on it in ``users`` (the projection
+         *     ``GET /users/id/{user_id}`` returns), so a token with ``activities:read`` alone receives it too.
          */
         get: operations["list_following_feed_api_v1_activities_feed_get"];
         put?: never;
@@ -379,6 +382,30 @@ export interface paths {
          *     saved in between.
          */
         patch: operations["edit_activity_api_v1_activities__activity_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/activities/{activity_id}/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Activity Detail
+         * @description Return an activity with its laps, sets and workout steps in one read.
+         *
+         *     Equivalent to reading the activity and each collection separately, with the access decision made
+         *     once. Streams and media stay on their own routes. The ``ETag`` is the activity's, to echo in
+         *     ``If-Match`` when saving it.
+         */
+        get: operations["read_activity_detail_api_v1_activities__activity_id__detail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/activities/{activity_id}/laps": {
@@ -804,7 +831,9 @@ export interface paths {
          * @description List the follow requests awaiting the authenticated user's decision.
          *
          *     Always scoped to the caller, so there is no user id to supply and no way to
-         *     read anyone else's pending requests.
+         *     read anyone else's pending requests. The page also carries each requester's public profile in
+         *     ``users`` (the projection ``GET /users/id/{user_id}`` returns), so a token with
+         *     ``followers:read`` alone receives it too.
          */
         get: operations["list_follow_requests_api_v1_followers_follow_requests_get"];
         put?: never;
@@ -863,7 +892,9 @@ export interface paths {
          * List User Followers
          * @description List a user's followers, with the matching total.
          *
-         *     Privacy-aware: only the user themselves or an accepted follower may list them.
+         *     Privacy-aware: only the user themselves or an accepted follower may list them. The page also
+         *     carries each follower's public profile in ``users`` (the projection ``GET /users/id/{user_id}``
+         *     returns), so a token with ``followers:read`` alone receives it too.
          */
         get: operations["list_user_followers_api_v1_followers_users__user_id__followers_get"];
         put?: never;
@@ -916,7 +947,9 @@ export interface paths {
          * List User Following
          * @description List who a user follows, with the matching total.
          *
-         *     Privacy-aware: only the user themselves or an accepted follower may list them.
+         *     Privacy-aware: only the user themselves or an accepted follower may list them. The page also
+         *     carries each followee's public profile in ``users`` (the projection ``GET /users/id/{user_id}``
+         *     returns), so a token with ``followers:read`` alone receives it too.
          */
         get: operations["list_user_following_api_v1_followers_users__user_id__following_get"];
         put?: never;
@@ -1739,13 +1772,7 @@ export interface paths {
          *         db: Database session for executing queries.
          *
          *     Returns:
-         *         HealthDashboardResponse: A consolidated response containing:
-         *             - sleep: Latest sleep record with key metrics
-         *             - weight: Latest weight and BMI data
-         *             - steps: Today's step count
-         *             - fasting: Active or most recent fasting session
-         *             - water: Today's water intake in milliliters
-         *             - poop: Today's bowel movement count
+         *         The consolidated daily metrics and the user's health targets.
          */
         get: operations["read_health_daily_stats_api_v1_health_stats_daily_get"];
         put?: never;
@@ -2257,6 +2284,8 @@ export interface paths {
          *         token_user_id: ID of the user from the access token.
          *         db: Database session dependency.
          *         page: Resolved page number and size.
+         *         unread_only: Keep only the notifications that have not been read. ``total`` follows the
+         *             same filter, so ``unread_only=true&num_records=1`` is the unread count.
          *
          *     Returns:
          *         The page of notifications with the user's total.
@@ -3663,6 +3692,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/activities/{activity_id}/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Public Activity Detail
+         * @description Return a shared activity with its laps, sets and workout steps in one read.
+         *
+         *     Answers 404 when the activity does not exist *or* is not public, so it cannot be used to
+         *     enumerate which ids exist. A collection the owner hides is an empty page.
+         */
+        get: operations["read_public_activity_detail_api_v1_public_activities__activity_id__detail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/activities/{activity_id}/laps": {
         parameters: {
             query?: never;
@@ -4797,6 +4849,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/id/{user_id}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read User Profile Overview
+         * @description Return the public profile and summary values the profile page displays.
+         */
+        get: operations["read_user_profile_overview_api_v1_users_id__user_id__overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/username/contains/{username}": {
         parameters: {
             query?: never;
@@ -5221,6 +5293,26 @@ export interface components {
             updated: number;
         };
         /**
+         * ActivityDetailRead
+         * @description An activity together with the first page of each child collection the detail view shows.
+         *
+         *     Each collection is the page envelope its own route returns, so a client that finds a ``next`` page
+         *     continues with that route. A collection hidden from the viewer, or one the activity has none of,
+         *     is an empty page.
+         *
+         *     Attributes:
+         *         activity: The activity, masked as the viewer may see it.
+         *         laps: The activity's laps.
+         *         sets: The activity's performed workout sets.
+         *         workout_steps: The activity's planned workout steps.
+         */
+        ActivityDetailRead: {
+            activity: components["schemas"]["ActivityRead"];
+            laps: components["schemas"]["Page_ActivityLapsRead_"];
+            sets: components["schemas"]["Page_ActivitySetsRead_"];
+            workout_steps: components["schemas"]["Page_ActivityWorkoutStepsRead_"];
+        };
+        /**
          * ActivityEdit
          * @description Schema for partial (PATCH) updates to an activity.
          *
@@ -5305,6 +5397,34 @@ export interface components {
             id: number;
             /** Wkt Step Name */
             wkt_step_name: string;
+        };
+        /**
+         * ActivityFeedPage
+         * @description One keyset slice of the following feed.
+         *
+         *     The feed takes inserts at the head continuously, so offset paging would repeat and skip rows
+         *     across requests.
+         *
+         *     Attributes:
+         *         users: The public profile of each owner on this slice, keyed by user ID, one entry per
+         *             owner however many of their activities the slice holds. It is the projection
+         *             ``GET /users/id/{user_id}`` returns, so the client needs no lookup per owner. An owner
+         *             who is inactive or awaiting approval has no entry.
+         */
+        ActivityFeedPage: {
+            /** Items */
+            items: components["schemas"]["ActivityRead"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+            /** Num Records */
+            num_records: number;
+            /**
+             * Users
+             * @description Public profile of each activity owner on this slice, keyed by user ID
+             */
+            users?: {
+                [key: string]: components["schemas"]["UserPublicRead"];
+            };
         };
         /**
          * ActivityIngestionJobRead
@@ -5943,15 +6063,6 @@ export interface components {
          * @enum {string}
          */
         Currency: "euro" | "dollar" | "pound";
-        /** CursorPage[ActivityRead] */
-        CursorPage_ActivityRead_: {
-            /** Items */
-            items: components["schemas"]["ActivityRead"][];
-            /** Next Cursor */
-            next_cursor?: string | null;
-            /** Num Records */
-            num_records: number;
-        };
         /**
          * DaySummary
          * @description Daily activity summary within a week.
@@ -6086,6 +6197,35 @@ export interface components {
          * @enum {string}
          */
         FastingType: "16:8" | "18:6" | "20:4" | "OMAD" | "24h" | "36h" | "48h" | "72h" | "custom";
+        /**
+         * FollowRelationshipPage
+         * @description One page of follow relationships, in the envelope the activities lists use.
+         *
+         *     Attributes:
+         *         users: The public profile of the user on the other side of each row (the follower in a
+         *             followers list, the followee in a following list, the requester among pending requests),
+         *             keyed by user ID. It is the projection ``GET /users/id/{user_id}`` returns, so a list needs
+         *             no lookup per row. A user who is inactive or awaiting approval has no entry.
+         */
+        FollowRelationshipPage: {
+            /** Items */
+            items: components["schemas"]["FollowRelationshipRead"][];
+            /** Next */
+            next?: number | null;
+            /** Num Records */
+            num_records: number;
+            /** Page */
+            page: number;
+            /** Total */
+            total: number;
+            /**
+             * Users
+             * @description Public profile of the user on the other side of each row, keyed by user ID
+             */
+            users?: {
+                [key: string]: components["schemas"]["UserPublicRead"];
+            };
+        };
         /**
          * FollowRelationshipRead
          * @description Serialized representation of a follow relationship.
@@ -6724,6 +6864,7 @@ export interface components {
          *         fasting: Active or most recent fasting session.
          *         water: Today's water intake.
          *         poop: Today's bowel movement summary.
+         *         targets: The user's configured health targets.
          */
         HealthDashboardResponse: {
             /** @description Active or latest fasting session */
@@ -6734,6 +6875,8 @@ export interface components {
             sleep?: components["schemas"]["HealthSleepDashboard"] | null;
             /** @description Latest steps data */
             steps?: components["schemas"]["HealthStepsDashboard"] | null;
+            /** @description The user's health targets */
+            targets?: components["schemas"]["HealthTargetsRead"] | null;
             /** @description Today's water intake */
             water?: components["schemas"]["HealthWaterDashboard"] | null;
             /** @description Latest weight metrics */
@@ -9435,19 +9578,6 @@ export interface components {
             /** Total */
             total: number;
         };
-        /** Page[FollowRelationshipRead] */
-        Page_FollowRelationshipRead_: {
-            /** Items */
-            items: components["schemas"]["FollowRelationshipRead"][];
-            /** Next */
-            next?: number | null;
-            /** Num Records */
-            num_records: number;
-            /** Page */
-            page: number;
-            /** Total */
-            total: number;
-        };
         /** Page[GearComponentRead] */
         Page_GearComponentRead_: {
             /** Items */
@@ -10695,6 +10825,29 @@ export interface components {
              * @description Servable URL of the user's photo
              */
             photo_path?: string | null;
+        };
+        /**
+         * UserProfileOverviewRead
+         * @description Public profile and summary metrics displayed on a user's profile page.
+         *
+         *     Attributes:
+         *         user: The profile's public user projection.
+         *         week_stats: Visible per-sport activity totals for the current week.
+         *         month_stats: Visible per-sport activity totals for the current month.
+         *         month_activity_count: Visible activity count for the current month.
+         *         followers_count: Accepted followers, or None when the viewer cannot see the network.
+         *         following_count: Accepted followees, or None when the viewer cannot see the network.
+         */
+        UserProfileOverviewRead: {
+            /** Followers Count */
+            followers_count?: number | null;
+            /** Following Count */
+            following_count?: number | null;
+            /** Month Activity Count */
+            month_activity_count: number;
+            month_stats: components["schemas"]["ActivityStatsRead"];
+            user: components["schemas"]["UserPublicRead"];
+            week_stats: components["schemas"]["ActivityStatsRead"];
         };
         /**
          * UserPublicRead
@@ -12868,7 +13021,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CursorPage_ActivityRead_"];
+                    "application/json": components["schemas"]["ActivityFeedPage"];
                 };
             };
             /** @description Validation Error */
@@ -13324,6 +13477,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    read_activity_detail_api_v1_activities__activity_id__detail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                activity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityDetailRead"];
                 };
             };
             /** @description Validation Error */
@@ -13940,7 +14133,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Page_FollowRelationshipRead_"];
+                    "application/json": components["schemas"]["FollowRelationshipPage"];
                 };
             };
             /** @description Validation Error */
@@ -14066,7 +14259,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Page_FollowRelationshipRead_"];
+                    "application/json": components["schemas"]["FollowRelationshipPage"];
                 };
             };
             /** @description Validation Error */
@@ -14189,7 +14382,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Page_FollowRelationshipRead_"];
+                    "application/json": components["schemas"]["FollowRelationshipPage"];
                 };
             };
             /** @description Validation Error */
@@ -16506,6 +16699,7 @@ export interface operations {
     read_notifications_user_pagination_api_v1_notifications_get: {
         parameters: {
             query?: {
+                unread_only?: boolean;
                 page_number?: number | null;
                 num_records?: number | null;
             };
@@ -18223,6 +18417,46 @@ export interface operations {
             };
         };
     };
+    read_public_activity_detail_api_v1_public_activities__activity_id__detail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                activity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     list_public_activity_laps_api_v1_public_activities__activity_id__laps_get: {
         parameters: {
             query?: {
@@ -19859,6 +20093,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserPublicRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    read_user_profile_overview_api_v1_users_id__user_id__overview_get: {
+        parameters: {
+            query?: {
+                /** @description The viewer's local calendar date for current-week and current-month values. */
+                date?: string | null;
+            };
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserProfileOverviewRead"];
                 };
             };
             /** @description Validation Error */

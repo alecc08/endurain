@@ -26,6 +26,7 @@ import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.pagination as core_pagination
 import core.timezone as core_timezone
+import modules.activities.activity.contracts as activity_contracts
 import modules.activities.activity.crud as activity_crud
 import modules.activities.activity.event_publishers as activity_event_publishers
 import modules.activities.activity.schema as activity_schema
@@ -58,17 +59,17 @@ def _followees_of(requester_user_id: int | None, db: Session) -> list[int]:
     return followers_integration.list_accepted_followee_ids(requester_user_id, db)
 
 
-def get_activities_in_timeframe(
+def sum_activities_in_timeframe(
     user_id: int,
     start: datetime,
     end: datetime,
     requester_user_id: int,
     db: Session,
-) -> list[activity_schema.ActivityRead]:
-    """Return a user's activities in ``[start, end]`` scoped to the requester.
+) -> list[activity_contracts.ActivityTypeTotals]:
+    """Add up a user's activities in ``[start, end]`` per activity type, scoped to the requester.
 
-    The owner sees all of their activities; any other requester sees only the
-    ones visible to them (the CRUD layer applies the visibility mask).
+    The owner is counted with all of their activities; any other requester with only the ones visible
+    to them (the query applies the visibility filter).
 
     Args:
         user_id: The owner of the activities.
@@ -78,11 +79,11 @@ def get_activities_in_timeframe(
         db: Database session.
 
     Returns:
-        The scoped activities, or ``None`` when there are none.
+        One total per activity type with a matching activity; empty when there are none.
     """
     is_owner = user_id == requester_user_id
     logger.debug(
-        "Listing activities in timeframe",
+        "Adding up activities in timeframe",
         extra=core_logger.context(
             user_id=user_id,
             requester_user_id=requester_user_id,
@@ -92,8 +93,8 @@ def get_activities_in_timeframe(
         ),
     )
     if is_owner:
-        return activity_crud.get_user_activities_per_timeframe(user_id, start, end, db, user_is_owner=True)
-    return activity_crud.get_user_activities_per_timeframe(
+        return activity_crud.sum_user_activities_per_timeframe_by_type(user_id, start, end, db, user_is_owner=True)
+    return activity_crud.sum_user_activities_per_timeframe_by_type(
         user_id,
         start,
         end,
@@ -205,10 +206,9 @@ def week_stats(
         The aggregated stats.
     """
     start, end = _week_bounds(requester_user_id, db, week_number=0, anchor=anchor)
-    activities = get_activities_in_timeframe(user_id, start, end, requester_user_id, db)
-    if activities:
-        return activity_stats.calculate_activity_stats(activities)
-    return activity_schema.ActivityStatsRead()
+    return activity_stats.calculate_activity_stats(
+        sum_activities_in_timeframe(user_id, start, end, requester_user_id, db)
+    )
 
 
 def month_stats(
@@ -230,10 +230,9 @@ def month_stats(
         The aggregated stats.
     """
     start, end = _month_bounds(requester_user_id, db, anchor=anchor)
-    activities = get_activities_in_timeframe(user_id, start, end, requester_user_id, db)
-    if activities:
-        return activity_stats.calculate_activity_stats(activities)
-    return activity_schema.ActivityStatsRead()
+    return activity_stats.calculate_activity_stats(
+        sum_activities_in_timeframe(user_id, start, end, requester_user_id, db)
+    )
 
 
 def period_stats(
@@ -264,6 +263,41 @@ def period_stats(
     if period == "month":
         return month_stats(user_id, requester_user_id, db, anchor=anchor)
     return week_stats(user_id, requester_user_id, db, anchor=anchor)
+
+
+def user_profile_summary(
+    user_id: int,
+    requester_user_id: int,
+    db: Session,
+    *,
+    anchor: date | None = None,
+) -> activity_contracts.UserProfileActivitySummary:
+    """Return the visible activity aggregates displayed on a user's profile.
+
+    Args:
+        user_id: The profile owner's user ID.
+        requester_user_id: The authenticated caller.
+        db: Database session.
+        anchor: The caller's local calendar date, or None to resolve it server-side.
+
+    Returns:
+        The profile's current-week and current-month stats and visible activity count.
+    """
+    month_start, month_end = _month_bounds(requester_user_id, db, anchor=anchor)
+    followee_ids = None if user_id == requester_user_id else _followees_of(requester_user_id, db)
+    month_activity_count = activity_crud.count_user_activities(
+        user_id=user_id,
+        db=db,
+        start_date=month_start.date(),
+        end_date=month_end.date(),
+        user_is_owner=user_id == requester_user_id,
+        followee_ids=followee_ids,
+    )
+    return activity_contracts.UserProfileActivitySummary(
+        week_stats=week_stats(user_id, requester_user_id, db, anchor=anchor),
+        month_stats=month_stats(user_id, requester_user_id, db, anchor=anchor),
+        month_activity_count=month_activity_count,
+    )
 
 
 def count_user_activities(
@@ -508,7 +542,7 @@ def scroll_following_feed(
         db: Database session.
 
     Returns:
-        The slice plus the cursor for the next one.
+        The slice, the cursor for the next one and the public profile of each owner on the slice.
     """
     followee_ids = followers_integration.list_accepted_followee_ids(requester_user_id, db)
     after = core_pagination.decode_cursor(cursor) if cursor else None
@@ -532,7 +566,8 @@ def scroll_following_feed(
             has_more=has_more,
         ),
     )
-    return activity_schema.ActivityFeedPage(items=items, num_records=num_records, next_cursor=next_cursor)
+    owners = users_integration.list_public_profiles({item.user_id for item in items if item.user_id is not None}, db)
+    return activity_schema.ActivityFeedPage(items=items, num_records=num_records, next_cursor=next_cursor, users=owners)
 
 
 def page_gear_activities(

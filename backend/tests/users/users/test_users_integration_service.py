@@ -25,6 +25,22 @@ def test_reads_reach_the_crud():
     admins.assert_called_once_with(db)
 
 
+def test_public_profiles_reach_the_service():
+    db = MagicMock()
+    with patch.object(users_integration.users_service, "list_public_profiles", return_value={1: "profile"}) as profiles:
+        assert users_integration.list_public_profiles({1, 2}, db) == {1: "profile"}
+
+    profiles.assert_called_once_with({1, 2}, db)
+
+
+def test_public_profile_reaches_the_service():
+    db = MagicMock()
+    with patch.object(users_integration.users_service, "get_public_profile", return_value="profile") as profile:
+        assert users_integration.get_public_profile(7, db) == "profile"
+
+    profile.assert_called_once_with(7, db)
+
+
 def test_decisions_reach_the_service():
     db = MagicMock()
     service = users_integration.users_service

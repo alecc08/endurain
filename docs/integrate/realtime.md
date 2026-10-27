@@ -38,7 +38,7 @@ The server sends JSON text frames. The client sends nothing: a text or binary fr
 { "message": "NEW_ACTIVITY_NOTIFICATION", "notification_id": 42 }
 ```
 
-`message` says what changed and `notification_id` names the stored notification. Every message today means "fetch your notifications again".
+`message` says what changed. A notification message also carries `notification_id`, the stored notification, and means "fetch your notifications again". `GEARS_CHANGED` and `HEALTH_CHANGED` carry nothing else and mean "fetch that data again". `JOB_STATUS_CHANGED` means "read that job's status again" through its status route. A client that keeps polling a job can poll slowly while it is connected, and read the status at once when its `job` arrives; a hint can be lost, so keep a slow poll as the fallback.
 
 | `message` | When |
 | --------- | ---- |
@@ -49,6 +49,9 @@ The server sends JSON text frames. The client sends nothing: a text or binary fr
 | `NEW_FOLLOWER_REQUEST_ACCEPTED_NOTIFICATION` | Someone accepted your follow request |
 | `GARMIN_TOKEN_EXPIRED_NOTIFICATION` | Garmin Connect was unlinked because its login expired |
 | `ADMIN_NEW_SIGN_UP_APPROVAL_REQUEST_NOTIFICATION` | A sign-up waits for an administrator |
+| `GEARS_CHANGED` | A Garmin Connect or Strava gear sync finished and stored your gear |
+| `HEALTH_CHANGED` | A Garmin Connect health sync finished and stored your health data |
+| `JOB_STATUS_CHANGED` | A background job you started finished, failed or needs input. The frame also carries `job`: `garmin-link`, `strava:link`, `strava:unlink` or `ingestion:<job id>` |
 
 Ignore a `message` you do not recognise: new types can be added. The notification meanings are in [Notifications](../features/notifications.md).
 
@@ -65,13 +68,13 @@ Why a connection ends after 15 minutes: the ticket is checked only when the conn
 
 Each user can hold 5 sockets per server process (several tabs or devices). A sixth connection closes the oldest with `4001`. Reconnecting on `4001` would make tabs past the limit evict each other in a loop, so a client should wait until the user shows they want live updates, for example when the tab becomes visible again.
 
-On any other close, reconnect with exponential backoff and jitter. The web app starts at 1 second, doubles up to 30 seconds and adds up to 30 % random jitter. After a reconnect, fetch your notifications once, because hints sent while you were disconnected are not replayed.
+On any other close, reconnect with exponential backoff and jitter. The web app starts at 1 second, doubles up to 30 seconds and adds up to 30 % random jitter. On the initial connection and after a reconnect, fetch your notifications once, because hints sent before the socket was ready or while it was down are not replayed.
 
 ## What the server guarantees
 
 - **At most once, best effort.** A hint can be lost: while a replica reconnects to Redis, when a socket is closing, or when the user has no socket on that server at the time. The notification itself is saved first and is never lost this way.
 - **No ordering, no replay.** Treat each hint as "refetch", not as an event to count.
-- **Keep a slow fallback.** The web app also refetches every minute, when the connection comes back and when the notifications menu opens, so a lost hint costs at most a minute.
+- **Keep a slow fallback.** In visible tabs, the unread badge polls every minute while disconnected and every five minutes while connected. Notification hints and each initial/reconnected socket trigger an authoritative refetch; the preview list refetches when its menu opens. The connected fallback covers hints lost during a server-side realtime-channel gap even while the browser socket is open.
 
 ## Local and distributed deployments
 

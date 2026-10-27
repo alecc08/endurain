@@ -7,6 +7,7 @@ import type {
   StravaSyncStatus,
 } from '@/features/integrations/types'
 
+import { watchJob } from '@/composables/useRealtime'
 import { apiFetch } from '@/services/http'
 import { getRuntimeBackendHost } from '@/services/runtime'
 
@@ -16,33 +17,43 @@ const STRAVA_SCOPE = 'read,read_all,profile:read_all,activity:read,activity:read
 /** How often the status of a queued Strava link or unlink is read. */
 const STRAVA_SYNC_POLL_MS = 1_000
 
-/** How many status reads to make before giving up on a queued Strava link or unlink. */
-const STRAVA_SYNC_MAX_POLLS = 120
+/** How long to follow a queued Strava link or unlink before giving up on it. */
+const STRAVA_SYNC_TIMEOUT_MS = 120_000
 
 /**
- * Follows a queued Strava job (`link` or `unlink`) until it finishes.
+ * Follows a queued Strava job (`link` or `unlink`) until it finishes. It listens for the job's
+ * hints before `queue` runs, so a job that finishes before the request returns is not waited on.
  *
  * @param kind - Which job to follow.
- * @param status - The status the request that queued it answered with.
+ * @param queue - Queues the job and answers with its first status.
  * @param label - The job's name, for the error message.
  * @throws {Error} When the job fails on the server or does not finish in time.
  */
 async function followStravaSync(
   kind: StravaSyncStatus['kind'],
-  status: StravaSyncStatus,
+  queue: () => Promise<StravaSyncStatus>,
   label: string,
 ): Promise<void> {
-  for (let poll = 0; poll < STRAVA_SYNC_MAX_POLLS; poll++) {
-    if (status.status === 'completed') {
-      return
+  const deadline = Date.now() + STRAVA_SYNC_TIMEOUT_MS
+  const watch = watchJob(`strava:${kind}`)
+  try {
+    let status = await queue()
+    for (;;) {
+      if (status.status === 'completed') {
+        return
+      }
+      if (status.status === 'failed') {
+        throw new Error(`${label} Strava failed`)
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`${label} Strava did not finish in time`)
+      }
+      await watch.wait(STRAVA_SYNC_POLL_MS)
+      status = await apiFetch<StravaSyncStatus>(`/strava/sync/${kind}`)
     }
-    if (status.status === 'failed') {
-      throw new Error(`${label} Strava failed`)
-    }
-    await new Promise((resolve) => setTimeout(resolve, STRAVA_SYNC_POLL_MS))
-    status = await apiFetch<StravaSyncStatus>(`/strava/sync/${kind}`)
+  } finally {
+    watch.stop()
   }
-  throw new Error(`${label} Strava did not finish in time`)
 }
 
 /**
@@ -114,11 +125,15 @@ export function buildStravaAuthUrl(state: string, clientId: number): string {
  */
 export async function completeStravaLink(state: string, code: string): Promise<void> {
   const payload: StravaLinkDto = { state, code }
-  const status = await apiFetch<StravaSyncStatus>('/strava/link', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-  await followStravaSync('link', status, 'Linking')
+  await followStravaSync(
+    'link',
+    () =>
+      apiFetch<StravaSyncStatus>('/strava/link', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    'Linking',
+  )
 }
 
 /**
@@ -153,6 +168,9 @@ export async function retrieveStravaGear(): Promise<void> {
  * @throws {Error} When the unlink fails on the server or does not finish in time.
  */
 export async function unlinkStrava(): Promise<void> {
-  const status = await apiFetch<StravaSyncStatus>('/strava/link', { method: 'DELETE' })
-  await followStravaSync('unlink', status, 'Unlinking')
+  await followStravaSync(
+    'unlink',
+    () => apiFetch<StravaSyncStatus>('/strava/link', { method: 'DELETE' }),
+    'Unlinking',
+  )
 }

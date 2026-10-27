@@ -139,6 +139,10 @@ export const queryKeys = {
   activities: {
     /** Broad prefix; invalidating this cascades to every activities query. */
     all: () => ['activities'] as const,
+    /** Prefix for combined user-profile reads that depend on activity data. */
+    profileOverviews: () => ['activities', 'profile-overview'] as const,
+    /** The profile overview depends on this user's visible activity aggregates. */
+    profileOverview: (userId: number) => ['activities', 'profile-overview', userId] as const,
     lists: () => ['activities', 'list'] as const,
     /**
      * @param filters - Serializable list filters (paging, type, etc.).
@@ -174,11 +178,11 @@ export const queryKeys = {
     exerciseTitles: () => ['activities', 'exercise-titles'] as const,
     /** Media (photos) attached to one activity. */
     media: (id: number) => ['activities', 'detail', id, 'media'] as const,
+    /** Every activity owner's identity; prefix of {@link owner}. */
+    owners: () => ['activities', 'owner'] as const,
     /** The activity's owner user (public or authenticated), keyed by user id. */
     owner: (userId: number) => ['activities', 'owner', userId] as const,
-    /** The distinct activity-type codes the user owns (type-filter options). */
-    types: () => ['activities', 'types'] as const,
-    /** The user's activity-type code→name map (summary type filter). */
+    /** The user's activity-type code→name map (type filter options and summary type filter). */
     typeNames: () => ['activities', 'type-names'] as const,
     /**
      * An aggregated activity summary for a view type + period + optional type
@@ -509,3 +513,14 @@ export const queryKeys = {
     apiKeys: () => ['security', 'api-keys'] as const,
   },
 } as const
+
+/**
+ * Activity cache entries that a change to activity rows (an edit, a delete, a new activity)
+ * cannot change: each activity's own detail with its sub-resources, the owners' identities,
+ * and the static exercise-title catalogue. Left out of an `activities` invalidation so it does not refetch them.
+ */
+export const ACTIVITY_ROW_INDEPENDENT_KEYS = [
+  queryKeys.activities.details(),
+  queryKeys.activities.owners(),
+  queryKeys.activities.exerciseTitles(),
+] as const

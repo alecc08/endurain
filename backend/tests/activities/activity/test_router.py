@@ -161,6 +161,40 @@ class TestFeed:
             assert resp.status_code == 200
             assert len(resp.json()["items"]) == 1
 
+    def test_users_carries_each_distinct_owner_once(self, mock_db):
+        from modules.users.users.schema import UserPublicRead
+
+        with (
+            patch("modules.activities.activity.service.followers_integration") as f,
+            patch("modules.activities.activity.service.activity_crud.get_following_feed_after") as m,
+            patch("modules.activities.activity.service.users_integration.list_public_profiles") as profiles,
+        ):
+            f.list_accepted_followee_ids.return_value = [5, 6]
+            m.return_value = [
+                _feed_entry(id=1, user_id=5),
+                _feed_entry(id=2, user_id=6),
+                _feed_entry(id=3, user_id=5),
+            ]
+            profiles.return_value = {5: UserPublicRead(id=5, name="Ada", username="ada")}
+            resp = TestClient(_build_app(mock_db)).get("/activities/feed", headers={"Authorization": "Bearer x"})
+
+        assert resp.status_code == 200
+        profiles.assert_called_once()
+        assert profiles.call_args.args[0] == {5, 6}
+        assert resp.json()["users"] == {
+            "5": {"id": 5, "name": "Ada", "username": "ada", "city": None, "photo_path": None}
+        }
+
+    def test_an_empty_feed_has_an_empty_users_object(self, mock_db):
+        with (
+            patch("modules.activities.activity.service.followers_integration") as f,
+            patch("modules.activities.activity.service.activity_crud.get_following_feed_after", return_value=[]),
+        ):
+            f.list_accepted_followee_ids.return_value = [5]
+            resp = TestClient(_build_app(mock_db)).get("/activities/feed", headers={"Authorization": "Bearer x"})
+
+        assert resp.json()["users"] == {}
+
     def test_last_slice_has_no_next_cursor(self, mock_db):
         """A short slice means the end; emitting a cursor would loop the client."""
         with (
@@ -260,37 +294,34 @@ class TestUserStats:
         ):
             yield
 
-    def test_week(self, mock_db):
-        with (
-            patch("modules.activities.activity.service.activity_crud.get_user_activities_per_timeframe") as g,
-            patch("modules.activities.activity.service.activity_stats.calculate_activity_stats") as s,
-        ):
-            g.return_value = [_valid_activity()]
-            s.return_value = {}
-            resp = TestClient(_build_app(mock_db)).get(
-                "/activities/users/1/stats?period=week", headers={"Authorization": "Bearer x"}
-            )
-            assert resp.status_code == 200
+    @pytest.mark.parametrize("period", ["week", "month"])
+    def test_the_totals_become_per_sport_stats(self, mock_db, period):
+        from modules.activities.activity.contracts import ActivityTypeTotals
 
-    def test_month(self, mock_db):
-        with (
-            patch("modules.activities.activity.service.activity_crud.get_user_activities_per_timeframe") as g,
-            patch("modules.activities.activity.service.activity_stats.calculate_activity_stats") as s,
-        ):
-            g.return_value = [_valid_activity()]
-            s.return_value = {}
+        with patch(
+            "modules.activities.activity.service.activity_crud.sum_user_activities_per_timeframe_by_type"
+        ) as totals:
+            totals.return_value = [ActivityTypeTotals(1, distance=5000.0, time=1800.0, calories=250.0)]
             resp = TestClient(_build_app(mock_db)).get(
-                "/activities/users/1/stats?period=month", headers={"Authorization": "Bearer x"}
+                f"/activities/users/1/stats?period={period}", headers={"Authorization": "Bearer x"}
             )
-            assert resp.status_code == 200
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["run"] == {"distance": 5000.0, "time": 1800.0, "calories": 250.0}
+        assert body["bike"] == {"distance": 0.0, "time": 0.0, "calories": 0.0}
 
     def test_empty(self, mock_db):
-        with patch("modules.activities.activity.service.activity_crud.get_user_activities_per_timeframe") as g:
-            g.return_value = None
+        with patch(
+            "modules.activities.activity.service.activity_crud.sum_user_activities_per_timeframe_by_type",
+            return_value=[],
+        ):
             resp = TestClient(_build_app(mock_db)).get(
                 "/activities/users/1/stats?period=week", headers={"Authorization": "Bearer x"}
             )
-            assert resp.status_code == 200
+
+        assert resp.status_code == 200
+        assert resp.json()["run"]["distance"] == 0.0
 
     def test_invalid_period(self, mock_db):
         resp = TestClient(_build_app(mock_db)).get(

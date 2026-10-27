@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DateRange } from '@/features/integrations/types'
 
+import * as realtime from '@/composables/useRealtime'
 import { apiFetch } from '@/services/http'
 import {
   fetchGarminLinkStatus,
@@ -110,6 +111,24 @@ describe('strava service', () => {
       expect(apiFetch).toHaveBeenCalledTimes(3)
     })
 
+    it("follows the link job's hints from before the job is queued", async () => {
+      vi.useFakeTimers()
+      const watch = vi.spyOn(realtime, 'watchJob')
+      vi.mocked(apiFetch)
+        .mockResolvedValueOnce({ kind: 'link', status: 'queued' })
+        .mockResolvedValueOnce({ kind: 'link', status: 'completed' })
+
+      const done = completeStravaLink('s', 'c')
+      await vi.advanceTimersByTimeAsync(1_000)
+      await done
+
+      expect(watch).toHaveBeenCalledExactlyOnceWith('strava:link')
+      expect(watch.mock.invocationCallOrder[0]!).toBeLessThan(
+        vi.mocked(apiFetch).mock.invocationCallOrder[0]!,
+      )
+      watch.mockRestore()
+    })
+
     it('rejects when the queued link fails', async () => {
       vi.mocked(apiFetch).mockResolvedValueOnce({ kind: 'link', status: 'failed' })
 
@@ -149,6 +168,34 @@ describe('strava service', () => {
       expect(apiFetch).toHaveBeenNthCalledWith(1, '/strava/link', { method: 'DELETE' })
       expect(apiFetch).toHaveBeenNthCalledWith(2, '/strava/sync/unlink')
       expect(apiFetch).toHaveBeenCalledTimes(3)
+    })
+
+    it("follows the unlink job's hints from before the job is queued", async () => {
+      vi.useFakeTimers()
+      const watch = vi.spyOn(realtime, 'watchJob')
+      vi.mocked(apiFetch)
+        .mockResolvedValueOnce({ kind: 'unlink', status: 'queued' })
+        .mockResolvedValueOnce({ kind: 'unlink', status: 'completed' })
+
+      const done = unlinkStrava()
+      await vi.advanceTimersByTimeAsync(1_000)
+      await done
+
+      expect(watch).toHaveBeenCalledExactlyOnceWith('strava:unlink')
+      expect(watch.mock.invocationCallOrder[0]!).toBeLessThan(
+        vi.mocked(apiFetch).mock.invocationCallOrder[0]!,
+      )
+      watch.mockRestore()
+    })
+
+    it('gives up when the job has not finished by the deadline', async () => {
+      vi.useFakeTimers()
+      vi.mocked(apiFetch).mockResolvedValue({ kind: 'unlink', status: 'running' })
+
+      const outcome = unlinkStrava().catch((error: unknown) => error)
+      await vi.advanceTimersByTimeAsync(130_000)
+
+      expect(((await outcome) as Error).message).toBe('Unlinking Strava did not finish in time')
     })
 
     it('rejects when the queued unlink fails', async () => {

@@ -30,6 +30,25 @@ import modules.activities.activity.schema as activity_schema
 
 
 @dataclass(frozen=True)
+class ActivityTypeTotals:
+    """What the activities of one activity type add up to over a timeframe.
+
+    Summed by the database, so the per-sport stats never load the activities.
+
+    Attributes:
+        activity_type: The activity type the totals are for.
+        distance: Sum of their distance, in meters.
+        time: Sum of their active (timer) time, in seconds.
+        calories: Sum of their calories; activities without a value count as zero.
+    """
+
+    activity_type: int
+    distance: float = 0
+    time: float = 0
+    calories: float = 0
+
+
+@dataclass(frozen=True)
 class ActivityTotals:
     """What a set of activities adds up to.
 
@@ -48,6 +67,21 @@ class ActivityTotals:
     distance: float = 0
     elevation_gain: float = 0
     elapsed_time: float = 0
+
+
+@dataclass(frozen=True)
+class UserProfileActivitySummary:
+    """Activity aggregates displayed on a user's profile.
+
+    Attributes:
+        week_stats: Visible per-sport totals for the current week.
+        month_stats: Visible per-sport totals for the current month.
+        month_activity_count: Visible activity count for the current month.
+    """
+
+    week_stats: activity_schema.ActivityStatsRead
+    month_stats: activity_schema.ActivityStatsRead
+    month_activity_count: int
 
 
 @dataclass(frozen=True)
