@@ -68,6 +68,7 @@
     "time": "Aika",
     "distance": "Matka",
     "movingTime": "Liikkumisaika",
+    "elapsedTime": "Kulunut aika",
     "avgPace": "Keskitahti",
     "avgSpeed": "Keskinopeus",
     "maxSpeed": "Maksiminopeus",

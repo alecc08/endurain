@@ -68,6 +68,7 @@
     "time": "Laikas",
     "distance": "Atstumas",
     "movingTime": "Judėjimo laikas",
+    "elapsedTime": "Praėjęs laikas",
     "avgPace": "Vid. tempas",
     "avgSpeed": "Vid. greitis",
     "maxSpeed": "Maks. greitis",

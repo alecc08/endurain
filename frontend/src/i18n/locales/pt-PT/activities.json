@@ -68,6 +68,7 @@
     "time": "Tempo",
     "distance": "Distância",
     "movingTime": "Tempo em movimento",
+    "elapsedTime": "Tempo decorrido",
     "avgPace": "Ritmo médio",
     "avgSpeed": "Velocidade média",
     "maxSpeed": "Velocidade máxima",

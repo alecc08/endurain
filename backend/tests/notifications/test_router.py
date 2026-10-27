@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 from fastapi import FastAPI
@@ -61,6 +62,19 @@ class TestReadNotificationById:
         assert response.json()["id"] == 1
 
     @patch("modules.notifications.router.notifications_service.get_notification")
+    def test_created_at_is_full_utc_iso_timestamp(self, mock_get, mock_db):
+        from modules.notifications.schema import NotificationRead
+
+        client = TestClient(_build_app(mock_db))
+        mock_get.return_value = NotificationRead(
+            id=1, user_id=1, type=1, read=False, created_at=datetime(2026, 7, 16, 10, 30)
+        )
+
+        response = client.get("/notifications/1", headers={"Authorization": "Bearer x"})
+        assert response.status_code == 200
+        assert response.json()["created_at"] == "2026-07-16T10:30:00Z"
+
+    @patch("modules.notifications.router.notifications_service.get_notification")
     def test_not_found(self, mock_get, mock_db):
         client = TestClient(_build_app(mock_db))
         mock_get.side_effect = core_exceptions.NotFoundError("Notification not found")
@@ -97,6 +111,22 @@ class TestReadNotificationsPagination:
         assert response.status_code == 200
         assert response.json()["total"] == 4
         mock_get.assert_called_once_with(1, mock_db, page_number=1, num_records=1, unread_only=True)
+
+    @patch("modules.notifications.router.notifications_service.list_notifications")
+    def test_pagination_created_at_is_full_utc_iso_timestamp(self, mock_get, mock_db):
+        from modules.notifications.schema import NotificationRead
+
+        client = TestClient(_build_app(mock_db))
+        mock_get.return_value = core_pagination.Page.build(
+            [NotificationRead(id=1, user_id=1, type=1, read=False, created_at=datetime(2026, 7, 16, 10, 30))],
+            total=1,
+            page=1,
+            num_records=10,
+        )
+
+        response = client.get("/notifications?page_number=1&num_records=10", headers={"Authorization": "Bearer x"})
+        assert response.status_code == 200
+        assert response.json()["items"][0]["created_at"] == "2026-07-16T10:30:00Z"
 
 
 class TestMarkNotificationAsRead:

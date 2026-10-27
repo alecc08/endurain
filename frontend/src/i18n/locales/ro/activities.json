@@ -68,6 +68,7 @@
     "time": "Timp",
     "distance": "Distanță",
     "movingTime": "Timp în mișcare",
+    "elapsedTime": "Timp scurs",
     "avgPace": "Ritm mediu",
     "avgSpeed": "Viteză medie",
     "maxSpeed": "Viteză maximă",

@@ -68,6 +68,7 @@
     "time": "Czas",
     "distance": "Dystans",
     "movingTime": "Czas w ruchu",
+    "elapsedTime": "Czas, który upłynął",
     "avgPace": "Śr. tempo",
     "avgSpeed": "Śr. prędkość",
     "maxSpeed": "Maks. prędkość",

@@ -68,6 +68,7 @@
     "time": "Tijd",
     "distance": "Afstand",
     "movingTime": "Bewegingstijd",
+    "elapsedTime": "Verstreken tijd",
     "avgPace": "Gem. tempo",
     "avgSpeed": "Gem. snelheid",
     "maxSpeed": "Max. snelheid",

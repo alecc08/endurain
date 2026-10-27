@@ -68,6 +68,7 @@
     "time": "Час",
     "distance": "Дистанція",
     "movingTime": "Час у русі",
+    "elapsedTime": "Минулий час",
     "avgPace": "Сер. темп",
     "avgSpeed": "Сер. швидкість",
     "maxSpeed": "Макс. швидкість",

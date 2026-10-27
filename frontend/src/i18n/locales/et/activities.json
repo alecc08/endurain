@@ -68,6 +68,7 @@
     "time": "Aeg",
     "distance": "Vahemaa",
     "movingTime": "Liikumisaeg",
+    "elapsedTime": "Kulunud aeg",
     "avgPace": "Keskmine tempo",
     "avgSpeed": "Keskmine kiirus",
     "maxSpeed": "Maksimaalne kiirus",

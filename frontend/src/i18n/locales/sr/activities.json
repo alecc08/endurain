@@ -68,6 +68,7 @@
     "time": "Vreme",
     "distance": "Udaljenost",
     "movingTime": "Vreme kretanja",
+    "elapsedTime": "Proteklo vreme",
     "avgPace": "Prosečan tempo",
     "avgSpeed": "Prosečna brzina",
     "maxSpeed": "Maksimalna brzina",

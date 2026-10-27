@@ -86,7 +86,8 @@ def parse_frame_session(frame):
         get_value_from_frame(frame, "enhanced_avg_speed", get_value_from_frame(frame, "avg_speed")),
         get_value_from_frame(frame, "enhanced_max_speed", get_value_from_frame(frame, "max_speed")),
         get_value_from_frame(frame, "workout_feel"),
-        get_value_from_frame(frame, "workout_rpe"),
+        # Polar writes workout_rpe=0 when no RPE was entered; the field is 10-100.
+        get_value_from_frame(frame, "workout_rpe") or None,
         get_value_from_frame(frame, "total_cycles"),
     )
 
@@ -405,6 +406,37 @@ def parse_frame_device_settings(frame):
         The raw time offset, or None when absent.
     """
     return get_value_from_frame(frame, "time_offset")
+
+
+# Real UTC offsets span UTC-12:00 to UTC+14:00.
+_MIN_UTC_OFFSET_SECONDS = -12 * 3600
+_MAX_UTC_OFFSET_SECONDS = 14 * 3600
+
+
+def parse_frame_activity(frame):
+    """Extract the device UTC offset from a FIT activity frame.
+
+    The activity message carries ``timestamp`` (UTC) and ``local_timestamp``
+    (the same instant as local wall-clock time), both in seconds since the
+    FIT epoch. Their difference is the device's UTC offset, available even
+    when the file has no GPS fix. Raw values keep the subtraction a plain
+    integer operation, independent of the tzinfo fitdecode attaches.
+
+    Args:
+        frame: The decoded FIT data message.
+
+    Returns:
+        The UTC offset in seconds, or None when either timestamp is absent
+        or the offset falls outside the real UTC offset range.
+    """
+    utc_raw = get_raw_value_from_frame(frame, "timestamp")
+    local_raw = get_raw_value_from_frame(frame, "local_timestamp")
+    if utc_raw is None or local_raw is None:
+        return None
+    offset = local_raw - utc_raw
+    if not _MIN_UTC_OFFSET_SECONDS <= offset <= _MAX_UTC_OFFSET_SECONDS:
+        return None
+    return offset
 
 
 def parse_frame_length(frame):

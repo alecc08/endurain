@@ -68,6 +68,7 @@
     "time": "Laiks",
     "distance": "Distance",
     "movingTime": "Kustības laiks",
+    "elapsedTime": "Pagājušais laiks",
     "avgPace": "Vid. temps",
     "avgSpeed": "Vid. ātrums",
     "maxSpeed": "Maks. ātrums",

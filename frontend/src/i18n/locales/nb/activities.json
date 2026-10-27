@@ -68,6 +68,7 @@
     "time": "Tid",
     "distance": "Distanse",
     "movingTime": "Bevegelsestid",
+    "elapsedTime": "Forløpt tid",
     "avgPace": "Gj.snittlig tempo",
     "avgSpeed": "Gj.snittlig fart",
     "maxSpeed": "Maks fart",

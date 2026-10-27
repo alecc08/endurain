@@ -68,6 +68,7 @@
     "time": "Čas",
     "distance": "Vzdálenost",
     "movingTime": "Čas pohybu",
+    "elapsedTime": "Uplynulý čas",
     "avgPace": "Průměrné tempo",
     "avgSpeed": "Průměrná rychlost",
     "maxSpeed": "Maximální rychlost",

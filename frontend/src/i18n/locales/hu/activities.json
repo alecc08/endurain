@@ -68,6 +68,7 @@
     "time": "Idő",
     "distance": "Táv",
     "movingTime": "Mozgásidő",
+    "elapsedTime": "Eltelt idő",
     "avgPace": "Átl. tempó",
     "avgSpeed": "Átl. sebesség",
     "maxSpeed": "Max. sebesség",

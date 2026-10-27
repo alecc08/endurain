@@ -68,6 +68,7 @@
     "time": "時間",
     "distance": "距離",
     "movingTime": "移動時間",
+    "elapsedTime": "經過時間",
     "avgPace": "平均配速",
     "avgSpeed": "平均速度",
     "maxSpeed": "最高速度",
