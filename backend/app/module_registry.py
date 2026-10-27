@@ -20,18 +20,22 @@ import core.mail as core_mail
 import core.scheduler as core_scheduler
 import modules.activities.activity.integration_service as activity_integration
 import modules.activities.activity_exercise_titles.integration_service as activity_exercise_titles_integration
+import modules.activities.activity_file_storage.constants as activity_file_storage_constants
 import modules.activities.activity_file_storage.scheduled_jobs as activity_file_storage_scheduled_jobs
 import modules.activities.activity_file_storage.subscriber_registry as activity_file_storage_subscriber_registry
 import modules.activities.activity_geocoding.scheduled_jobs as activity_geocoding_scheduled_jobs
 import modules.activities.activity_geocoding.subscriber_registry as activity_geocoding_subscriber_registry
+import modules.activities.activity_ingestion.constants as activity_ingestion_constants
 import modules.activities.activity_ingestion.scheduled_jobs as activity_ingestion_scheduled_jobs
 import modules.activities.activity_ingestion.subscriber_registry as activity_ingestion_subscriber_registry
 import modules.activities.activity_laps.integration_service as activity_laps_integration
+import modules.activities.activity_media.constants as activity_media_constants
 import modules.activities.activity_media.integration_service as activity_media_integration
 import modules.activities.activity_media.scheduled_jobs as activity_media_scheduled_jobs
 import modules.activities.activity_media.subscriber_registry as activity_media_subscriber_registry
 import modules.activities.activity_sets.integration_service as activity_sets_integration
 import modules.activities.activity_streams.integration_service as activity_streams_integration
+import modules.activities.activity_thumbnail.constants as activity_thumbnail_constants
 import modules.activities.activity_thumbnail.integration_service as activity_thumbnail_integration
 import modules.activities.activity_thumbnail.scheduled_jobs as activity_thumbnail_scheduled_jobs
 import modules.activities.activity_thumbnail.subscriber_registry as activity_thumbnail_subscriber_registry
@@ -47,13 +51,16 @@ import modules.gears.contributors as gears_contributors
 import modules.gears.gear_components.integration_service as gear_components_integration
 import modules.notifications.scheduled_jobs as notifications_scheduled_jobs
 import modules.notifications.subscriber_registry as notifications_subscriber_registry
+import modules.server_settings.constants as server_settings_constants
 import modules.server_settings.integration_service as server_settings_integration
 import modules.strava.integration_service as strava_integration
 import modules.strava.subscriber_registry as strava_subscriber_registry
 import modules.users.contributor_registry as users_contributor_registry
 import modules.users.contributors as users_contributors
+import modules.users.users.constants as users_constants
 import modules.users.users.scheduled_jobs as users_scheduled_jobs
 import modules.users.users.subscriber_registry as users_subscriber_registry
+import modules.users.users_profile.constants as users_profile_constants
 import modules.users.users_profile.integration_service as users_profile_integration
 import modules.users.users_profile.scheduled_jobs as users_profile_scheduled_jobs
 import modules.users.users_profile.subscriber_registry as users_profile_subscriber_registry
@@ -433,3 +440,27 @@ def runtime_sources() -> jasil_settings.RuntimeSources:
         The runtime sources, shared by the API and the standalone worker.
     """
     return jasil_settings.RuntimeSources(mail=_cached(_load_mail_settings), geocoding=_cached(_load_geocoding_settings))
+
+
+def storage_plain_areas() -> frozenset[str]:
+    """Return the storage areas the local backend keeps as browsable files.
+
+    Every area the application owns is listed, so on ``local://`` the whole blob
+    store is ordinary files under ``{data_dir}/{area}/{key}`` rather than JASIL's
+    hashed layout. S3 ignores the set and behaves identically for every area.
+
+    Returns:
+        The areas whose local objects live at ``{data_dir}/{area}/{key}``.
+    """
+    return frozenset(
+        {
+            activity_file_storage_constants.ACTIVITY_FILE_STORAGE_AREA,
+            activity_ingestion_constants.BULK_IMPORT_ERROR_STORAGE_AREA,
+            activity_media_constants.MEDIA_STORAGE_AREA,
+            activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA,
+            server_settings_constants.LOGIN_PHOTO_STORAGE_AREA,
+            users_constants.USER_IMAGE_STORAGE_AREA,
+            users_profile_constants.EXPORT_STAGING_AREA,
+            users_profile_constants.IMPORT_STAGING_AREA,
+        }
+    )

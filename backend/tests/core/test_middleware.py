@@ -473,12 +473,11 @@ class TestSecurityHeadersMiddleware:
 
         assert "Server" not in response.headers
 
-    def test_allowed_tile_domains_uses_default_when_not_set(self):
+    def test_csp_has_no_tile_domains_until_the_app_seeds_them(self):
         from fastapi import FastAPI
         from fastapi.responses import HTMLResponse
         from fastapi.testclient import TestClient
 
-        import modules.server_settings.constants as server_settings_constants
         from core.middleware import SecurityHeadersMiddleware
 
         app = FastAPI()
@@ -491,9 +490,11 @@ class TestSecurityHeadersMiddleware:
         client = TestClient(app)
         response = client.get("/html")
 
+        # The composition root seeds app.state at startup; an app that never ran
+        # it gets a restrictive CSP instead of core guessing a tile provider.
         csp = response.headers["Content-Security-Policy"]
-        for domain in server_settings_constants.DEFAULT_ALLOWED_TILE_DOMAINS:
-            assert domain in csp
+        assert "img-src 'self' data:" in csp
+        assert "openstreetmap" not in csp
 
     def test_csp_allows_the_object_storage_origin_for_blobs(self):
         from fastapi import FastAPI

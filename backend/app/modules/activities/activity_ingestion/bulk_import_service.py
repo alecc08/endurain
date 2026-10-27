@@ -52,9 +52,6 @@ logger = core_logger.get_logger(__name__)
 
 GENERIC_FORMAT_NAME = "generic"
 
-#: Where the bytes of a file that could not be imported are kept for the operator.
-BULK_IMPORT_ERROR_STORAGE_AREA = "bulk_import_errors"
-
 _ARCHIVE_KEY_PREFIX = "bulk-"
 
 # One batch: stop at whichever comes first. The time budget is a fraction of the
@@ -679,7 +676,7 @@ def _keep_failed_member(
             core_file_uploads.copy_zip_member(archive, member_name, path)
             with open(path, "rb") as handle:
                 storage.save_stream(
-                    BULK_IMPORT_ERROR_STORAGE_AREA,
+                    activity_ingestion_constants.BULK_IMPORT_ERROR_STORAGE_AREA,
                     f"{int(user_id)}/{job_id}/{os.path.basename(member_name)}",
                     handle,
                 )

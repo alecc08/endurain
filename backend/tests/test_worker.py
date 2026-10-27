@@ -44,7 +44,7 @@ class TestRunWorkerProcess:
         # makes, so the two entrypoints cannot drift.
         module_registry.configure_application.assert_called_once_with()
         module_registry.register_durable_handlers.assert_called_once_with(jobs_registry.registry)
-        assert module_registry.method_calls[1:3] == [
+        assert module_registry.method_calls[2:4] == [
             call.configure_application(),
             call.register_durable_handlers(jobs_registry.registry),
         ]
@@ -53,7 +53,10 @@ class TestRunWorkerProcess:
         # Whatever the API's flag says, this process must present the standalone
         # topology, or ``run_job_worker`` refuses to start.
         cfg.settings.model_copy.assert_called_once_with(update={"JOBS_RUN_IN_PROCESS_WORKER": False})
-        platform_settings.build_jasil_settings.assert_called_once_with(cfg.settings.model_copy.return_value)
+        platform_settings.build_jasil_settings.assert_called_once_with(
+            cfg.settings.model_copy.return_value,
+            plain_areas=module_registry.storage_plain_areas.return_value,
+        )
         # This process built its own platform, so draining is not the end of it:
         # the bus consumer thread and Redis clients have to be released too.
         lifecycle.shutdown.assert_called_once_with()

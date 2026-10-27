@@ -7,9 +7,11 @@ import zipfile
 from unittest.mock import MagicMock, patch
 
 import pytest
+from jasil.backends.storage_local import LocalStorage
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+import modules.activities.activity_file_storage.constants as activity_file_storage_constants
 import modules.users.users_profile.export_service as profile_export_service
 import modules.users.users_profile.utils as profile_utils
 from modules.users.users_profile.exceptions import (
@@ -665,6 +667,23 @@ class TestExportServiceActivityFiles:
         buf.seek(0)
         with zipfile.ZipFile(buf, "r") as z:
             assert "activity_files/1.gpx" in z.namelist()
+
+    def test_reads_retained_files_from_the_plain_local_layout(self, tmp_path) -> None:
+        storage = LocalStorage(
+            str(tmp_path),
+            plain_areas=frozenset({activity_file_storage_constants.ACTIVITY_FILE_STORAGE_AREA}),
+        )
+        storage.save(activity_file_storage_constants.ACTIVITY_FILE_STORAGE_AREA, "processed/1.gpx", b"<gpx/>")
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+            service = profile_export_service.ExportService(user_id=1, storage=storage, db=MagicMock(spec=Session))
+
+            service.add_activity_files_to_zip(z, [1])
+
+        assert service.counts["activity_files"] == 1
+        buf.seek(0)
+        with zipfile.ZipFile(buf, "r") as z:
+            assert z.read("activity_files/1.gpx") == b"<gpx/>"
 
 
 class TestExportServiceActivityMedia:

@@ -83,7 +83,6 @@ class TestGenerateAndStoreThumbnail:
 
         mock_render.render_activity_thumbnail.return_value = b"data"
         mock_signing.thumbnail_key.return_value = "1.webp"
-        mock_signing.THUMBNAIL_STORAGE_AREA = "activity_thumbnails"
         mock_activities.set_thumbnail_key.return_value = False
         storage = MagicMock()
 
@@ -102,7 +101,6 @@ class TestGenerateAndStoreThumbnail:
 
         mock_render.render_activity_thumbnail.return_value = b"data"
         mock_signing.thumbnail_key.return_value = "1.webp"
-        mock_signing.THUMBNAIL_STORAGE_AREA = "activity_thumbnails"
         mock_render.THUMBNAIL_CONTENT_TYPE = "image/webp"
         storage = MagicMock()
         db = MagicMock()

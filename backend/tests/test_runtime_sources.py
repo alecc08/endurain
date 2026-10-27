@@ -52,6 +52,22 @@ class TestRuntimeSources:
         raise AssertionError("the failure was swallowed")
 
 
+class TestStoragePlainAreas:
+    def test_every_area_is_plain_on_local_storage(self):
+        assert module_registry.storage_plain_areas() == frozenset(
+            {
+                "activity_files",
+                "activity_media",
+                "activity_thumbnails",
+                "bulk_import_errors",
+                "profile_export_staging",
+                "profile_import_staging",
+                "server_images",
+                "user_images",
+            }
+        )
+
+
 class TestGeocodingSource:
     def test_the_geocoding_source_maps_the_stored_config(self):
         config = core_geocoding.GeocodingConfig(

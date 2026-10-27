@@ -24,11 +24,18 @@ import core.config as core_config
 REALTIME_CHANNEL = "endurain:realtime"
 
 
-def build_jasil_settings(settings: core_config.Settings) -> jasil_settings.JasilSettings:
+def build_jasil_settings(
+    settings: core_config.Settings,
+    *,
+    plain_areas: frozenset[str],
+) -> jasil_settings.JasilSettings:
     """Build the substrate configuration from the application settings.
 
     Args:
         settings: The application settings to translate.
+        plain_areas: Storage areas the local backend keeps as browsable
+            ``{data_dir}/{area}/{key}`` files. The composition root supplies the
+            areas the owning modules declare; S3 ignores them.
 
     Returns:
         The equivalent :class:`~jasil.settings.JasilSettings`.
@@ -50,8 +57,9 @@ def build_jasil_settings(settings: core_config.Settings) -> jasil_settings.Jasil
             enabled=settings.EVENT_LOG_ENABLED,
             retention_days=settings.EVENT_LOG_RETENTION_DAYS,
         ),
-        # Endurain wrote objects in the flat ``{data_dir}/{area}/{key}`` layout.
-        storage=jasil_settings.StorageSettings(local_legacy_layout=True),
+        # Every area uses the readable flat layout on local storage, so the older
+        # hashed objects are read natively alongside it and retired on overwrite or delete.
+        storage=jasil_settings.StorageSettings(local_plain_areas=plain_areas),
         network=jasil_settings.NetworkSettings(ssrf_allowed_hosts=tuple(settings.SSRF_ALLOWED_HOSTS)),
     )
 

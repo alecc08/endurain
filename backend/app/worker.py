@@ -68,7 +68,10 @@ def run_worker_process(stop: threading.Event | None = None) -> None:
     # This process is a dedicated consumer whatever the API's flag says, so the
     # substrate must see the standalone topology it is part of.
     worker_settings = core_config.settings.model_copy(update={"JOBS_RUN_IN_PROCESS_WORKER": False})
-    substrate_settings = core_platform_settings.build_jasil_settings(worker_settings)
+    substrate_settings = core_platform_settings.build_jasil_settings(
+        worker_settings,
+        plain_areas=runtime_module_registry.storage_plain_areas(),
+    )
     jasil_settings.configure(substrate_settings)
     platform = platform_container.build_platform(substrate_settings, sources=runtime_module_registry.runtime_sources())
     platform_runtime.set_active_platform(platform)

@@ -26,6 +26,7 @@ import modules.activities.activity.contracts as activity_contracts
 import modules.activities.activity.integration_service as activity_integration
 import modules.activities.activity_streams.constants as activity_streams_constants
 import modules.activities.activity_streams.integration_service as activity_streams_integration
+import modules.activities.activity_thumbnail.constants as activity_thumbnail_constants
 import modules.activities.activity_thumbnail.render as activity_thumbnail_render
 import modules.activities.activity_thumbnail.signing as activity_thumbnail_signing
 import modules.activities.orphan_sweep as activities_orphan_sweep
@@ -183,7 +184,7 @@ def generate_and_store_thumbnail(
         return None
     key = activity_thumbnail_signing.thumbnail_key(activity_id)
     storage.save(
-        activity_thumbnail_signing.THUMBNAIL_STORAGE_AREA,
+        activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA,
         key,
         data,
         activity_thumbnail_render.THUMBNAIL_CONTENT_TYPE,
@@ -191,7 +192,7 @@ def generate_and_store_thumbnail(
     if not activity_integration.set_thumbnail_key(activity_id, key, db):
         # The activity was deleted while the tiles rendered, and its cleanup event
         # may already have run, so nothing else names this blob.
-        storage.delete(activity_thumbnail_signing.THUMBNAIL_STORAGE_AREA, key)
+        storage.delete(activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA, key)
         return None
     db.commit()
     logger.info("Thumbnail stored", extra=core_logger.context(activity_id=activity_id))
@@ -273,7 +274,7 @@ def read_activity_thumbnail(activity_id: int, token: str, storage: platform_prov
         raise core_exceptions.AccessConcealedError("Thumbnail not found")
 
     data = storage.get(
-        activity_thumbnail_signing.THUMBNAIL_STORAGE_AREA,
+        activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA,
         activity_thumbnail_signing.thumbnail_key(activity_id),
     )
     if data is None:
@@ -293,7 +294,7 @@ def delete_activity_thumbnail(activity_id: int, storage: platform_providers.Stor
         storage: The blob-storage provider.
     """
     storage.delete(
-        activity_thumbnail_signing.THUMBNAIL_STORAGE_AREA, activity_thumbnail_signing.thumbnail_key(activity_id)
+        activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA, activity_thumbnail_signing.thumbnail_key(activity_id)
     )
 
 
@@ -353,7 +354,7 @@ def _delete_all_thumbnails(storage: platform_providers.StorageProvider, db: Sess
         if key is None:
             continue
         try:
-            storage.delete(activity_thumbnail_signing.THUMBNAIL_STORAGE_AREA, key)
+            storage.delete(activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA, key)
             deleted += 1
         except Exception as err:
             logger.warning(
@@ -406,14 +407,14 @@ def _clear_references_to_missing_blobs(storage: platform_providers.StorageProvid
     """
     existing = {
         activity_id
-        for key, _modified in storage.iter_objects(activity_thumbnail_signing.THUMBNAIL_STORAGE_AREA)
+        for key, _modified in storage.iter_objects(activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA)
         if (activity_id := _activity_id_of_thumbnail_key(key)) is not None
     }
     for activity in _iter_activities_with_thumbnail(db):
         key = activity.map_thumbnail_path
         if key is None or activity.id in existing:
             continue
-        if storage.exists(activity_thumbnail_signing.THUMBNAIL_STORAGE_AREA, key):
+        if storage.exists(activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA, key):
             continue
         # Conditional on the key still being the one read: a subscriber may have stored a
         # fresh thumbnail since, and that one must survive.
@@ -538,7 +539,7 @@ def sweep_orphaned_thumbnails(storage: platform_providers.StorageProvider, db: S
     """
     return activities_orphan_sweep.sweep_orphaned_blobs(
         storage,
-        activity_thumbnail_signing.THUMBNAIL_STORAGE_AREA,
+        activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA,
         lambda ids: activity_integration.filter_existing_activity_ids(ids, db),
         _activity_id_of_thumbnail_key,
     )

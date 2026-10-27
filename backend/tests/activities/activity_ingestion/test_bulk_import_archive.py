@@ -213,7 +213,7 @@ class TestRunLocally:
         assert (row.status, row.files_done, row.files_failed) == ("completed", 2, 1)
         assert pipeline == ["a.fit", "c.fit"]
         kept = f"{_USER}/{job_id}/bad.fit"
-        assert storage.get(bulk.BULK_IMPORT_ERROR_STORAGE_AREA, kept) == b"BAD"
+        assert storage.get(ingestion_constants.BULK_IMPORT_ERROR_STORAGE_AREA, kept) == b"BAD"
 
     def test_a_file_name_repeated_in_two_folders_is_imported_twice(self, tmp_path, factory, storage, pipeline):
         job_id = self._accept(tmp_path, factory, storage, {"2023/ride.fit": b"1", "2024/ride.fit": b"2"})

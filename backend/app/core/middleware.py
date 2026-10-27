@@ -15,7 +15,6 @@ from starlette.types import ASGIApp
 
 import core.config as core_config
 import core.logger as core_logger
-import modules.server_settings.constants as server_settings_constants
 
 logger = core_logger.get_logger(__name__)
 
@@ -140,11 +139,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         content_type = response.headers.get("content-type", "")
         if "text/html" in content_type:
             _refresh_allowed_tile_domains(request)
-            allowed_tile_domains = getattr(
-                request.app.state,
-                "allowed_tile_domains",
-                server_settings_constants.DEFAULT_ALLOWED_TILE_DOMAINS,
-            )
+            allowed_tile_domains = getattr(request.app.state, "allowed_tile_domains", ())
             tile_domains_str = " ".join(allowed_tile_domains)
 
             # Object storage serves blobs (thumbnails, photos, media) from its

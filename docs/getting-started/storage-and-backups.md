@@ -38,7 +38,7 @@ The blob store is `local://` by default, which means subfolders of `DATA_DIR` (`
 
 The activity data itself (route, streams, laps, heart rate and so on) is in the database. The original file is retained alongside it and is what a profile export includes.
 
-On local storage the folders also appear in the `data` directory the image creates at start: `user_images`, `server_images`, `activity_media`, `activity_thumbnails`, `activity_files` and its subfolders.
+On local storage every area is browsable under the `data` directory the image creates at start: `activity_files/processed/<activity id>.<ext>`, `activity_media/`, `activity_thumbnails/`, `user_images/`, `server_images/`, the profile staging areas and `bulk_import_errors/`. Files written by earlier releases in the provider's private layout stay readable and are removed as they are replaced or deleted.
 
 ## What to back up
 

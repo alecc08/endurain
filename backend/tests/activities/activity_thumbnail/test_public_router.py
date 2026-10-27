@@ -11,7 +11,6 @@ class TestReadActivityThumbnailUnit:
         from modules.activities.activity_thumbnail.public_router import read_activity_thumbnail
 
         mock_signing.verify_thumbnail_token.return_value = True
-        mock_signing.THUMBNAIL_STORAGE_AREA = "activity_thumbnails"
         mock_signing.thumbnail_key.return_value = "1.webp"
         storage = MagicMock()
         storage.get.return_value = b"webpdata"

@@ -44,9 +44,6 @@ forbidden_modules =
 # domain to ask what work exists. Each module declares its own ``scheduled_jobs``,
 # and the composition root (``main``) hands the collected list to
 # ``start_scheduler``.
-# One exception is recorded here so it is reviewed rather than assumed:
-# ``core.middleware`` reads the server-settings CONSTANTS (the built-in tile
-# domains, plain data) as the CSP fallback before any domains are loaded.
 [importlinter:contract:core-not-domain]
 name = Core must not import domain modules
 type = forbidden
@@ -55,8 +52,6 @@ source_modules =
     core
 forbidden_modules =
     modules
-ignore_imports =
-    core.middleware -> modules.server_settings.constants
 
 [importlinter:contract:redis-owned-by-platform]
 name = Only the platform Redis capability may import redis

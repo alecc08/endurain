@@ -167,7 +167,10 @@ async def startup_event(fastapi_app: FastAPI) -> None:
 
     # Install the host's configuration and correlation source before anything
     # reads them. The substrate logs its own capability report as it builds.
-    substrate_settings = core_platform_settings.build_jasil_settings(core_config.settings)
+    substrate_settings = core_platform_settings.build_jasil_settings(
+        core_config.settings,
+        plain_areas=runtime_module_registry.storage_plain_areas(),
+    )
     jasil_settings.configure(substrate_settings)
     jasil_correlation.configure_provider(lambda: core_middleware_request_id.get_request_id() or None)
 
@@ -380,6 +383,10 @@ def create_app() -> FastAPI:
             "url": core_config.LICENSE_URL,
         },
     )
+
+    # The security-headers middleware reads the CSP tile domains from app.state, so
+    # seed the built-in providers here; startup replaces them with the configured list.
+    fastapi_app.state.allowed_tile_domains = server_settings_constants.DEFAULT_ALLOWED_TILE_DOMAINS.copy()
 
     # Add session middleware for OAuth state management
     fastapi_app.add_middleware(
