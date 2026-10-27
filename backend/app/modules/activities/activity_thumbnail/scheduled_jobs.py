@@ -76,3 +76,12 @@ def schedule_missing_thumbnail_generation() -> None:
         description="missing thumbnail generation",
         lock_name=BACKFILL_LOCK_NAME,
     )
+
+
+def schedule_full_thumbnail_regeneration() -> None:
+    """Queue a delete-and-regenerate pass for every activity thumbnail."""
+    core_scheduler.run_once(
+        regenerate_all_thumbnails,
+        job_id="endurain_regenerate_all_thumbnails",
+        description="thumbnail regeneration",
+    )

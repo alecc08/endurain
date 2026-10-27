@@ -17,6 +17,7 @@ import migrations.migration_6 as migrations_migration_6
 import migrations.migration_8 as migrations_migration_8
 import migrations.migration_9 as migrations_migration_9
 import migrations.migration_10 as migrations_migration_10
+import migrations.migration_11 as migrations_migration_11
 
 logger = core_logger.get_logger(__name__)
 
@@ -29,6 +30,7 @@ _SYNC_MIGRATIONS: dict[int, Callable[[Session], None]] = {
     8: migrations_migration_8.process_migration_8,
     9: migrations_migration_9.process_migration_9,
     10: migrations_migration_10.process_migration_10,
+    11: migrations_migration_11.process_migration_11,
 }
 
 # Asynchronous migration handlers keyed by migration ID.

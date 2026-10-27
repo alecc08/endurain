@@ -35,3 +35,20 @@ class TestMaintenanceEntryPoints:
         mock_service.delete_and_regenerate_all_activity_thumbnails.assert_called_once_with(
             platform.storage, platform.lock, platform.clock, db
         )
+
+
+class TestOneShotScheduling:
+    @patch(f"{MODULE}.core_scheduler.run_once")
+    def test_queues_full_thumbnail_regeneration(self, mock_run_once):
+        from modules.activities.activity_thumbnail.scheduled_jobs import (
+            regenerate_all_thumbnails,
+            schedule_full_thumbnail_regeneration,
+        )
+
+        schedule_full_thumbnail_regeneration()
+
+        mock_run_once.assert_called_once_with(
+            regenerate_all_thumbnails,
+            job_id="endurain_regenerate_all_thumbnails",
+            description="thumbnail regeneration",
+        )

@@ -100,11 +100,7 @@ def _schedule_thumbnail_regeneration() -> None:
     runs. There the handler is already on a worker thread, so the pass runs inline.
     """
     if core_scheduler.scheduler.running:
-        core_scheduler.run_once(
-            activity_thumbnail_scheduled_jobs.regenerate_all_thumbnails,
-            job_id="endurain_regenerate_all_thumbnails",
-            description="thumbnail regeneration",
-        )
+        activity_thumbnail_scheduled_jobs.schedule_full_thumbnail_regeneration()
         return
     # The job runner renews the lease while this runs and the backfill lock keeps
     # a requeued copy from repeating the delete phase; a pass past
