@@ -11,8 +11,7 @@ from pydantic import (
 
 
 class MFARequest(BaseModel):
-    """
-    Request model for MFA verification.
+    """Request model for MFA verification.
 
     Attributes:
         mfa_code: The MFA code to verify (6-digit TOTP or
@@ -34,8 +33,7 @@ class MFARequest(BaseModel):
     @field_validator("mfa_code")
     @classmethod
     def validate_mfa_code_format(cls, v: str) -> str:
-        """
-        Validate MFA code format.
+        """Validate MFA code format.
 
         Args:
             v: MFA code to validate.
@@ -57,8 +55,7 @@ class MFARequest(BaseModel):
 
 
 class MFADisableRequest(MFARequest):
-    """
-    Request model for MFA disable verification.
+    """Request model for MFA disable verification.
 
     Disabling MFA is a sensitive, security-reducing operation
     and must be gated by step-up verification: the caller has to
@@ -70,7 +67,7 @@ class MFADisableRequest(MFARequest):
 
     For SSO-only accounts (no local password set), the password
     field may be omitted and the password check is skipped — see
-    :func:`modules.auth._internal.services.step_up_service.verify_step_up_credentials`
+    :func:`modules.auth.account_security.step_up_service.verify_step_up_credentials`
     and ``docs/developer-guide/auth-boundary.md`` for the rationale
     and the tracked SSO-only step-up gap.
 
@@ -89,8 +86,7 @@ class MFADisableRequest(MFARequest):
 
 
 class MFASetupRequest(BaseModel):
-    """
-    Request model for MFA setup verification.
+    """Request model for MFA setup verification.
 
     Enabling MFA binds a TOTP secret — just handed to the caller
     by ``POST /profile/mfa/setup`` — to the account, and issues
@@ -103,7 +99,7 @@ class MFASetupRequest(BaseModel):
 
     For SSO-only accounts (no local password set), the password
     field may be omitted and the password check is skipped — see
-    :func:`modules.auth._internal.services.step_up_service.verify_step_up_credentials`
+    :func:`modules.auth.account_security.step_up_service.verify_step_up_credentials`
     and ``docs/developer-guide/auth-boundary.md`` for the rationale
     and the tracked SSO-only step-up gap.
 
@@ -136,9 +132,8 @@ class MFASetupRequest(BaseModel):
     )
 
 
-class MFASetupResponse(BaseModel):
-    """
-    Response model for MFA setup initialization.
+class MFASetupRead(BaseModel):
+    """Response model for MFA setup initialization.
 
     Attributes:
         secret: The MFA secret key.
@@ -164,9 +159,8 @@ class MFASetupResponse(BaseModel):
     )
 
 
-class MFAStatusResponse(BaseModel):
-    """
-    Response model for MFA status.
+class MFAStatusRead(BaseModel):
+    """Response model for MFA status.
 
     Attributes:
         mfa_enabled: Whether MFA is enabled for the user.
@@ -180,3 +174,41 @@ class MFAStatusResponse(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+
+
+class MFAEnableRead(BaseModel):
+    """Response returned after MFA is enabled.
+
+    Attributes:
+        message: Confirmation message.
+        backup_codes: Newly generated one-time backup codes.
+    """
+
+    message: StrictStr
+    backup_codes: list[StrictStr]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MFADisableRead(BaseModel):
+    """Response returned after MFA is disabled.
+
+    Attributes:
+        message: Confirmation message.
+    """
+
+    message: StrictStr
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MFAVerifyRead(BaseModel):
+    """Response returned after an MFA code is verified.
+
+    Attributes:
+        message: Confirmation message.
+    """
+
+    message: StrictStr
+
+    model_config = ConfigDict(extra="forbid")

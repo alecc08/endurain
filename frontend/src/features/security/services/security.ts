@@ -25,6 +25,7 @@ import type {
 } from '@/features/security/types'
 
 import { apiFetch } from '@/services/http'
+import { fetchAllPages } from '@/services/pagination'
 
 /** The scopes an API key can be granted (mirrors the backend allow-list). */
 export const API_KEY_SCOPES = ['activities:upload'] as const
@@ -174,7 +175,7 @@ export async function enableMfa(input: MfaEnableInput): Promise<string[]> {
     current_password: input.currentPassword,
   }
   const response = await apiFetch<{ backup_codes: string[] }>('/profile/mfa/enable', {
-    method: 'PUT',
+    method: 'POST',
     body: JSON.stringify(payload),
   })
   return response.backup_codes ?? []
@@ -193,7 +194,7 @@ export async function disableMfa(input: StepUpInput): Promise<void> {
     current_password: input.currentPassword,
   }
   await apiFetch('/profile/mfa/disable', {
-    method: 'PUT',
+    method: 'POST',
     body: JSON.stringify(payload),
     responseType: 'void',
   })
@@ -236,8 +237,8 @@ export async function regenerateBackupCodes(input: StepUpInput): Promise<BackupC
  * @throws {HttpError} When the request fails.
  */
 export async function fetchSessions(signal?: AbortSignal): Promise<SecuritySession[]> {
-  const dtos = await apiFetch<SecuritySessionDto[] | null>('/profile/sessions', { signal })
-  return (dtos ?? []).map(mapSecuritySession)
+  const dtos = await fetchAllPages<SecuritySessionDto>('/profile/sessions', undefined, signal)
+  return dtos.map(mapSecuritySession)
 }
 
 /**
@@ -276,8 +277,8 @@ export async function revokeOtherSessions(): Promise<void> {
  * @throws {HttpError} When the request fails.
  */
 export async function fetchApiKeys(signal?: AbortSignal): Promise<ApiKey[]> {
-  const dtos = await apiFetch<ApiKeyDto[] | null>('/profile/api_keys', { signal })
-  return (dtos ?? []).map(mapApiKey)
+  const dtos = await fetchAllPages<ApiKeyDto>('/profile/api-keys', undefined, signal)
+  return dtos.map(mapApiKey)
 }
 
 /**
@@ -297,7 +298,7 @@ export async function createApiKey(input: ApiKeyCreateInput): Promise<string> {
     current_password: input.currentPassword,
     mfa_code: input.mfaCode,
   }
-  const dto = await apiFetch<ApiKeyCreatedDto>('/profile/api_keys', {
+  const dto = await apiFetch<ApiKeyCreatedDto>('/profile/api-keys', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
@@ -312,8 +313,8 @@ export async function createApiKey(input: ApiKeyCreateInput): Promise<string> {
  * @throws {HttpError} When the request fails.
  */
 export async function revokeApiKey(id: string): Promise<void> {
-  await apiFetch(`/profile/api_keys/${encodeURIComponent(id)}/revoke`, {
-    method: 'PATCH',
+  await apiFetch(`/profile/api-keys/${encodeURIComponent(id)}/revoke`, {
+    method: 'POST',
     responseType: 'void',
   })
 }
@@ -325,7 +326,7 @@ export async function revokeApiKey(id: string): Promise<void> {
  * @throws {HttpError} When the request fails.
  */
 export async function deleteApiKey(id: string): Promise<void> {
-  await apiFetch(`/profile/api_keys/${encodeURIComponent(id)}`, {
+  await apiFetch(`/profile/api-keys/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     responseType: 'void',
   })

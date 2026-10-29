@@ -131,25 +131,25 @@ describe('security service requests', () => {
     expect(apiFetch).toHaveBeenCalledWith('/profile/mfa/setup', { method: 'POST' })
   })
 
-  it('enableMfa PUTs the code and returns the backup codes', async () => {
+  it('enableMfa POSTs the code and returns the backup codes', async () => {
     vi.mocked(apiFetch).mockResolvedValue({ backup_codes: ['a', 'b'] })
 
     const codes = await enableMfa({ mfaCode: '123456', currentPassword: 'pw' })
 
     expect(apiFetch).toHaveBeenCalledWith('/profile/mfa/enable', {
-      method: 'PUT',
+      method: 'POST',
       body: JSON.stringify({ mfa_code: '123456', current_password: 'pw' }),
     })
     expect(codes).toEqual(['a', 'b'])
   })
 
-  it('disableMfa PUTs the step-up body', async () => {
+  it('disableMfa POSTs the step-up body', async () => {
     vi.mocked(apiFetch).mockResolvedValue(undefined)
 
     await disableMfa({ currentPassword: 'pw', mfaCode: '123456' })
 
     expect(apiFetch).toHaveBeenCalledWith('/profile/mfa/disable', {
-      method: 'PUT',
+      method: 'POST',
       body: JSON.stringify({ mfa_code: '123456', current_password: 'pw' }),
       responseType: 'void',
     })
@@ -185,11 +185,19 @@ describe('security service requests', () => {
   })
 
   it('fetchSessions reads the sessions path and maps the records', async () => {
-    vi.mocked(apiFetch).mockResolvedValue([sessionDto])
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce({ items: [sessionDto], next: 2 })
+      .mockResolvedValueOnce({ items: [sessionDto], next: null })
 
-    expect(await fetchSessions()).toEqual([mappedSession])
-    expect(apiFetch).toHaveBeenCalledWith(
-      '/profile/sessions',
+    expect(await fetchSessions()).toEqual([mappedSession, mappedSession])
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      1,
+      '/profile/sessions?page_number=1',
+      expect.objectContaining({ signal: undefined }),
+    )
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      '/profile/sessions?page_number=2',
       expect.objectContaining({ signal: undefined }),
     )
   })

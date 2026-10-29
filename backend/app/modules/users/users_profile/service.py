@@ -15,6 +15,10 @@ import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import modules.activities.activity.integration_service as activities_integration
+import modules.auth.account_security.integration_service as account_security_integration
+import modules.auth.credentials.integration_service as credentials_integration
+import modules.auth.identity_providers.contracts as identity_provider_contracts
+import modules.auth.sign_up_tokens.integration_service as sign_up_tokens_integration
 import modules.followers.integration_service as followers_integration
 import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
@@ -29,7 +33,6 @@ import modules.users.users_profile.utils as profile_utils
 
 if TYPE_CHECKING:
     import modules.auth.dependencies as auth_dependencies
-    import modules.auth.identity_service as auth_identity_service
 
 logger = core_logger.get_logger(__name__)
 
@@ -49,14 +52,12 @@ _NON_EXPORTED_USER_FIELDS = (
 
 def get_profile(
     user_id: int,
-    identity_service: "auth_identity_service.IdentityService",
     db: Session,
 ) -> users_schema.UsersMe:
     """Assemble the authenticated user's profile.
 
     Args:
         user_id: The authenticated user.
-        identity_service: Identity service that answers the authentication status.
         db: Database session.
 
     Returns:
@@ -77,6 +78,7 @@ def get_profile(
 
     return users_schema.UsersMe.model_validate(user).model_copy(
         update={
+            "integrations_version": user_integrations.version,
             "is_strava_linked": 1 if user_integrations.strava_token else 0,
             "is_garminconnect_linked": 1 if user_integrations.garminconnect_token else 0,
             "privacy_settings_version": privacy_settings.version,
@@ -96,8 +98,8 @@ def get_profile(
             # Lets the frontend tell SSO-only accounts from accounts with a local password, so
             # step-up prompts can hide the password field. Both flags are auth-owned and come
             # through the auth boundary, so the hash never leaves it.
-            "has_local_password": identity_service.has_local_password(user_id),
-            "mfa_enabled": identity_service.get_mfa_status(user_id).mfa_enabled,
+            "has_local_password": credentials_integration.has_local_password(user_id, db),
+            "mfa_enabled": account_security_integration.get_mfa_status(user_id, db).mfa_enabled,
         }
     )
 
@@ -138,7 +140,9 @@ def get_user_profile_overview(
     )
 
 
-def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session, *, if_match: str) -> int:
+def edit_profile(
+    user_id: int, profile: users_schema.ProfileUpdate, db: Session, *, if_match: str
+) -> users_schema.UsersMe:
     """Apply the user's own profile edits and commit.
 
     Args:
@@ -148,7 +152,7 @@ def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session,
         if_match: The ``If-Match`` precondition.
 
     Returns:
-        The user's version after the edit, which the client sends as its next ``If-Match``.
+        The edited profile, whose ``version`` the client sends as its next ``If-Match``.
 
     Raises:
         NotFoundError: If the user does not exist.
@@ -158,17 +162,16 @@ def edit_profile(user_id: int, profile: users_schema.ProfileUpdate, db: Session,
     with core_etag.refuse_stale_write(
         db, "profile", lambda: users_integration.get_user(user_id, db) is not None, "User not found"
     ):
-        version = users_integration.edit_profile(user_id, profile, db, if_match=if_match).version
+        users_integration.edit_profile(user_id, profile, db, if_match=if_match)
         db.commit()
     logger.debug("Profile updated", extra=core_logger.context(user_id=user_id))
-    return version
+    return get_profile(user_id, db)
 
 
 def change_email(
     user_id: int,
     change: users_schema.EmailChange,
     session_id: str,
-    identity_service: "auth_identity_service.IdentityService",
     step_up_store: "auth_dependencies.StepUpStore",
     db: Session,
 ) -> None:
@@ -183,19 +186,19 @@ def change_email(
         user_id: The authenticated user.
         change: The new address with the step-up credentials.
         session_id: The caller's current session, which stays signed in when other sessions are revoked.
-        identity_service: Identity service that verifies the step-up and queues the email.
         step_up_store: Step-up lockout store.
         db: Database session.
 
     Raises:
-        HTTPException: If step-up verification fails.
+        UnauthenticatedError: If step-up verification fails.
         NotFoundError: If the user does not exist.
         ConflictError: If the email is already taken.
     """
-    identity_service.verify_step_up(
+    account_security_integration.verify_step_up(
         users_schema.StepUpVerification(**change.model_dump(exclude={"email", "revoke_other_sessions"})),
         user_id,
         step_up_store,
+        db,
     )
     try:
         changed = users_integration.stage_email_change(user_id, change.email, db)
@@ -208,8 +211,10 @@ def change_email(
     logger.info("Email changed", extra=core_logger.context(user_id=user_id))
 
     if change.revoke_other_sessions:
-        identity_service.delete_other_user_sessions(user_id, session_id)
-    if not identity_service.request_email_reverification(user_id):
+        account_security_integration.delete_other_user_sessions(user_id, session_id, db)
+    verification_queued = sign_up_tokens_integration.request_email_reverification(user_id, db)
+    db.commit()
+    if not verification_queued:
         logger.warning(
             "Email changed but cannot be verified: outgoing email is not configured",
             extra=core_logger.context(user_id=user_id),
@@ -222,7 +227,7 @@ def edit_privacy_settings(
     db: Session,
     *,
     if_match: str,
-) -> int:
+) -> users_privacy_settings_schema.UsersPrivacySettingsRead:
     """Apply the user's own privacy settings and commit.
 
     Args:
@@ -232,7 +237,7 @@ def edit_privacy_settings(
         if_match: The ``If-Match`` precondition.
 
     Returns:
-        The settings' version after the edit, which the client sends as its next ``If-Match``.
+        The edited settings, whose ``version`` the client sends as its next ``If-Match``.
 
     Raises:
         NotFoundError: If the user has no privacy settings.
@@ -244,18 +249,17 @@ def edit_privacy_settings(
         lambda: users_privacy_settings_integration.get_privacy_settings(user_id, db) is not None,
         "User privacy settings not found",
     ):
-        version = users_privacy_settings_integration.edit_privacy_settings(
+        updated = users_privacy_settings_integration.edit_privacy_settings(
             user_id, privacy_settings, db, if_match=if_match
-        ).version
+        )
         db.commit()
     logger.debug("Privacy settings updated", extra=core_logger.context(user_id=user_id))
-    return version
+    return updated
 
 
 def delete_account(
     user_id: int,
     step_up: users_schema.StepUpVerification,
-    identity_service: "auth_identity_service.IdentityService",
     step_up_store: "auth_dependencies.StepUpStore",
     state: platform_providers.StateProvider,
     storage: platform_providers.StorageProvider,
@@ -271,7 +275,6 @@ def delete_account(
     Args:
         user_id: The authenticated user.
         step_up: Step-up verification payload (password, and an MFA code when MFA is enabled).
-        identity_service: Identity service that verifies the step-up.
         step_up_store: Step-up lockout store.
         state: The platform state provider.
         storage: The platform storage provider.
@@ -281,11 +284,11 @@ def delete_account(
         The deletion's initial status.
 
     Raises:
-        HTTPException: If step-up verification fails.
+        UnauthenticatedError: If step-up verification fails.
         ConflictError: If the user is the only administrator, or a deletion is already pending.
     """
-    identity_service.verify_step_up(step_up, user_id, step_up_store)
-    status = users_integration.request_user_deletion(user_id, identity_service, state, storage, db)
+    account_security_integration.verify_step_up(step_up, user_id, step_up_store, db)
+    status = users_integration.request_user_deletion(user_id, state, storage, db)
     logger.info("Account deletion requested by its owner", extra=core_logger.context(user_id=user_id))
     return status
 
@@ -329,3 +332,62 @@ def stage_export(user_id: int, storage: platform_providers.StorageProvider, db: 
         )
     logger.info("Profile data exported", extra=core_logger.context(user_id=user_id, size_bytes=size))
     return size
+
+
+def change_password(
+    user_id: int,
+    change: users_schema.UsersEditPassword,
+    session_id: str,
+    step_up_store: account_security_integration.StepUpStore,
+    db: Session,
+) -> None:
+    """Change a user's own password after step-up verification.
+
+    Args:
+        user_id: ID of the authenticated user.
+        change: Current and new password, optional MFA code and whether to end the other sessions.
+        session_id: Session of the caller, kept when the other sessions end.
+        step_up_store: Step-up lockout store.
+        db: Database session.
+
+    Raises:
+        UnauthenticatedError: If step-up verification fails.
+        InvalidInputError: If the new password fails the configured policy.
+    """
+    account_security_integration.change_own_password(
+        user_id,
+        change.current_password,
+        change.password,
+        change.mfa_code,
+        step_up_store,
+        db,
+        revoke_other_sessions=change.revoke_other_sessions,
+        current_session_id=session_id,
+    )
+    db.commit()
+    logger.info("Password changed", extra=core_logger.context(user_id=user_id))
+
+
+def start_identity_provider_link(
+    link_token: str,
+    idp_id: int,
+    redirect: str | None,
+    client_ip: str,
+    db: Session,
+) -> identity_provider_contracts.BrowserLinkStart:
+    """Claim a one-time link token and return the identity provider's authorization URL and browser binding.
+
+    Args:
+        link_token: One-time token minted for the link.
+        idp_id: ID of the identity provider to link.
+        redirect: Frontend return path after linking.
+        client_ip: Client address of the request, checked against the address the token was issued to.
+        db: Database session.
+
+    Returns:
+        The provider's authorization URL, and the secret the browser must keep for the callback.
+    """
+    start = account_security_integration.start_browser_idp_link(link_token, idp_id, redirect, client_ip, db)
+    db.commit()
+    logger.debug("Identity provider link started", extra=core_logger.context(idp_id=idp_id))
+    return start

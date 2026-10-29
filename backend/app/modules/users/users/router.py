@@ -2,15 +2,15 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response, Security, UploadFile, status
+from fastapi import APIRouter, Query, Request, Response, Security, UploadFile, status
 
 import core.dependencies as core_dependencies
 import core.etag as core_etag
 import core.pagination as core_pagination
 import core.rate_limit as core_rate_limit
+import modules.auth.account_security.integration_service as account_security_integration
 import modules.auth.dependencies as auth_dependencies
-import modules.auth.identity_providers.links.schema as auth_identity_links_schema
-import modules.auth.identity_service as auth_identity_service
+import modules.auth.identity_provider_links.schema as auth_identity_links_schema
 import modules.users.users.deletion_job_service as users_deletion_job_service
 import modules.users.users.dependencies as users_dependencies
 import modules.users.users.photo_service as users_photo_service
@@ -28,11 +28,7 @@ router = APIRouter()
 )
 def read_users_all_pagination(
     db: core_dependencies.DbSession,
-    identity_service: Annotated[
-        auth_identity_service.IdentityService,
-        Depends(auth_identity_service.get_identity_service),
-    ],
-    page: Annotated[core_pagination.PageParams, Depends(core_pagination.list_page_params)],
+    page: core_pagination.ListPage,
     show_inactive: Annotated[
         bool | None,
         Query(description="Filter by inactive status"),
@@ -62,7 +58,6 @@ def read_users_all_pagination(
 
     Args:
         db: Database session dependency.
-        identity_service: Identity service dependency.
         page: The requested page and page size.
         show_inactive: Optional filter by inactive status.
         show_email_unverified: Optional filter by email verification status.
@@ -75,7 +70,6 @@ def read_users_all_pagination(
         Paginated list of users with total count.
     """
     return users_service.list_users(
-        identity_service,
         db,
         page_number=page.page_number,
         num_records=page.num_records,
@@ -90,23 +84,25 @@ def read_users_all_pagination(
 
 @router.get(
     "/username/contains/{username}",
-    response_model=list[users_schema.UserPublicRead],
+    response_model=users_schema.UserPublicPage,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read"])],
 )
 def read_users_contain_username(
     username: users_dependencies.Username,
+    page: core_pagination.ListPage,
     db: core_dependencies.DbSession,
-) -> list[users_schema.UserPublicRead]:
-    """Search active users by partial username match.
+) -> users_schema.UserPublicPage:
+    """Search active users by partial username match, one page at a time.
 
     Args:
         username: Partial username to search for.
+        page: The requested window of matches.
         db: Database session dependency.
 
     Returns:
-        The matching users' public projections.
+        The page of matching users' public projections.
     """
-    return users_service.search_public_users(username, db)
+    return users_service.search_public_users(username, page, db)
 
 
 @router.get(
@@ -133,24 +129,30 @@ def read_users_username(
         NotFoundError: If there is no such user.
     """
     user = users_service.require_user_by_username(username, db)
-    response.headers["ETag"] = core_etag.format_etag(user.version)
+    core_etag.set_etag(response, user.version)
     return user
 
 
-@router.get(
-    "/email/{email}",
+@router.post(
+    "/email/lookup",
     response_model=users_schema.UsersRead,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read_all"])],
 )
-def read_users_email(
-    email: users_dependencies.Email,
+@core_rate_limit.limiter.limit(core_rate_limit.SENSITIVE)
+def lookup_user_by_email(
+    request: Request,
+    lookup: users_schema.UsersEmailLookup,
     db: core_dependencies.DbSession,
     response: Response,
 ) -> users_schema.UsersRead:
-    """Get user by email address.
+    """Get a user by email address.
+
+    The address travels in the request body, so it never reaches access logs or proxy caches
+    through the URL.
 
     Args:
-        email: Email address to search for.
+        request: The incoming request, read by the rate limiter.
+        lookup: The email address to search for.
         db: Database session dependency.
         response: The response, which carries the user's ETag.
 
@@ -160,8 +162,8 @@ def read_users_email(
     Raises:
         NotFoundError: If there is no such user.
     """
-    user = users_service.require_user_by_email(email, db)
-    response.headers["ETag"] = core_etag.format_etag(user.version)
+    user = users_service.require_user_by_email(lookup.email, db)
+    core_etag.set_etag(response, user.version)
     return user
 
 
@@ -213,7 +215,7 @@ def read_users_full(
         NotFoundError: If the user does not exist.
     """
     user = users_service.require_user(user_id, db)
-    response.headers["ETag"] = core_etag.format_etag(user.version)
+    core_etag.set_etag(response, user.version)
     return user
 
 
@@ -227,10 +229,6 @@ def read_users_full(
 def create_user(
     request: Request,
     user: users_schema.UsersCreate,
-    identity_service: Annotated[
-        auth_identity_service.IdentityService,
-        Depends(auth_identity_service.get_identity_service),
-    ],
     db: core_dependencies.DbSession,
 ) -> users_schema.UsersRead:
     """Create a new user (admin operation).
@@ -238,17 +236,16 @@ def create_user(
     Args:
         request: The incoming request, read by the rate limiter.
         user: User creation data.
-        identity_service: Identity service dependency.
         db: Database session dependency.
 
     Returns:
         Created user data.
     """
-    return users_service.create_user(user, identity_service, db)
+    return users_service.create_user(user, db)
 
 
 @router.post(
-    "/{user_id}/image",
+    "/{user_id}/photo",
     status_code=status.HTTP_201_CREATED,
     response_model=users_schema.UserPhotoRead,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:write"])],
@@ -289,10 +286,6 @@ def edit_user(
     user_attributtes: users_schema.UsersEdit,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    identity_service: Annotated[
-        auth_identity_service.IdentityService,
-        Depends(auth_identity_service.get_identity_service),
-    ],
     response: Response,
     if_match: core_dependencies.IfMatch,
 ) -> users_schema.UsersRead:
@@ -306,19 +299,18 @@ def edit_user(
         user_attributtes: User data to update.
         token_user_id: ID of the administrator making the edit.
         db: Database session dependency.
-        identity_service: Identity service dependency.
         response: The response, which carries the new ETag.
         if_match: The ``If-Match`` precondition.
 
     Returns:
         Updated user data.
     """
-    updated = users_service.edit_user(user_id, user_attributtes, token_user_id, identity_service, db, if_match=if_match)
-    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    updated = users_service.edit_user(user_id, user_attributtes, token_user_id, db, if_match=if_match)
+    core_etag.set_etag(response, updated.version)
     return updated
 
 
-@router.put(
+@router.post(
     "/{user_id}/approve",
     response_model=None,
     status_code=status.HTTP_204_NO_CONTENT,
@@ -329,10 +321,6 @@ def approve_user(
     request: Request,
     user_id: core_dependencies.PositiveId,
     db: core_dependencies.DbSession,
-    identity_service: Annotated[
-        auth_identity_service.IdentityService,
-        Depends(auth_identity_service.get_identity_service),
-    ],
 ) -> None:
     """Approve pending user account.
 
@@ -340,9 +328,8 @@ def approve_user(
         request: The incoming request, read by the rate limiter.
         user_id: ID of user to approve.
         db: Database session dependency.
-        identity_service: Identity service dependency.
     """
-    users_service.approve_user(user_id, identity_service, db)
+    users_service.approve_user(user_id, db)
 
 
 @router.post(
@@ -356,23 +343,19 @@ def edit_user_password(
     request: Request,
     user_id: core_dependencies.PositiveId,
     user_attributes: users_schema.UsersAdminEditPassword,
-    identity_service: Annotated[
-        auth_identity_service.IdentityService,
-        Depends(auth_identity_service.get_identity_service),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> None:
-    """Update user password.
+    """Update another user's password.
 
     Args:
         request: The incoming request, read by the rate limiter.
         user_id: ID of user to update password for.
         user_attributes: New password data.
-        identity_service: Identity service dependency.
+        token_user_id: ID of the administrator making the change.
+        db: Database session dependency.
     """
-    identity_service.change_managed_user_password(
-        user_id,
-        user_attributes.password,
-    )
+    users_service.change_user_password(user_id, user_attributes.password, token_user_id, db)
 
 
 @router.delete(
@@ -412,15 +395,13 @@ def delete_user_photo(
 def delete_user(
     request: Request,
     user_id: core_dependencies.PositiveId,
-    identity_service: Annotated[
-        auth_identity_service.IdentityService,
-        Depends(auth_identity_service.get_identity_service),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
     states: users_dependencies.UserDeletionStateStoreDep,
     storage: core_dependencies.Storage,
+    if_match: core_dependencies.IfMatch,
     db: core_dependencies.DbSession,
 ) -> users_schema.UserDeletionStatus:
-    """Queue the deletion of a user account.
+    """Queue the deletion of another user's account.
 
     The user is signed out and deactivated at once and a background job erases their data. Poll
     ``GET /users/{user_id}/deletion`` for the outcome; a failed deletion is requested again.
@@ -428,19 +409,24 @@ def delete_user(
     Args:
         request: The incoming request, read by the rate limiter.
         user_id: ID of user to delete.
-        identity_service: Identity service that revokes the user's sessions.
+        token_user_id: ID of the administrator making the request.
         states: Shared store of the deletion's state.
         storage: The platform storage provider.
+        if_match: The ``If-Match`` precondition.
         db: Database session dependency.
 
     Returns:
         The deletion's initial status.
 
     Raises:
+        PermissionDeniedError: If the administrator targets their own account.
         NotFoundError: If the user does not exist.
+        PreconditionFailedError: If the user changed since the client read it.
         ConflictError: If the user is the only administrator, or a deletion is already pending.
     """
-    return users_deletion_job_service.request_deletion(user_id, identity_service, states, storage, db)
+    return users_deletion_job_service.request_deletion_by_administrator(
+        user_id, token_user_id, states, storage, db, if_match=if_match
+    )
 
 
 @router.get(
@@ -469,26 +455,23 @@ def read_user_deletion_status(
 
 @router.get(
     "/{user_id}/identity-providers",
-    response_model=list[auth_identity_links_schema.UsersIdentityProviderResponse],
+    response_model=list[auth_identity_links_schema.IdentityProviderLinkRead],
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["users:read_all"])],
 )
 def get_user_identity_providers(
     user_id: core_dependencies.PositiveId,
-    identity_service: Annotated[
-        auth_identity_service.IdentityService,
-        Depends(auth_identity_service.get_identity_service),
-    ],
-) -> list[auth_identity_links_schema.UsersIdentityProviderResponse]:
+    db: core_dependencies.DbSession,
+) -> list[auth_identity_links_schema.IdentityProviderLinkRead]:
     """List the identity provider links of a specific user (admin).
 
     Args:
         user_id: ID of the user whose identity provider links to retrieve.
-        identity_service: Identity service dependency.
+        db: Database session.
 
     Returns:
         The user's enriched identity provider links (empty list if none).
     """
-    return identity_service.get_user_identity_provider_links(user_id)
+    return account_security_integration.get_user_identity_provider_links(user_id, db)
 
 
 @router.delete(
@@ -502,20 +485,19 @@ def delete_user_identity_provider(
     request: Request,
     user_id: core_dependencies.PositiveId,
     idp_id: core_dependencies.PositiveId,
-    identity_service: Annotated[
-        auth_identity_service.IdentityService,
-        Depends(auth_identity_service.get_identity_service),
-    ],
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
 ) -> None:
-    """Unlink an identity provider from a specific user (admin).
+    """Unlink an identity provider from another user (admin).
 
     Args:
         request: The incoming request, read by the rate limiter.
         user_id: ID of the user to unlink the identity provider from.
         idp_id: ID of the identity provider to unlink.
-        identity_service: Identity service dependency.
+        token_user_id: ID of the administrator making the change.
+        db: Database session.
 
     Returns:
         None
     """
-    identity_service.admin_delete_identity_provider_link(user_id, idp_id)
+    users_service.unlink_identity_provider(user_id, idp_id, token_user_id, db)

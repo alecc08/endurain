@@ -11,12 +11,12 @@ from pydantic import (
     field_validator,
 )
 
+import core.pagination as core_pagination
 import modules.auth.api_keys.utils as api_keys_utils
 
 
 class UsersApiKeyCreate(BaseModel):
-    """
-    Schema for creating a new API key.
+    """Schema for creating a new API key.
 
     API-key creation is a sensitive, persistent grant of
     account access — it must be gated by step-up
@@ -25,7 +25,7 @@ class UsersApiKeyCreate(BaseModel):
 
     For SSO-only accounts (no local password set), the password
     field may be omitted and the password check is skipped — see
-    :func:`modules.auth._internal.services.step_up_service.verify_step_up_credentials`
+    :func:`modules.auth.account_security.step_up_service.verify_step_up_credentials`
     and ``docs/developer-guide/auth-boundary.md`` for the rationale
     and the tracked SSO-only step-up gap.
 
@@ -72,8 +72,7 @@ class UsersApiKeyCreate(BaseModel):
     @field_validator("scopes")
     @classmethod
     def scopes_must_be_valid(cls, v: list[str]) -> list[str]:
-        """
-        Validate API keys only grant activity upload access.
+        """Validate API keys only grant activity upload access.
 
         Args:
             v: List of scope strings to validate.
@@ -95,8 +94,7 @@ class UsersApiKeyCreate(BaseModel):
 
 
 class UsersApiKeyRead(BaseModel):
-    """
-    API key read schema for list/detail responses.
+    """API key read schema for list/detail responses.
 
     Never exposes the raw key or its hash. Safe to
     return in all authenticated GET responses.
@@ -126,9 +124,8 @@ class UsersApiKeyRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class UsersApiKeyCreated(UsersApiKeyRead):
-    """
-    API key creation response schema.
+class UsersApiKeyCreatedRead(UsersApiKeyRead):
+    """API key creation response schema.
 
     Extends UsersApiKeyRead with the raw key, returned
     only once at creation time. The raw key is never
@@ -148,3 +145,7 @@ class UsersApiKeyCreated(UsersApiKeyRead):
         from_attributes=True,
         extra="forbid",
     )
+
+
+#: One page of a user's API keys.
+UsersApiKeyPage = core_pagination.Page[UsersApiKeyRead]

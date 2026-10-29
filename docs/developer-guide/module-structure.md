@@ -129,15 +129,10 @@ paragraph rules out.
 "registered in the API but not the worker" is a diff in one file, and the file
 that holds the handlers can be split without touching the entrypoints.
 
-`modules.auth` is the one module whose behavioural surface is not called
-`integration_service.py`. It publishes `identity_service.py` (plus
-`dependencies.py`), because its boundary is not "what may you call?" but "what
-may you learn about the caller?" — a distinction the
-[auth boundary guide](auth-boundary.md) states and a dedicated `auth-boundary`
-contract enforces structurally. The inconsistency is real and is the cost of
-that: `auth` answers "what may I depend on?" with a different filename than
-every other module. It is recorded here rather than smoothed over, and no other
-module may follow it.
+Auth publishes authentication and account-security operations through
+`modules.auth.dependencies` and the relevant child's `integration_service.py`.
+See the [auth boundary guide](auth-boundary.md) for identity ownership and the
+published package surfaces.
 
 `subscriber_registry.py` is also where a module declares its **reconciliation
 nets**. A durable subscriber derives state from an event, and delivery is
@@ -168,10 +163,12 @@ Alembic, or the namespace-level activities registries. Business modules do not
 call them. `scheduled_jobs.py` also holds the job runners.
 
 Every persistence-owning package declares its model module in
-`model_registry.py`. `app/model_registry.py` collects converted modules
-explicitly. Its filesystem scan exists only for unconverted legacy modules and
-shrinks as those modules adopt this structure. `core.database` never discovers
-or imports domain models.
+`model_registry.py`. `app/model_registry.py` collects those declarations
+explicitly. `core.database` never discovers or imports domain models.
+
+`app/migrations` is application-level orchestration that consumes each module's
+`migration_service`; it is not itself a module.
+Its tracking CRUD stages changes, while the migration service owns the commit.
 
 ### 3. Migration-only surface — imported only by `app/migrations`
 
@@ -269,14 +266,9 @@ Two choices in that table are deliberate:
   (`core.database.get_db` on a request, the job or subscriber that opened the
   session elsewhere) rolls back.
 
-  One accepted exception: `@handle_db_errors`, which wraps `crud` functions,
-  rolls the whole session back on a database error and on an escaping
-  `IntegrityError`. That is the same decision made implicitly, and it is kept
-  only because unconverted modules still rely on it. A `crud` that translates
-  `IntegrityError` into a `ConflictError` itself is not rolled back by it. Do not
-  add new reliance on the decorator's rollback; the transaction owner is
-  responsible, and the decorator's rollback is removed when the last unconverted
-  module is converted.
+  A `crud` that translates `IntegrityError` into a `ConflictError` does so at
+  the persistence boundary. Other database errors propagate to the transaction
+  owner, which rolls back the session.
 
 ### Surface writes stage, the caller commits
 
@@ -330,9 +322,11 @@ to make a *domain* decision from it — mapping `IntegrityError` to `ConflictErr
 is the precedent — never to re-raise a generic one.
 
 `test_crud_does_not_end_transactions` enforces it: a `crud`-role file in a
-converted module may not call `commit` or `rollback`. Files that still do are
-listed in `_CRUD_TRANSACTION_DEBT`, and the test fails on an entry that no longer
-offends so the register shrinks rather than lingers.
+converted module may not call `commit` or `rollback`, and there is no exception
+list. `test_only_transaction_owners_end_transactions` states the same rule for
+every file: only `service`, `migration_service`, `subscribers` and
+`scheduled_jobs` may end a transaction, so a file whose name declares no role
+cannot slip past it.
 
 ## What a module may depend on
 
@@ -509,8 +503,8 @@ Two mechanisms, deliberately:
 
 **`backend/.importlinter`** — what import-linter is good at: external packages
 (`redis`, `requests`, `fastapi` in the parsers), the platform direction
-(`core` never imports `modules`), the auth boundary, the migration surface and a
-few named design seams. Run in CI by `.github/workflows/test-backend.yml`:
+(`core` never imports `modules`), the migration surface and a few named design
+seams. Run in CI by `.github/workflows/test-backend.yml`:
 
 ```bash
 cd backend && PYTHONPATH=app uv run lint-imports
@@ -680,9 +674,10 @@ one pattern. Recorded here so a review does not reopen them.
   `core.dependencies.IfMatch`, so a request without the header is refused with 428 and a stale one with 412
   (`core.etag.require_if_match`). `If-Match: *` is the explicit "overwrite whatever is there", used by data
   migrations and by a surface that is a system writer (the profile importer, the Garmin sync). Today that covers
-  activities, gears, gear components, server and mail settings, every health table, and the users, privacy
-  settings, default gear and goals tables. A full-record write is a `PUT` and a partial one a `PATCH`; a
-  singleton the caller owns (`/health/targets`, `/profile`, `/profile/privacy`, `/profile/default_gear`) names no id.
+  activities, gears, gear components, identity-provider configuration, server and mail settings, every health
+  table, and the users, privacy settings, default gear and goals tables. A full-record write is a `PUT` and a partial
+  one a `PATCH`; a singleton the caller owns (`/health/targets`, `/profile`, `/profile/privacy`,
+  `/profile/default-gear`) names no id.
   How each layer takes part, and the checklist for a new resource, is in
   [Versioned writes](optimistic-concurrency.md).
 - **Request parameters.** A path or query parameter's constraint is part of its type
@@ -763,58 +758,70 @@ the conformance test's allowlist.
   off by default. The 30 s pool wait and the 30 s lock timeout are still constants in `core/database.py`.
 - **Observability.** Logs are the only signal; queue depth, job
   duration and dead-letter counts are not exported as metrics.
+- **Creates carry no `Location` and no `Idempotency-Key`.** The 25 `POST` routes that answer `201` return the new
+  resource but not a `Location` header, and only the activity upload accepts an `Idempotency-Key`, so a client
+  that retries a create after a lost response can make a duplicate. A general key needs a stored-result design
+  (a shared store through the platform `StateProvider`, replay and conflict rules, expiry) per create route, and
+  `Location` is additive but should land with it, so both are left for their own change.
+- **Broad exception handling.** `except Exception` and `BaseException` handlers are concentrated in `users`
+  (the profile export), `auth` (the identity-provider service) and `activities`, and in the provider sync and
+  link services of `strava` and `garmin`; `followers`, `gears`, `health` and `notifications` have none. Many are
+  deliberate boundaries (a job records a failure and re-raises, a provider call degrades to a warning), but each
+  should name the errors it expects. Narrowing them in bulk risks hiding a real failure as an expected one, so
+  they are narrowed as the code around them is touched.
+- **Oversized services and `*_utils.py` files.** `auth/authentication/service.py` and
+  `users/users_profile/export_service.py` each hold several jobs, and a dozen
+  `utils.py` or `*_utils.py` files (in `auth`, `users_profile`, `users_goals`, `garmin`, `server_settings` and
+  the activity file parsers) name no role. The guide asks that a file's name state its role; splitting these is a
+  refactor with no behaviour change, so it is left until a feature needs the code apart.
+- **Fresh re-authentication for SSO-only step-up.** An account with no local password skips the password factor of
+  a step-up, and has no MFA factor unless MFA is on, so a stolen access token on such an account can create API
+  keys, link a provider or enable MFA without proving anything again. The fix is to require a recent identity
+  provider re-authentication for these accounts, which is a feature of its own; `step_up_service` carries a
+  `TODO(issue)` for it until the tracker issue exists.
 - **Visibility across modules.** The followee set reaches `activity.crud` as an id list, which
   grows with the follow count. A peer-published, read-only query fragment (a followee subquery)
   would avoid the list but needs its own allowed-import entry and test, so it is undecided.
 
-### Pilot status and what the next conversion owns
+### Accepted limitations
 
-`activities`, `followers`, `garmin`, `gears`, `health`, `notifications`, `server_settings`, `strava`, `users` and `websocket` are the only modules converted so far. The
-remaining modules are listed in `UNCONVERTED_MODULES` so that
-`TestModuleInventory` keeps them visible rather than silently exempt, and are
-converted one at a time with the `convert-module` skill. The items below need
-changes outside the converted modules, so they are recorded here as accepted
-limitations rather than half-done:
+These constraints remain visible until a coordinated design change resolves them:
 
-- **Top-level cycles.** `users` ⇄ `activities`: goal progress reads activities, and profile export/import
-  consumes them (the contributor registry is listed in `_LAYER_EXCEPTIONS`), while activities consumes
-  `users.integration_service`. Account deletion no longer closes it: `users` asks for the activities'
-  erasure through `users/contributors.py`, and `module_registry.configure_user_contributors` installs the
-  answer, so the erasure runs in the deletion's own transaction. `gears` no longer closes a cycle either:
-  it sits below activities (`_MUST_NOT_IMPORT`), states the required usage questions in
-  `gears/contributors.py`, and `module_registry.configure_gear_contributors` installs the activities
-  answers. A `layers` contract (core, identity, followers/gears/health, activities, providers) can then
-  state the module-level direction once. The remaining edges that close a cycle live in `users`.
-- **Layer rules for unconverted modules.** `TestLayerRules` covers converted
-  modules only. An unconverted module is outside it until converted, and the
-  `auth-boundary` contract is the one generic rule over every module:
-  `TestAuthBoundaryCoverage` fails when its source list differs from the set of
-  top-level modules, so a new module cannot start unconstrained.
-- **Registration seams.** `RuntimeModule` in `app/module_registry.py` is the
-  per-module manifest for subscribers, durable handlers, nets, recurring jobs and
-  startup tasks. Routers (`api.py`) and models (`model_registry.py`) stay
-  separate composition surfaces on purpose: they have different consumers
-  (the HTTP app and Alembic), and the legacy model scan keeps the model seam
-  distinct until the unconverted modules are gone.
-- **Namespace-level code in `health`.** `health` publishes `constants.py` (the shared `Interval`) and
-  `computation.py` (pure date and SQL helpers and `upsert_for_day`, the same-day upsert the weight, steps and sleep services share), and nothing else. `health_fasting.crud` and `health_poop.crud` import
-  `computation.local_date_expression` through `_LAYER_EXCEPTIONS`, because day bucketing must be
-  written once.
+- **Top-level cycles.** `users` ⇄ `auth`: users account workflows call auth integration surfaces, while auth
+  credential, session and identity-provider flows read or update users through `users.integration_service`.
+  `users` ⇄ `activities`: goal progress reads activities, and profile export/import consumes them (the contributor
+  registry is listed in `_LAYER_EXCEPTIONS`), while activities consumes `users.integration_service`. Account
+  deletion no longer closes the latter cycle: `users` asks for activity erasure through `users/contributors.py`,
+  and `module_registry.configure_user_contributors` installs the answer, so erasure runs in the deletion's own
+  transaction. `gears` sits below activities (`_MUST_NOT_IMPORT`) and declares its usage questions in
+  `gears/contributors.py`; `module_registry.configure_gear_contributors` installs the activities answers.
+- **Registration seams.** `RuntimeModule` in `app/module_registry.py` is the per-module manifest for subscribers,
+  durable handlers, nets, recurring jobs, startup tasks and the shutdown of the module's in-process pools. Routers (`api.py`) and models (`model_registry.py`)
+  remain separate composition surfaces for the HTTP app and Alembic.
+
+- **Namespace-level code in `health`.** `health` publishes `constants.py` (the shared `Interval`),
+  `computation.py` (pure date helpers, the unexecuted `select` builders for a user's records by id, existence,
+  count and list, the generic `to_read_schema`/`to_read_schemas` that replace a per-package `serializers.py`,
+  and `upsert_for_day`, the same-day upsert the weight, steps and sleep services share) and `record_crud.py`
+  (the persistence steps every per-user record runs identically: load by id and owner, count, page, create,
+  edit under `If-Match`, delete). A package describes its record once with a `RecordSpec` (model, read schema,
+  error labels) and its `crud` delegates to `record_crud`, keeping only what is specific to the record.
+  `record_service.py` is the service-layer counterpart: `commit_write` commits and logs a staged write under
+  the version-race guard, and `chart` charts a metric over an interval; each package `service` passes its
+  `crud.SPEC` and the callables that stage or read what is specific to it.
+  Persistence may import a namespace's `computation` like a data shape (`_PERSISTENCE_SHARED_ROLES`) and the
+  `crud`-role file directly under its own namespace (`_PERSISTENCE_NAMESPACE_ROLES`): neither declares a table.
+  Anything that resolves a value through another module, such as the user's "today", stays in the
+  package `service` that calls these helpers.
 - **`users` ⇄ `health`.** `health` services read the user's height, timezone and "today" through
   `users.integration_service`, and `users` creates default targets, recalculates BMI and exports and
   imports health records through the `health_targets` and `health_weight` surfaces. Only the
   contributor pattern described under *Top-level cycles* removes the second half.
-- **`auth` naming.** `identity_service.py` and `_internal/` instead of
-  `integration_service.py` and the filename vocabulary, as described above.
-  The generic boundary rule needs a special case until it is aligned.
-
 - **Persistence layers calling other modules.** Converted modules ask nothing of
-  another bounded context below `service` (`TestLayerRules`). The unconverted ones still do.
+  another bounded context below `service` (`TestLayerRules`).
 - **Persistence ending transactions.** Converted modules stage with `flush()` and
   let `service` (or the job, importer or `migration_service` that owns the unit of
-  work) commit. The unconverted module (`auth`) is outside
-  `test_crud_does_not_end_transactions`; `_CRUD_TRANSACTION_DEBT` is empty and is
-  where a module being converted lists its files.
+  work) commit.
 - **Subscribers reaching past a surface.** Followers holds no subscribers; its
   notification handlers live in `modules/notifications` and subscribe to
   `followers.events` (`TestLayerRules`).
@@ -823,7 +830,13 @@ limitations rather than half-done:
   media file and user image (storage writes already run through `asyncio.to_thread`). The importer shares no
   loop-bound resource, so this is safe, but the importer should become synchronous once `core.file_uploads`
   has a synchronous form of `validate_bytes`; the other validators already have one.
-- **Legacy model scan.** Converted modules declare their ORM module in
-  `model_registry.py` and use scalar foreign keys with database `ON DELETE`
-  behaviour. `app/model_registry.py` keeps a filesystem scan only for modules not
-  converted yet.
+- **Legacy model scan.** Phase 11 removed the filesystem scan for unconverted
+  modules. `app/model_registry.py` now imports exactly the explicit model
+  contributions declared by each module; ORM relationships remain replaced by
+  scalar foreign keys with database `ON DELETE` behaviour.
+
+- **Auth collections are not paginated.** `GET /profile/api-keys`, `GET /identity-providers` and
+  `GET /profile/identity-providers` return bare arrays, against the convention that a list a
+  client receives is a `core.pagination.Page`. Changing these shapes breaks
+  existing API clients, including the mobile app, so it waits for a coordinated
+  client release.

@@ -1,6 +1,5 @@
 """Strava account linking: the state is single-use and the caller's, and a failed exchange keeps the setup."""
 
-from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
 import jasil.runtime as platform_runtime
@@ -21,13 +20,38 @@ def oauth_states():
 class TestStoredCredentials:
     def test_the_client_is_stored_and_committed(self):
         db = MagicMock()
-        with patch.object(strava_service.user_integrations_integration, "set_strava_client") as store:
-            strava_service.set_client(
-                7, strava_schema.StravaClientCredentials(client_id=123, client_secret="secret"), db
+        with (
+            patch.object(strava_service.user_integrations_integration, "set_strava_client") as store,
+            patch.object(
+                strava_service.user_integrations_integration,
+                "get_user_integrations",
+                return_value=MagicMock(version=3),
+            ),
+        ):
+            version = strava_service.set_client(
+                7, strava_schema.StravaClientCredentials(client_id=123, client_secret="secret"), db, if_match='"2"'
             )
 
-        store.assert_called_once_with(7, "123", "secret", db)
+        store.assert_called_once_with(7, "123", "secret", db, if_match='"2"')
         db.commit.assert_called_once()
+        assert version == 3
+
+    def test_a_row_changed_by_another_request_is_a_stale_write_not_a_server_error(self):
+        from sqlalchemy.orm.exc import StaleDataError
+
+        db = MagicMock()
+        with (
+            patch.object(
+                strava_service.user_integrations_integration, "set_strava_client", side_effect=StaleDataError()
+            ),
+            patch.object(strava_service.user_integrations_integration, "get_user_integrations", return_value=object()),
+            pytest.raises(core_exceptions.PreconditionFailedError),
+        ):
+            strava_service.set_client(
+                7, strava_schema.StravaClientCredentials(client_id=123, client_secret="secret"), db, if_match='"2"'
+            )
+
+        db.commit.assert_not_called()
 
 
 class TestOAuthState:
@@ -56,61 +80,6 @@ class TestOAuthState:
         assert oauth_states.consume(7, old) is False
 
 
-@pytest.fixture(autouse=False)
-def _local_today(monkeypatch):
-    monkeypatch.setattr(strava_service.users_integration, "local_today", lambda _user_id, _db: date(2026, 10, 26))
-
-
-@pytest.mark.usefixtures("_local_today")
-class TestRequestActivitiesSync:
-    def test_a_range_ending_in_the_future_is_refused(self):
-        with (
-            patch.object(strava_service.activity_ingestion_integration, "request_provider_sync") as request,
-            pytest.raises(core_exceptions.InvalidInputError),
-        ):
-            strava_service.request_activities_sync(1, date(2026, 10, 1), date(2026, 10, 27), MagicMock(), MagicMock())
-
-        request.assert_not_called()
-
-    def test_a_range_ending_before_it_starts_is_refused(self):
-        with pytest.raises(core_exceptions.InvalidInputError):
-            strava_service.request_activities_sync(1, date(2026, 2, 1), date(2026, 1, 1), MagicMock(), MagicMock())
-
-    def test_a_range_longer_than_the_cap_is_refused(self):
-        start = date(2025, 1, 1)
-        too_long = start + timedelta(days=strava_constants.MAX_ACTIVITIES_RANGE_DAYS)
-        with (
-            patch.object(strava_service.activity_ingestion_integration, "request_provider_sync") as request,
-            pytest.raises(core_exceptions.InvalidInputError),
-        ):
-            strava_service.request_activities_sync(1, start, too_long, MagicMock(), MagicMock())
-
-        request.assert_not_called()
-
-    def test_a_range_at_the_cap_is_queued(self):
-        start = date(2025, 1, 1)
-        last = start + timedelta(days=strava_constants.MAX_ACTIVITIES_RANGE_DAYS - 1)
-        with patch.object(
-            strava_service.activity_ingestion_integration, "request_provider_sync", return_value="job"
-        ) as request:
-            strava_service.request_activities_sync(1, start, last, MagicMock(), MagicMock())
-
-        request.assert_called_once()
-
-    def test_the_whole_last_day_is_requested(self):
-        with patch.object(
-            strava_service.activity_ingestion_integration, "request_provider_sync", return_value="job"
-        ) as request:
-            job = strava_service.request_activities_sync(
-                1, date(2026, 1, 1), date(2026, 1, 2), MagicMock(), MagicMock()
-            )
-
-        assert job == "job"
-        _user, provider, start, end, *_ = request.call_args.args
-        assert provider == "strava"
-        assert (start.hour, end.hour, end.minute) == (0, 23, 59)
-
-
 class TestUnlinkAccount:
     def _run(self, *, linked=True, deauthorize_error=None):
         client = MagicMock()
@@ -126,7 +95,7 @@ class TestUnlinkAccount:
             deauthorize_error and (_ for _ in ()).throw(deauthorize_error),
         )
         with (
-            patch.object(strava_service, "SessionLocal", sessions),
+            patch.object(strava_service.core_database, "SessionLocal", sessions),
             patch.object(
                 strava_service.strava_client_service,
                 "fetch_user_integrations_and_validate_token",
@@ -182,7 +151,7 @@ class TestUnlinkDeletesInBatches:
         order: list[str] = []
         batches = iter([batch, batch, 3])
         with (
-            patch.object(strava_service, "SessionLocal"),
+            patch.object(strava_service.core_database, "SessionLocal"),
             patch.object(
                 strava_service.strava_client_service,
                 "fetch_user_integrations_and_validate_token",

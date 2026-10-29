@@ -4,11 +4,13 @@ from fastapi import APIRouter, Depends, Security
 
 import core.config as core_config
 import core.router as core_router
-import modules.activities.activity.public_router as activity_public_router
 
 # Alphabetized router imports
+import modules.activities.activity.gear_router as activity_gear_router
+import modules.activities.activity.public_router as activity_public_router
 import modules.activities.activity.router as activity_router
 import modules.activities.activity.summary_router as activity_summary_router
+import modules.activities.activity.user_router as activity_user_router
 import modules.activities.activity_detail.public_router as activity_detail_public_router
 import modules.activities.activity_detail.router as activity_detail_router
 import modules.activities.activity_ingestion.router as activity_ingestion_router
@@ -20,19 +22,21 @@ import modules.activities.activity_sets.public_router as activity_sets_public_ro
 import modules.activities.activity_sets.router as activity_sets_router
 import modules.activities.activity_streams.router as activity_streams_router
 import modules.activities.activity_thumbnail.public_router as activity_thumbnail_public_router
-import modules.auth.api_keys.router as auth_api_keys_router
+import modules.auth.account_security.api_keys_router as auth_api_keys_router
+import modules.auth.account_security.identity_links_router as auth_idp_profile_router
+import modules.auth.account_security.mfa_router as auth_mfa_profile_router
+import modules.auth.account_security.sessions_router as auth_sessions_profile_router
+import modules.auth.authentication.public_router as auth_router
 import modules.auth.dependencies as auth_dependencies
-import modules.auth.identity_providers.profile_router as auth_idp_profile_router
 import modules.auth.identity_providers.router as identity_providers_router
-import modules.auth.mfa.profile_router as auth_mfa_profile_router
-import modules.auth.password_reset_tokens.router as password_reset_tokens_router
-import modules.auth.router as auth_router
-import modules.auth.sessions.profile_router as auth_sessions_profile_router
+import modules.auth.password_reset_tokens.public_router as password_reset_tokens_router
 import modules.auth.sessions.router as auth_sessions_router
-import modules.auth.sign_up_tokens.router as sign_up_tokens_router
+import modules.auth.sign_up_tokens.public_router as sign_up_tokens_router
 import modules.followers.router as followers_router
+import modules.followers.user_router as followers_user_router
 import modules.garmin.router as garmin_router
 import modules.gears.gear.router as gears_router
+import modules.gears.gear_components.gear_router as gear_components_gear_router
 import modules.gears.gear_components.router as gear_components_router
 import modules.health.health_dashboard.router as health_dashboard_router
 import modules.health.health_fasting.router as health_fasting_router
@@ -70,6 +74,9 @@ from modules.activities.activity_workout_steps import (
 )
 from modules.activities.activity_workout_steps import (
     router as activity_workout_steps_router,
+)
+from modules.auth.authentication import (
+    sso_public_router as authentication_sso_public_router,
 )
 from modules.auth.identity_providers import (
     public_router as identity_providers_public_router,
@@ -200,8 +207,8 @@ router.include_router(
 )
 router.include_router(
     garmin_router.router,
-    prefix=core_config.ROOT_PATH + "/garminconnect",
-    tags=["garminconnect"],
+    prefix=core_config.ROOT_PATH + "/garmin",
+    tags=["garmin"],
     dependencies=[Depends(auth_dependencies.validate_access_token)],
 )
 router.include_router(
@@ -214,6 +221,18 @@ router.include_router(
     gears_router.router,
     prefix=core_config.ROOT_PATH + "/gears",
     tags=["gears"],
+    dependencies=[Depends(auth_dependencies.validate_access_token)],
+)
+router.include_router(
+    activity_gear_router.router,
+    prefix=core_config.ROOT_PATH + "/gears",
+    tags=["activities"],
+    dependencies=[Depends(auth_dependencies.validate_access_token)],
+)
+router.include_router(
+    gear_components_gear_router.router,
+    prefix=core_config.ROOT_PATH + "/gears",
+    tags=["gear_components"],
     dependencies=[Depends(auth_dependencies.validate_access_token)],
 )
 router.include_router(
@@ -266,7 +285,7 @@ router.include_router(
 )
 router.include_router(
     identity_providers_router.router,
-    prefix=core_config.ROOT_PATH + "/idp",
+    prefix=core_config.ROOT_PATH + "/identity-providers",
     tags=["identity_providers"],
     dependencies=[Depends(auth_dependencies.validate_access_token)],
 )
@@ -316,7 +335,7 @@ router.include_router(
 )
 router.include_router(
     auth_idp_profile_router.router,
-    prefix=core_config.ROOT_PATH + "/profile/idp",
+    prefix=core_config.ROOT_PATH + "/profile/identity-providers",
     tags=["profile"],
     dependencies=_PROFILE_DEPENDENCIES,
 )
@@ -333,12 +352,6 @@ router.include_router(
     dependencies=[Depends(auth_dependencies.validate_access_token)],
 )
 router.include_router(
-    auth_sessions_router.router,
-    prefix=core_config.ROOT_PATH + "/sessions",
-    tags=["sessions"],
-    dependencies=[Depends(auth_dependencies.validate_access_token)],
-)
-router.include_router(
     sign_up_tokens_router.router,
     prefix=core_config.ROOT_PATH,
     tags=["sign_up_tokens"],
@@ -351,7 +364,7 @@ router.include_router(
 )
 router.include_router(
     user_default_gear_router.router,
-    prefix=core_config.ROOT_PATH + "/profile/default_gear",
+    prefix=core_config.ROOT_PATH + "/profile/default-gear",
     tags=["profile"],
     dependencies=[Depends(auth_dependencies.validate_access_token)],
 )
@@ -363,8 +376,8 @@ router.include_router(
 )
 router.include_router(
     auth_api_keys_router.router,
-    prefix=core_config.ROOT_PATH + "/profile/api_keys",
-    tags=["api_keys"],
+    prefix=core_config.ROOT_PATH + "/profile/api-keys",
+    tags=["api-keys"],
     dependencies=[
         Depends(auth_dependencies.validate_access_token),
         Security(auth_dependencies.check_scopes, scopes=["profile"]),
@@ -380,6 +393,27 @@ router.include_router(
     profile_overview_router.router,
     prefix=core_config.ROOT_PATH + "/users",
     tags=["users"],
+    dependencies=[Depends(auth_dependencies.validate_access_token)],
+)
+# Resources owned by a user, served as ``/users/{user_id}/<resource>``. Mounted AFTER the users routers on
+# purpose: their literal ``/users/id/...`` and ``/users/username/...`` paths must be matched before the
+# ``{user_id}`` segment here would swallow "id" or "username".
+router.include_router(
+    auth_sessions_router.router,
+    prefix=core_config.ROOT_PATH + "/users",
+    tags=["sessions"],
+    dependencies=[Depends(auth_dependencies.validate_access_token)],
+)
+router.include_router(
+    activity_user_router.router,
+    prefix=core_config.ROOT_PATH + "/users",
+    tags=["activities"],
+    dependencies=[Depends(auth_dependencies.validate_access_token)],
+)
+router.include_router(
+    followers_user_router.router,
+    prefix=core_config.ROOT_PATH + "/users",
+    tags=["followers"],
     dependencies=[Depends(auth_dependencies.validate_access_token)],
 )
 router.include_router(
@@ -426,6 +460,11 @@ router.include_router(
 )
 router.include_router(
     identity_providers_public_router.router,
+    prefix=core_config.ROOT_PATH + "/public/idp",
+    tags=["identity_providers_public"],
+)
+router.include_router(
+    authentication_sso_public_router.router,
     prefix=core_config.ROOT_PATH + "/public/idp",
     tags=["identity_providers_public"],
 )

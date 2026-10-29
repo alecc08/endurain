@@ -150,6 +150,10 @@ Save the generated **Client ID** and **Client Secret**.
 3. Verify that a **Sign in with `Provider Name`** button appears
 4. Test the authentication flow
 
+## Accounts with MFA enabled
+
+Signing in through your identity provider does not replace the multi-factor authentication you set up in Endurain. If your account has MFA enabled, Endurain asks for your authentication code (or a backup code) after the provider signs you in, and only then finishes the login. Wrong codes count toward the same lockout as the password login. Accounts without MFA sign in as before.
+
 ## Auto-redirect to SSO
 
 Under **Settings → Server Settings**, the **Auto-redirect to SSO** option skips the login page's provider picker and immediately sends unauthenticated users to your identity provider. It only takes effect when:
@@ -178,6 +182,11 @@ If **Allow local username and password login** is enabled, the auto-redirect is 
 
 - **Cause**: For security (account-takeover prevention), Endurain auto-links an SSO identity to an **existing** local account by email only when the identity provider asserts the email is verified via the standard OIDC `email_verified` claim. Providers that omit this claim, or report the email as unverified, are refused.
 - **Solution**: Configure the identity provider to verify email addresses and include `email_verified: true` in the userinfo/ID token (request the `email` scope), or link the provider from **Settings → Security** while signed in to the existing account.
+
+**Problem**: "Cannot link this identity provider to an existing account because the account email is not verified" (HTTP 403)
+
+- **Cause**: Endurain also requires the existing local account's email to be verified before it auto-links an SSO identity by email, because an unverified address can be set by anyone on their own account.
+- **Solution**: Verify the email address of the existing account, then sign in with SSO again.
 
 **Problem**: SSO button doesn't appear on login page
 

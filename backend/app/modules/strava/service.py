@@ -1,88 +1,52 @@
 """Strava account linking: the OAuth state and client, the code exchange and unlinking."""
 
 import secrets
-from datetime import UTC, date, datetime, timedelta
 
-import jasil.providers as platform_providers
 from sqlalchemy.orm import Session
 
-import core.exceptions as core_exceptions
+import core.database as core_database
+import core.etag as core_etag
 import core.logger as core_logger
 import modules.activities.activity.integration_service as activity_integration
-import modules.activities.activity_ingestion.integration_service as activity_ingestion_integration
-import modules.activities.activity_ingestion.schema as activity_ingestion_schema
 import modules.gears.gear.integration_service as gears_integration
 import modules.strava.client_service as strava_client_service
 import modules.strava.constants as strava_constants
 import modules.strava.oauth_state_store as strava_oauth_state_store
 import modules.strava.schema as strava_schema
-import modules.users.users.integration_service as users_integration
 import modules.users.users_integrations.integration_service as user_integrations_integration
-from core.database import SessionLocal
 
 logger = core_logger.get_logger(__name__)
 
 
-def request_activities_sync(
-    user_id: int,
-    start_date: date,
-    end_date: date,
-    storage: platform_providers.StorageProvider,
-    db: Session,
-) -> activity_ingestion_schema.ActivityIngestionJobRead:
-    """Queue a Strava sync of an explicit date range.
-
-    The range is fetched by a background job, never on the request or an API
-    worker thread.
-
-    Args:
-        user_id: The authenticated user.
-        start_date: First day of the range.
-        end_date: Last day of the range, inclusive.
-        storage: The blob-storage provider.
-        db: Database session.
-
-    Returns:
-        The accepted refresh job, whose outcome is polled on the ingestion-jobs route.
-
-    Raises:
-        InvalidInputError: When ``start_date`` is after ``end_date``, ``end_date`` is in the future or
-            the range is longer than ``MAX_ACTIVITIES_RANGE_DAYS``.
-    """
-    if start_date > end_date:
-        raise core_exceptions.InvalidInputError("start_date must not be after end_date")
-    if end_date > users_integration.local_today(user_id, db):
-        raise core_exceptions.InvalidInputError("end_date must not be in the future")
-    if end_date - start_date >= timedelta(days=strava_constants.MAX_ACTIVITIES_RANGE_DAYS):
-        raise core_exceptions.InvalidInputError(
-            f"The date range must not exceed {strava_constants.MAX_ACTIVITIES_RANGE_DAYS} days"
-        )
-
-    job = activity_ingestion_integration.request_provider_sync(
-        user_id,
-        strava_constants.PROVIDER_NAME,
-        datetime.combine(start_date, datetime.min.time(), tzinfo=UTC),
-        datetime.combine(end_date, datetime.max.time(), tzinfo=UTC),
-        storage,
-        db,
-    )
-    logger.info("Strava activities queued", extra=core_logger.context(user_id=user_id))
-    return job
-
-
-def set_client(user_id: int, credentials: strava_schema.StravaClientCredentials, db: Session) -> None:
-    """Store the user's Strava API client id and secret.
+def set_client(user_id: int, credentials: strava_schema.StravaClientCredentials, db: Session, *, if_match: str) -> int:
+    """Store the user's Strava API client id and secret, and commit.
 
     Args:
         user_id: The authenticated user.
         credentials: The Strava application's client id and secret.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
+
+    Returns:
+        The integrations' new version, which a later write echoes in ``If-Match``.
+
+    Raises:
+        NotFoundError: If the user has no integrations.
+        PreconditionFailedError: If the integrations changed since the client read them.
     """
-    user_integrations_integration.set_strava_client(
-        user_id, str(credentials.client_id), credentials.client_secret.get_secret_value(), db
-    )
-    db.commit()
+    with core_etag.refuse_stale_write(
+        db,
+        "Strava client",
+        lambda: user_integrations_integration.get_user_integrations(user_id, db) is not None,
+        "User integrations not found",
+    ):
+        user_integrations_integration.set_strava_client(
+            user_id, str(credentials.client_id), credentials.client_secret.get_secret_value(), db, if_match=if_match
+        )
+        db.commit()
     logger.info("Strava client stored", extra=core_logger.context(user_id=user_id))
+    integrations = user_integrations_integration.get_user_integrations(user_id, db)
+    return integrations.version if integrations is not None else 1
 
 
 def begin_state(user_id: int, oauth_states: strava_oauth_state_store.StravaOAuthStateStore) -> str:
@@ -130,11 +94,11 @@ def unlink_account(user_id: int) -> bool:
     Raises:
         NotFoundError: When the user has no integrations row.
     """
-    with SessionLocal() as db:
+    with core_database.SessionLocal() as db:
         user_integrations = strava_client_service.fetch_user_integrations_and_validate_token(user_id, db)
 
     if user_integrations is None:
-        logger.info("Strava not linked, nothing to unlink", extra=core_logger.context(user_id=user_id))
+        logger.debug("Strava not linked, nothing to unlink", extra=core_logger.context(user_id=user_id))
         return False
 
     try:
@@ -147,7 +111,7 @@ def unlink_account(user_id: int) -> bool:
         )
 
     deleted = _delete_imported_activities(user_id)
-    with SessionLocal() as db:
+    with core_database.SessionLocal() as db:
         gears_integration.delete_all_strava_gear_for_user(user_id, db)
         user_integrations_integration.unlink_strava_account(user_id, db)
         db.commit()
@@ -166,7 +130,7 @@ def _delete_imported_activities(user_id: int) -> int:
     """
     total = 0
     while True:
-        with SessionLocal() as db:
+        with core_database.SessionLocal() as db:
             deleted = activity_integration.delete_all_strava_activities(
                 user_id, db, limit=strava_constants.UNLINK_DELETE_BATCH_SIZE
             )
@@ -177,3 +141,17 @@ def _delete_imported_activities(user_id: int) -> int:
         )
         if deleted < strava_constants.UNLINK_DELETE_BATCH_SIZE:
             return total
+
+
+def linked_user_ids(after_id: int, limit: int) -> list[int]:
+    """Page through the users who have linked Strava, in a short session of its own.
+
+    Args:
+        after_id: Return only users with an id greater than this.
+        limit: Maximum number of user ids to return.
+
+    Returns:
+        The linked user ids, ascending.
+    """
+    with core_database.SessionLocal() as db:
+        return user_integrations_integration.list_user_ids_with_strava_linked(after_id, limit, db)

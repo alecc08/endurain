@@ -19,11 +19,13 @@ class TestEdits:
 
         mock_users.edit_profile.return_value = MagicMock(version=4)
 
-        version = profile_service.edit_profile(1, profile, mock_db, if_match="*")
+        with patch(f"{_MODULE}.get_profile", return_value=MagicMock(version=4)) as mock_get:
+            updated = profile_service.edit_profile(1, profile, mock_db, if_match="*")
 
         mock_users.edit_profile.assert_called_once_with(1, profile, mock_db, if_match="*")
         mock_db.commit.assert_called_once()
-        assert version == 4
+        mock_get.assert_called_once_with(1, mock_db)
+        assert updated.version == 4
 
     @patch(f"{_MODULE}.users_privacy_settings_integration")
     def test_privacy_edit_stages_then_commits(self, mock_privacy, mock_db):
@@ -31,11 +33,11 @@ class TestEdits:
 
         mock_privacy.edit_privacy_settings.return_value = MagicMock(version=6)
 
-        version = profile_service.edit_privacy_settings(1, settings, mock_db, if_match="*")
+        updated = profile_service.edit_privacy_settings(1, settings, mock_db, if_match="*")
 
         mock_privacy.edit_privacy_settings.assert_called_once_with(1, settings, mock_db, if_match="*")
         mock_db.commit.assert_called_once()
-        assert version == 6
+        assert updated.version == 6
 
     @patch(f"{_MODULE}.users_integration")
     def test_a_failed_edit_does_not_commit(self, mock_users, mock_db):
@@ -58,24 +60,45 @@ class TestChangeEmail:
             mfa_code="123456",
             revoke_other_sessions=revoke_other_sessions,
         )
-        profile_service.change_email(1, change, "sid-1", identity, store, mock_db)
+        with (
+            patch(
+                "modules.auth.account_security.integration_service.verify_step_up",
+                side_effect=lambda step_up, user_id, step_up_store, db: identity.verify_step_up(
+                    step_up, user_id, step_up_store
+                ),
+            ),
+            patch(
+                "modules.auth.account_security.integration_service.delete_other_user_sessions",
+                side_effect=lambda user_id, session_id, db: identity.delete_other_user_sessions(user_id, session_id),
+            ),
+        ):
+            profile_service.change_email(1, change, "sid-1", store, mock_db)
 
     @patch(f"{_MODULE}.users_integration")
     def test_changes_only_after_the_step_up_passes_then_commits_and_asks_for_verification(self, mock_users, mock_db):
         identity = MagicMock()
-        identity.request_email_reverification.return_value = True
         mock_users.stage_email_change.return_value = True
         store = MagicMock()
+        sign_up = MagicMock()
+        sign_up.request_email_reverification.return_value = True
         order = MagicMock()
         order.attach_mock(identity.verify_step_up, "step_up")
         order.attach_mock(mock_users.stage_email_change, "stage")
         order.attach_mock(mock_db.commit, "commit")
-        order.attach_mock(identity.request_email_reverification, "verify")
+        order.attach_mock(sign_up.request_email_reverification, "verify")
         order.attach_mock(identity.delete_other_user_sessions, "revoke")
 
-        self._change(identity, store, mock_db)
+        with patch(f"{_MODULE}.sign_up_tokens_integration", sign_up):
+            self._change(identity, store, mock_db)
 
-        assert [call[0] for call in order.mock_calls] == ["step_up", "stage", "commit", "revoke", "verify"]
+        assert [call[0] for call in order.mock_calls] == [
+            "step_up",
+            "stage",
+            "commit",
+            "revoke",
+            "verify",
+            "commit",
+        ]
         identity.delete_other_user_sessions.assert_called_once_with(1, "sid-1")
         verification = identity.verify_step_up.call_args.args
         assert (verification[0].current_password, verification[0].mfa_code) == ("pw", "123456")
@@ -103,37 +126,42 @@ class TestChangeEmail:
 
         mock_db.rollback.assert_called_once()
         mock_db.commit.assert_not_called()
-        identity.request_email_reverification.assert_not_called()
 
     @patch(f"{_MODULE}.users_integration")
     def test_other_sessions_stay_signed_in_unless_asked(self, mock_users, mock_db):
         identity = MagicMock()
         mock_users.stage_email_change.return_value = True
+        sign_up = MagicMock()
 
-        self._change(identity, MagicMock(), mock_db, revoke_other_sessions=False)
+        with patch(f"{_MODULE}.sign_up_tokens_integration", sign_up):
+            self._change(identity, MagicMock(), mock_db, revoke_other_sessions=False)
 
-        mock_db.commit.assert_called_once()
+        assert mock_db.commit.call_count == 2
         identity.delete_other_user_sessions.assert_not_called()
 
     @patch(f"{_MODULE}.users_integration")
     def test_resubmitting_the_current_address_changes_and_sends_nothing(self, mock_users, mock_db):
         identity = MagicMock()
         mock_users.stage_email_change.return_value = False
+        sign_up = MagicMock()
 
-        self._change(identity, MagicMock(), mock_db)
+        with patch(f"{_MODULE}.sign_up_tokens_integration", sign_up):
+            self._change(identity, MagicMock(), mock_db)
 
         mock_db.commit.assert_not_called()
-        identity.request_email_reverification.assert_not_called()
+        sign_up.request_email_reverification.assert_not_called()
         identity.delete_other_user_sessions.assert_not_called()
 
     @patch(f"{_MODULE}.users_integration")
     def test_an_instance_that_cannot_send_mail_still_changes_the_address(self, mock_users, mock_db):
         identity = MagicMock()
-        identity.request_email_reverification.return_value = False
+        sign_up = MagicMock()
+        sign_up.request_email_reverification.return_value = False
 
-        self._change(identity, MagicMock(), mock_db)
+        with patch(f"{_MODULE}.sign_up_tokens_integration", sign_up):
+            self._change(identity, MagicMock(), mock_db)
 
-        mock_db.commit.assert_called_once()
+        assert mock_db.commit.call_count == 2
 
 
 class TestStageExport:
@@ -200,11 +228,17 @@ class TestDeleteAccount:
         order.attach_mock(identity.verify_step_up, "step_up")
         order.attach_mock(mock_users.request_user_deletion, "delete")
 
-        result = profile_service.delete_account(1, step_up, identity, store, state, storage, mock_db)
+        with patch(
+            "modules.auth.account_security.integration_service.verify_step_up",
+            side_effect=lambda value, user_id, step_up_store, db: identity.verify_step_up(
+                value, user_id, step_up_store
+            ),
+        ):
+            result = profile_service.delete_account(1, step_up, store, state, storage, mock_db)
 
         assert [call[0] for call in order.mock_calls] == ["step_up", "delete"]
         identity.verify_step_up.assert_called_once_with(step_up, 1, store)
-        mock_users.request_user_deletion.assert_called_once_with(1, identity, state, storage, mock_db)
+        mock_users.request_user_deletion.assert_called_once_with(1, state, storage, mock_db)
         assert result is mock_users.request_user_deletion.return_value
 
     @patch(f"{_MODULE}.users_integration")
@@ -212,7 +246,15 @@ class TestDeleteAccount:
         identity = MagicMock()
         identity.verify_step_up.side_effect = core_exceptions.PermissionDeniedError("wrong password")
 
-        with pytest.raises(core_exceptions.PermissionDeniedError):
-            profile_service.delete_account(1, MagicMock(), identity, MagicMock(), MagicMock(), MagicMock(), mock_db)
+        with (
+            pytest.raises(core_exceptions.PermissionDeniedError),
+            patch(
+                "modules.auth.account_security.integration_service.verify_step_up",
+                side_effect=lambda step_up, user_id, step_up_store, db: identity.verify_step_up(
+                    step_up, user_id, step_up_store
+                ),
+            ),
+        ):
+            profile_service.delete_account(1, MagicMock(), MagicMock(), MagicMock(), MagicMock(), mock_db)
 
         mock_users.request_user_deletion.assert_not_called()

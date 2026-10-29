@@ -5,6 +5,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import core.exceptions as core_exceptions
+import core.pagination as core_pagination
+import modules.auth.account_security.integration_service as account_security_integration
+import modules.auth.credentials.integration_service as credentials_integration
+import modules.auth.identity_provider_links.integration_service as identity_links_integration
+import modules.auth.mfa.integration_service as mfa_integration
 import modules.users.users.schema as users_schema
 import modules.users.users.service as users_service
 
@@ -35,11 +40,60 @@ def _signup() -> users_schema.UsersSignup:
     )
 
 
+_auth_service_mock: MagicMock | None = None
+_delete_all_sessions_mock: MagicMock
+
+
 def _identity() -> MagicMock:
-    identity = MagicMock()
-    identity.get_identity_link_counts_for_users.return_value = {}
-    identity.get_mfa_enabled_for_users.return_value = {}
-    return identity
+    global _auth_service_mock
+    _auth_service_mock = MagicMock()
+    _auth_service_mock.get_identity_link_counts_for_users.return_value = {}
+    _auth_service_mock.get_mfa_enabled_for_users.return_value = {}
+    return _auth_service_mock
+
+
+@pytest.fixture(autouse=True)
+def _auth_integration_mocks(monkeypatch):
+    """Mock auth integration boundaries while preserving each test's configured values."""
+    global _auth_service_mock
+    global _delete_all_sessions_mock
+    _auth_service_mock = None
+    _delete_all_sessions_mock = MagicMock()
+
+    def mock_call(name, *args):
+        if _auth_service_mock is None:
+            return {}
+        return getattr(_auth_service_mock, name)(*args)
+
+    monkeypatch.setattr(
+        identity_links_integration,
+        "get_identity_link_counts_for_users",
+        lambda ids, db: mock_call("get_identity_link_counts_for_users", ids),
+    )
+    monkeypatch.setattr(
+        mfa_integration,
+        "get_mfa_enabled_for_users",
+        lambda ids, db: mock_call("get_mfa_enabled_for_users", ids),
+    )
+    monkeypatch.setattr(
+        mfa_integration,
+        "create_users_mfa_row",
+        lambda user_id, db: mock_call("initialize_user_mfa", user_id),
+    )
+    monkeypatch.setattr(
+        credentials_integration,
+        "validate_and_hash_password_for_user",
+        lambda settings, access_type, password, db: mock_call(
+            "validate_and_hash_password_for_user", settings, access_type, password
+        ),
+    )
+    monkeypatch.setattr(
+        credentials_integration,
+        "set_local_password_hash",
+        lambda user_id, password_hash, db: mock_call("set_local_password_hash", user_id, password_hash),
+    )
+    _delete_all_sessions_mock.side_effect = lambda user_id, db: mock_call("delete_all_user_sessions", user_id)
+    monkeypatch.setattr(account_security_integration, "delete_all_user_sessions", _delete_all_sessions_mock)
 
 
 class TestRequirements:
@@ -176,13 +230,16 @@ class TestPublicProjection:
             users_service.get_public_profile(3, mock_db)
 
     @patch(_CRUD)
-    def test_search_is_bounded_and_projected(self, mock_crud, mock_db):
+    def test_search_is_paged_and_projected(self, mock_crud, mock_db):
         mock_crud.search_active_users_by_username.return_value = [_user(1), _user(2)]
+        mock_crud.get_users_number.return_value = 30
 
-        found = users_service.search_public_users("user", mock_db)
+        found = users_service.search_public_users("user", core_pagination.PageParams(2, 25), mock_db)
 
-        assert [type(user) for user in found] == [users_schema.UserPublicRead] * 2
-        mock_crud.search_active_users_by_username.assert_called_once_with("user", 25, mock_db)
+        assert [type(user) for user in found.items] == [users_schema.UserPublicRead] * 2
+        assert (found.total, found.page, found.next) == (30, 2, None)
+        mock_crud.search_active_users_by_username.assert_called_once_with("user", 25, 25, mock_db)
+        assert mock_crud.get_users_number.call_args.kwargs["username"] == "user"
 
 
 class TestListUsers:
@@ -190,11 +247,11 @@ class TestListUsers:
     def test_enriches_and_filters_by_authentication(self, mock_crud, mock_db):
         mock_crud.get_users_number.return_value = 2
         mock_crud.get_users_with_pagination.return_value = [_user(1, name="Alice"), _user(2, name="Bob")]
-        identity = MagicMock()
+        identity = _identity()
         identity.get_identity_link_counts_for_users.return_value = {1: 2}
         identity.get_mfa_enabled_for_users.return_value = {2: True}
 
-        result = users_service.list_users(identity, mock_db, page_number=1, num_records=10, show_external_auth=False)
+        result = users_service.list_users(mock_db, page_number=1, num_records=10, show_external_auth=False)
 
         assert result.total == 2
         assert [u.name for u in result.items] == ["Bob"]
@@ -204,11 +261,11 @@ class TestListUsers:
     def test_local_filter_drops_users_without_a_link(self, mock_crud, mock_db):
         mock_crud.get_users_number.return_value = 2
         mock_crud.get_users_with_pagination.return_value = [_user(1, name="Alice"), _user(2, name="Bob")]
-        identity = MagicMock()
+        identity = _identity()
         identity.get_identity_link_counts_for_users.return_value = {1: 1}
         identity.get_mfa_enabled_for_users.return_value = {}
 
-        result = users_service.list_users(identity, mock_db, show_local_auth=False)
+        result = users_service.list_users(mock_db, show_local_auth=False)
 
         assert [u.name for u in result.items] == ["Alice"]
 
@@ -218,7 +275,7 @@ class TestCreateUser:
     @patch(_SETTINGS)
     @patch(_CRUD)
     def test_hashes_creates_commits_then_stores_the_credential(self, mock_crud, mock_settings, mock_defaults, mock_db):
-        identity = MagicMock()
+        identity = _identity()
         identity.validate_and_hash_password_for_user.return_value = "hash"
         mock_crud.create_user.return_value = _user(7)
         user = users_schema.UsersCreate(
@@ -230,27 +287,27 @@ class TestCreateUser:
             password="password123",
         )
 
-        created = users_service.create_user(user, identity, mock_db)
+        created = users_service.create_user(user, mock_db)
 
         fields = mock_crud.create_user.call_args.args[0]
         assert fields["username"] == "newuser" and fields["email"] == "new@example.com"
         assert "password" not in fields
         mock_db.commit.assert_called_once()
         identity.set_local_password_hash.assert_called_once_with(7, "hash")
-        mock_defaults.assert_called_once_with(7, identity, mock_db)
+        mock_defaults.assert_called_once_with(7, mock_db)
         assert created.id == 7
 
     @patch(_SETTINGS)
     @patch(_CRUD)
     def test_duplicate_rolls_back_and_stores_no_credential(self, mock_crud, mock_settings, mock_db):
-        identity = MagicMock()
+        identity = _identity()
         mock_crud.create_user.side_effect = core_exceptions.ConflictError("dup")
         user = users_schema.UsersCreate(
             name="N", username="n", email="n@example.com", active=True, access_type="regular", password="password123"
         )
 
         with pytest.raises(core_exceptions.ConflictError):
-            users_service.create_user(user, identity, mock_db)
+            users_service.create_user(user, mock_db)
 
         mock_db.rollback.assert_called_once()
         identity.set_local_password_hash.assert_not_called()
@@ -268,7 +325,7 @@ class TestAccountCreationIsOneUnit:
     def test_commit_follows_every_staged_write(
         self, mock_crud, mock_settings, mock_integrations, mock_privacy, mock_targets, mock_gear, mock_db
     ):
-        identity = MagicMock()
+        identity = _identity()
         identity.validate_and_hash_password_for_user.return_value = "hash"
         mock_crud.create_user.return_value = _user(7)
         order = MagicMock()
@@ -282,7 +339,7 @@ class TestAccountCreationIsOneUnit:
             name="N", username="n", email="n@example.com", active=True, access_type="regular", password="password123"
         )
 
-        users_service.create_user(user, identity, mock_db)
+        users_service.create_user(user, mock_db)
 
         names = [call[0] for call in order.mock_calls]
         assert names[-1] == "commit"
@@ -292,12 +349,11 @@ class TestAccountCreationIsOneUnit:
     @patch("modules.users.users.service._stage_default_data", side_effect=RuntimeError("mfa down"))
     @patch(_CRUD)
     def test_a_failed_part_commits_nothing(self, mock_crud, _defaults, mock_db):
-        identity = MagicMock()
         mock_crud.create_user.return_value = _user(3)
         settings = MagicMock(signup_require_email_verification=False, signup_require_admin_approval=False)
 
         with pytest.raises(RuntimeError):
-            users_service.create_signup_user(_signup(), settings, identity, mock_db)
+            users_service.create_signup_user(_signup(), settings, mock_db)
 
         mock_db.commit.assert_not_called()
 
@@ -307,28 +363,32 @@ class TestCreateSignupUser:
         return MagicMock(signup_require_email_verification=verification, signup_require_admin_approval=approval)
 
     @pytest.mark.parametrize(
-        ("verification", "approval", "active", "email_verified", "pending"),
+        ("verification", "approval", "active", "pending"),
         [
-            (False, False, True, True, False),
-            (True, False, False, False, False),
-            (False, True, False, False, True),
-            (True, True, False, False, True),
+            (False, False, True, False),
+            (True, False, False, False),
+            (False, True, False, True),
+            (True, True, False, True),
         ],
     )
     @patch("modules.users.users.service._stage_default_data")
     @patch(_CRUD)
     def test_account_state_follows_the_signup_policy(
-        self, mock_crud, _defaults, verification, approval, active, email_verified, pending, mock_db
+        self, mock_crud, _defaults, verification, approval, active, pending, mock_db
     ):
-        identity = MagicMock()
+        """A sign-up never proves the address, so it starts unverified whatever the policy.
+
+        Only the verification link proves it; a verified flag set without it would let anyone pre-claim an
+        address and receive the owner's later SSO sign-in through email auto-linking.
+        """
         mock_crud.create_user.return_value = _user(3)
 
-        users_service.create_signup_user(_signup(), self._settings(verification, approval), identity, mock_db)
+        users_service.create_signup_user(_signup(), self._settings(verification, approval), mock_db)
 
         fields = mock_crud.create_user.call_args.args[0]
         assert (fields["active"], fields["email_verified"], fields["pending_admin_approval"]) == (
             active,
-            email_verified,
+            False,
             pending,
         )
         assert fields["access_type"] == "regular"
@@ -337,20 +397,43 @@ class TestCreateSignupUser:
     @patch("modules.users.users.service._stage_default_data")
     @patch(_CRUD)
     def test_sso_account_gets_no_credential(self, mock_crud, _defaults, mock_db):
-        identity = MagicMock()
+        identity = _identity()
         mock_crud.create_user.return_value = _user(3)
 
-        users_service.create_signup_user(_signup(), self._settings(False, False), identity, mock_db, False)
+        users_service.create_signup_user(_signup(), self._settings(False, False), mock_db, False)
 
         identity.validate_and_hash_password_for_user.assert_not_called()
         identity.set_local_password_hash.assert_not_called()
+
+    @patch("modules.users.users.service._stage_default_data")
+    @patch(_CRUD)
+    def test_sso_user_stages_without_committing(self, mock_crud, _defaults, mock_db):
+        mock_crud.create_user.return_value = _user(3)
+
+        created = users_service.create_sso_user(_signup(), self._settings(False, False), mock_db, email_verified=True)
+
+        assert created.id == 3
+        mock_db.commit.assert_not_called()
+        mock_db.rollback.assert_not_called()
+
+    @pytest.mark.parametrize("email_verified", [True, False])
+    @patch("modules.users.users.service._stage_default_data")
+    @patch(_CRUD)
+    def test_an_sso_account_is_verified_only_when_the_provider_says_so(
+        self, mock_crud, _defaults, email_verified, mock_db
+    ):
+        mock_crud.create_user.return_value = _user(3)
+
+        users_service.create_sso_user(_signup(), self._settings(False, False), mock_db, email_verified=email_verified)
+
+        assert mock_crud.create_user.call_args.args[0]["email_verified"] is email_verified
 
     @patch(_CRUD)
     def test_duplicate_gives_an_abstract_conflict(self, mock_crud, mock_db):
         mock_crud.create_user.side_effect = core_exceptions.ConflictError("email taken")
 
         with pytest.raises(core_exceptions.ConflictError) as exc:
-            users_service.create_signup_user(_signup(), self._settings(False, False), MagicMock(), mock_db)
+            users_service.create_signup_user(_signup(), self._settings(False, False), mock_db)
 
         assert exc.value.detail == "Unable to create user."
         mock_db.rollback.assert_called_once()
@@ -364,9 +447,9 @@ class TestStageDefaultData:
     def test_stages_every_default_row_without_committing(
         self, mock_integrations, mock_privacy, mock_targets, mock_gear, mock_db
     ):
-        identity = MagicMock()
+        identity = _identity()
 
-        users_service._stage_default_data(5, identity, mock_db)
+        users_service._stage_default_data(5, mock_db)
 
         mock_integrations.create_integrations.assert_called_once_with(5, mock_db)
         mock_privacy.create_privacy_settings.assert_called_once_with(5, mock_db)
@@ -399,14 +482,33 @@ class TestEdits:
 
         mock_weight.recalculate_bmi_for_user.assert_called_once_with(1, 180.0, mock_db)
 
+    def test_deactivating_a_user_revokes_their_pending_verification_links(self, mock_crud, mock_weight, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1)
+        mock_crud.update_user.return_value = _user(1, active=False)
+        mock_crud.lock_active_admin_ids.return_value = [1, 2]
+
+        with patch("modules.users.users.service.sign_up_tokens_integration.revoke_pending_tokens") as revoke:
+            users_service.stage_user_edit(1, _edit(1, active=False), mock_db, if_match="*")
+
+        revoke.assert_called_once_with(1, mock_db)
+
+    def test_an_edit_that_leaves_the_user_active_keeps_their_verification_links(self, mock_crud, mock_weight, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1)
+        mock_crud.update_user.return_value = _user(1)
+
+        with patch("modules.users.users.service.sign_up_tokens_integration.revoke_pending_tokens") as revoke:
+            users_service.stage_user_edit(1, _edit(1), mock_db, if_match="*")
+
+        revoke.assert_not_called()
+
     def test_edit_user_commits_and_reports_authentication(self, mock_crud, mock_weight, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1)
         mock_crud.update_user.return_value = _user(1)
-        identity = MagicMock()
+        identity = _identity()
         identity.get_identity_link_counts_for_users.return_value = {1: 2}
         identity.get_mfa_enabled_for_users.return_value = {1: True}
 
-        result = users_service.edit_user(1, _edit(1), 9, identity, mock_db, if_match="*")
+        result = users_service.edit_user(1, _edit(1), 9, mock_db, if_match="*")
 
         mock_db.commit.assert_called_once()
         assert result.external_auth_count == 2
@@ -421,7 +523,7 @@ class TestEdits:
             ({"access_type": "admin"}, {"access_type": "regular"}),
         ],
     )
-    def test_a_security_relevant_edit_signs_the_user_out_after_the_commit(
+    def test_a_security_relevant_edit_signs_the_user_out_in_the_same_commit(
         self, mock_crud, mock_weight, mock_db, before, after
     ):
         mock_crud.get_user_by_id.return_value = _user(1, **before)
@@ -432,35 +534,77 @@ class TestEdits:
         order.attach_mock(mock_db.commit, "commit")
         order.attach_mock(identity.delete_all_user_sessions, "revoke")
 
-        users_service.edit_user(1, _edit(1, **{**before, **after}), 9, identity, mock_db, if_match="*")
+        with patch("modules.users.users.service.sign_up_tokens_integration.request_email_reverification"):
+            users_service.edit_user(1, _edit(1, **{**before, **after}), 9, mock_db, if_match="*")
 
-        assert [call[0] for call in order.mock_calls] == ["commit", "revoke"]
-        identity.delete_all_user_sessions.assert_called_once_with(1)
+        assert [call[0] for call in order.mock_calls] == ["revoke", "commit"]
+        _delete_all_sessions_mock.assert_called_once_with(1, mock_db)
+
+    def test_an_email_change_that_leaves_the_user_unverified_queues_a_verification_email_before_the_commit(
+        self, mock_crud, mock_weight, mock_db
+    ):
+        mock_crud.get_user_by_id.return_value = _user(1)
+        mock_crud.update_user.return_value = _user(1, email="other@example.com", email_verified=False)
+        _identity()
+        order = MagicMock()
+        order.attach_mock(mock_db.commit, "commit")
+        with patch(
+            "modules.users.users.service.sign_up_tokens_integration.request_email_reverification", return_value=True
+        ) as verify:
+            order.attach_mock(verify, "verify")
+
+            users_service.edit_user(1, _edit(1, email="other@example.com"), 9, mock_db, if_match="*")
+
+        verify.assert_called_once_with(1, mock_db)
+        assert [call[0] for call in order.mock_calls][:2] == ["verify", "commit"]
+
+    @pytest.mark.parametrize(
+        ("after", "verified"),
+        [({"name": "Renamed"}, False), ({"email": "other@example.com"}, True)],
+    )
+    def test_an_edit_that_keeps_the_user_verified_or_the_email_queues_no_verification_email(
+        self, mock_crud, mock_weight, mock_db, after, verified
+    ):
+        mock_crud.get_user_by_id.return_value = _user(1, email_verified=verified)
+        mock_crud.update_user.return_value = _user(1, email_verified=verified, **after)
+        _identity()
+        with patch("modules.users.users.service.sign_up_tokens_integration.request_email_reverification") as verify:
+            users_service.edit_user(1, _edit(1, email_verified=verified, **after), 9, mock_db, if_match="*")
+
+        verify.assert_not_called()
 
     def test_an_edit_of_other_fields_keeps_the_sessions(self, mock_crud, mock_weight, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1)
         mock_crud.update_user.return_value = _user(1, name="Renamed")
-        identity = _identity()
 
-        users_service.edit_user(1, _edit(1, name="Renamed"), 9, identity, mock_db, if_match="*")
+        users_service.edit_user(1, _edit(1, name="Renamed"), 9, mock_db, if_match="*")
 
-        identity.delete_all_user_sessions.assert_not_called()
+        _delete_all_sessions_mock.assert_not_called()
 
     def test_an_administrator_editing_themselves_keeps_their_own_sessions(self, mock_crud, mock_weight, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1, access_type="admin")
+        mock_crud.update_user.return_value = _user(1, access_type="regular")
+        mock_crud.lock_active_admin_ids.return_value = [1, 2]
+
+        users_service.edit_user(1, _edit(1, access_type="regular"), 1, mock_db, if_match="*")
+
+        _delete_all_sessions_mock.assert_not_called()
+
+    def test_an_administrator_cannot_change_their_own_email_without_step_up(self, mock_crud, mock_weight, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1)
-        mock_crud.update_user.return_value = _user(1, email="other@example.com")
-        identity = _identity()
 
-        users_service.edit_user(1, _edit(1, email="other@example.com"), 1, identity, mock_db, if_match="*")
+        with pytest.raises(core_exceptions.PermissionDeniedError):
+            users_service.edit_user(1, _edit(1, email="other@example.com"), 1, mock_db, if_match="*")
 
-        identity.delete_all_user_sessions.assert_not_called()
+        mock_crud.update_user.assert_not_called()
+        mock_db.commit.assert_not_called()
 
     def test_edit_user_conflict_rolls_back(self, mock_crud, mock_weight, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1)
         mock_crud.update_user.side_effect = core_exceptions.ConflictError("dup")
 
         with pytest.raises(core_exceptions.ConflictError):
-            users_service.edit_user(1, _edit(1), 9, MagicMock(), mock_db, if_match="*")
+            users_service.edit_user(1, _edit(1), 9, mock_db, if_match="*")
 
         mock_db.rollback.assert_called_once()
         mock_db.commit.assert_not_called()
@@ -504,32 +648,69 @@ class TestEdits:
 
 @patch(_CRUD)
 class TestApproveAndVerify:
+    @pytest.fixture(autouse=True)
+    def settings(self):
+        with patch(_SETTINGS) as mock_settings:
+            mock_settings.get_server_settings.return_value = MagicMock(signup_require_email_verification=True)
+            yield mock_settings.get_server_settings.return_value
+
     def test_approve_activates_and_commits(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1, email_verified=True)
-
-        identity_service = MagicMock()
-
-        users_service.approve_user(1, identity_service, mock_db)
+        with patch(
+            "modules.users.users.service.sign_up_tokens_integration.request_sign_up_approved_email", return_value=True
+        ) as mock_request:
+            users_service.approve_user(1, mock_db)
 
         mock_crud.update_user.assert_called_once_with(1, {"pending_admin_approval": False, "active": True}, mock_db)
-        identity_service.request_sign_up_approved_email.assert_called_once_with(1, commit=mock_db.commit)
+        mock_request.assert_called_once_with(1, mock_db)
+        mock_db.commit.assert_called_once()
 
     def test_approve_without_mail_is_still_approved(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1, email_verified=True)
-        identity_service = MagicMock()
-        identity_service.request_sign_up_approved_email.return_value = False
 
-        users_service.approve_user(1, identity_service, mock_db)
+        with patch(
+            "modules.users.users.service.sign_up_tokens_integration.request_sign_up_approved_email", return_value=False
+        ):
+            users_service.approve_user(1, mock_db)
 
         mock_crud.update_user.assert_called_once()
+        mock_db.commit.assert_called_once()
 
-    def test_approve_refuses_an_unverified_email(self, mock_crud, mock_db):
+    def test_approval_event_does_not_escape_a_failed_commit(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1, email_verified=True)
+        mock_db.commit.side_effect = RuntimeError("commit failed")
+
+        with (
+            patch(
+                "modules.users.users.service.sign_up_tokens_integration.request_sign_up_approved_email",
+                return_value=True,
+            ) as mock_request,
+            pytest.raises(RuntimeError, match="commit failed"),
+        ):
+            users_service.approve_user(1, mock_db)
+
+        mock_crud.update_user.assert_called_once()
+        mock_request.assert_called_once_with(1, mock_db)
+        mock_db.commit.assert_called_once()
+
+    def test_approve_refuses_an_unverified_email_while_verification_is_required(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1, email_verified=False)
 
         with pytest.raises(core_exceptions.InvalidInputError):
-            users_service.approve_user(1, MagicMock(), mock_db)
+            users_service.approve_user(1, mock_db)
 
         mock_crud.update_user.assert_not_called()
+
+    def test_approve_needs_no_verified_email_when_verification_is_off(self, mock_crud, mock_db, settings):
+        """With approval alone no verification email is ever sent, so requiring one made approval impossible."""
+        settings.signup_require_email_verification = False
+        mock_crud.get_user_by_id.return_value = _user(1, email_verified=False)
+
+        with patch("modules.users.users.service.sign_up_tokens_integration.request_sign_up_approved_email"):
+            users_service.approve_user(1, mock_db)
+
+        mock_crud.update_user.assert_called_once_with(1, {"pending_admin_approval": False, "active": True}, mock_db)
+        mock_db.commit.assert_called_once()
 
     def test_verification_activates_without_approval_policy(self, mock_crud, mock_db):
         users_service.stage_email_verification(1, MagicMock(signup_require_admin_approval=False), mock_db)
@@ -553,7 +734,7 @@ class TestRequireDeletableUser:
         mock_crud.get_user_by_id.return_value = None
 
         with pytest.raises(core_exceptions.NotFoundError):
-            users_service.require_deletable_user(1, mock_db)
+            users_service.require_deletable_user(1, mock_db, if_match="*")
 
     @patch(_CRUD)
     def test_the_only_administrator_cannot_be_deleted(self, mock_crud, mock_db):
@@ -561,22 +742,37 @@ class TestRequireDeletableUser:
         mock_crud.lock_active_admin_ids.return_value = [1]
 
         with pytest.raises(core_exceptions.ConflictError):
-            users_service.require_deletable_user(1, mock_db)
+            users_service.require_deletable_user(1, mock_db, if_match="*")
 
     @patch(_CRUD)
     def test_an_administrator_can_be_deleted_while_another_remains(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1, access_type="admin")
         mock_crud.lock_active_admin_ids.return_value = [1, 2]
 
-        users_service.require_deletable_user(1, mock_db)
+        users_service.require_deletable_user(1, mock_db, if_match="*")
 
     @patch(_CRUD)
     def test_a_regular_user_can_be_deleted(self, mock_crud, mock_db):
         mock_crud.get_user_by_id.return_value = _user(1)
 
-        users_service.require_deletable_user(1, mock_db)
+        users_service.require_deletable_user(1, mock_db, if_match="*")
 
         mock_crud.lock_active_admin_ids.assert_not_called()
+
+    @patch(_CRUD)
+    def test_a_stale_version_is_refused_before_the_administrator_check(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1, access_type="admin", version=3)
+
+        with pytest.raises(core_exceptions.PreconditionFailedError):
+            users_service.require_deletable_user(1, mock_db, if_match='"2"')
+
+        mock_crud.lock_active_admin_ids.assert_not_called()
+
+    @patch(_CRUD)
+    def test_the_current_version_is_accepted(self, mock_crud, mock_db):
+        mock_crud.get_user_by_id.return_value = _user(1, version=3)
+
+        users_service.require_deletable_user(1, mock_db, if_match='"3"')
 
 
 class TestLastAdminIsProtected:

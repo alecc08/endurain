@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -9,16 +9,7 @@ import modules.health.health_fasting.crud as health_fasting_crud
 import modules.health.health_fasting.models as health_fasting_models
 import modules.health.health_fasting.schema as health_fasting_schema
 
-
-@pytest.fixture(autouse=True)
-def passthrough_serializers():
-    """Return ORM rows untouched: the serializer is covered by the schema tests."""
-    serializers = health_fasting_crud.health_fasting_serializers
-    with (
-        patch.object(serializers, "to_read_schema", side_effect=lambda row: row),
-        patch.object(serializers, "to_read_schemas", side_effect=lambda rows: rows),
-    ):
-        yield
+pytestmark = pytest.mark.usefixtures("passthrough_serializers")
 
 
 def _row(record_id: int = 1) -> MagicMock:
@@ -114,22 +105,22 @@ class TestAggregates:
 
 
 class TestCreateHealthFasting:
-    def test_stages_without_committing(self, mock_db):
+    def test_stages_without_committing(self, mock_db, stub_model):
         record = health_fasting_schema.HealthFastingCreate(fast_start_time=datetime(2024, 1, 15, 8, 0, 0))
 
-        with patch.object(health_fasting_models, "HealthFasting", return_value=_row()) as model:
+        with stub_model(health_fasting_crud, _row()) as model:
             health_fasting_crud.create_health_fasting(1, record, mock_db)
 
         assert model.call_args.kwargs["user_id"] == 1
         mock_db.flush.assert_called_once()
         mock_db.commit.assert_not_called()
 
-    def test_integrity_error_is_a_conflict(self, mock_db):
+    def test_integrity_error_is_a_conflict(self, mock_db, stub_model):
         mock_db.flush.side_effect = IntegrityError("constraint", None, None)
         record = health_fasting_schema.HealthFastingCreate(fast_start_time=datetime(2024, 1, 15, 8, 0, 0))
 
         with (
-            patch.object(health_fasting_models, "HealthFasting", return_value=_row()),
+            stub_model(health_fasting_crud, _row()),
             pytest.raises(core_exceptions.ConflictError),
         ):
             health_fasting_crud.create_health_fasting(1, record, mock_db)
@@ -164,12 +155,24 @@ class TestEditHealthFasting:
 
 
 class TestEndHealthFasting:
+    def test_a_stale_version_is_refused(self, mock_db):
+        row = _row()
+        row.version = 4
+        _returns_one(mock_db, row)
+
+        with pytest.raises(core_exceptions.PreconditionFailedError):
+            health_fasting_crud.end_health_fasting(
+                1, 1, datetime(2024, 1, 16, 8, 0, 0), "completed", 86400, None, mock_db, if_match='"3"'
+            )
+
+        mock_db.flush.assert_not_called()
+
     def test_stages_the_end_fields(self, mock_db):
         row = _row()
         _returns_one(mock_db, row)
         end = datetime(2024, 1, 16, 8, 0, 0)
 
-        health_fasting_crud.end_health_fasting(1, 1, end, "completed", 86400, "done", mock_db)
+        health_fasting_crud.end_health_fasting(1, 1, end, "completed", 86400, "done", mock_db, if_match="*")
 
         assert (row.fast_end_time, row.status, row.actual_duration_seconds, row.notes) == (
             end,
@@ -185,7 +188,7 @@ class TestEndHealthFasting:
         row.notes = "before"
         _returns_one(mock_db, row)
 
-        health_fasting_crud.end_health_fasting(1, 1, datetime(2024, 1, 16), "broken", 10, None, mock_db)
+        health_fasting_crud.end_health_fasting(1, 1, datetime(2024, 1, 16), "broken", 10, None, mock_db, if_match="*")
 
         assert row.notes == "before"
 
@@ -193,7 +196,9 @@ class TestEndHealthFasting:
         _returns_one(mock_db, None)
 
         with pytest.raises(core_exceptions.NotFoundError):
-            health_fasting_crud.end_health_fasting(1, 9, datetime(2024, 1, 16), "broken", 10, None, mock_db)
+            health_fasting_crud.end_health_fasting(
+                1, 9, datetime(2024, 1, 16), "broken", 10, None, mock_db, if_match="*"
+            )
 
 
 class TestDeleteHealthFasting:
@@ -201,7 +206,7 @@ class TestDeleteHealthFasting:
         row = _row()
         _returns_one(mock_db, row)
 
-        health_fasting_crud.delete_health_fasting(1, 1, mock_db)
+        health_fasting_crud.delete_health_fasting(1, 1, mock_db, if_match="*")
 
         mock_db.delete.assert_called_once_with(row)
         mock_db.flush.assert_called_once()
@@ -211,5 +216,5 @@ class TestDeleteHealthFasting:
         _returns_one(mock_db, None)
 
         with pytest.raises(core_exceptions.NotFoundError):
-            health_fasting_crud.delete_health_fasting(1, 9, mock_db)
+            health_fasting_crud.delete_health_fasting(1, 9, mock_db, if_match="*")
         mock_db.delete.assert_not_called()

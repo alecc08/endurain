@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Security, status
+from fastapi import APIRouter, Query, Request, Security, status
 
 import core.dependencies as core_dependencies
 import core.pagination as core_pagination
@@ -66,7 +66,7 @@ def read_notifications_by_id(
 def read_notifications_user_pagination(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    page: Annotated[core_pagination.PageParams, Depends(core_pagination.list_page_params)],
+    page: core_pagination.ListPage,
     unread_only: Annotated[bool, Query()] = False,
 ) -> core_pagination.Page[notifications_schema.NotificationRead]:
     """Retrieve paginated notifications for the user.
@@ -90,7 +90,7 @@ def read_notifications_user_pagination(
     )
 
 
-@router.put(
+@router.post(
     "/{notification_id}/read",
     response_model=None,
     status_code=status.HTTP_204_NO_CONTENT,
@@ -117,7 +117,7 @@ def mark_notification_as_read(
     notifications_service.mark_notification_as_read(notification_id, token_user_id, db)
 
 
-@router.put(
+@router.post(
     "/read",
     response_model=None,
     status_code=status.HTTP_204_NO_CONTENT,

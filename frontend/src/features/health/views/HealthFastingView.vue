@@ -83,7 +83,7 @@ function onComplete(status: FastingStatus): void {
     return
   }
   completeMutation.mutate(
-    { id: active.id, fastEndTime: new Date().toISOString(), status },
+    { id: active.id, fastEndTime: new Date().toISOString(), status, version: active.version },
     {
       onSuccess: () => toasts.success(t('health.fasting.complete.success')),
       onError: () => toasts.error(t('health.fasting.complete.error')),
@@ -135,15 +135,18 @@ function confirmDelete(): void {
   if (!entry) {
     return
   }
-  deleteMutation.mutate(entry.id, {
-    onSuccess: () => {
-      isDeleteOpen.value = false
-      toasts.success(t('health.fasting.delete.success'))
+  deleteMutation.mutate(
+    { id: entry.id, version: entry.version },
+    {
+      onSuccess: () => {
+        isDeleteOpen.value = false
+        toasts.success(t('health.fasting.delete.success'))
+      },
+      onError: () => {
+        toasts.error(t('health.fasting.delete.error'))
+      },
     },
-    onError: () => {
-      toasts.error(t('health.fasting.delete.error'))
-    },
-  })
+  )
 }
 </script>
 

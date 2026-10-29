@@ -10,8 +10,8 @@ import garminconnect
 
 import core.database as core_database
 import core.exceptions as core_exceptions
-import core.local_pool as core_local_pool
 import core.logger as core_logger
+import core.sync_runner as core_sync_runner
 import modules.garmin.constants as garmin_constants
 import modules.garmin.link_state_store as garmin_link_state_store
 import modules.garmin.mfa_code_store as garmin_mfa_code_store
@@ -22,17 +22,9 @@ import modules.websocket.integration_service as websocket_integration
 
 logger = core_logger.get_logger(__name__)
 
-#: The job name the link's realtime hints carry.
-_LINK_JOB = "garmin-link"
-
-
 # Logins run here, not on the request threadpool: one waits up to MFA_WAIT_SECONDS for the
 # user's code, and a few users linking at once must not leave the API without worker threads.
-# A login past this capacity is refused rather than queued: a queued one would outlive its
-# polled state while holding the user's credentials in memory.
-_link_pool = core_local_pool.BoundedPool(
-    "garmin-link", workers=garmin_constants.MAX_CONCURRENT_LINKS, max_pending=garmin_constants.MAX_CONCURRENT_LINKS
-)
+_link_pool = core_sync_runner.link_pool("garmin-link")
 
 
 def shutdown_link_pool(*, wait: bool = False) -> None:
@@ -64,7 +56,7 @@ def wait_for_mfa_code(
         The code, or None when none arrived within ``MFA_WAIT_SECONDS``.
     """
     link_states.set_status(user_id, garmin_constants.LinkStatus.MFA_REQUIRED)
-    websocket_integration.push_job_changed(user_id, _LINK_JOB)
+    websocket_integration.push_job_changed(user_id, garmin_constants.LINK_JOB)
     for _ in range(garmin_constants.MFA_WAIT_SECONDS):
         code = mfa_codes.get_code(user_id)
         if code is not None:
@@ -100,10 +92,10 @@ def start_link(
     """
     # Checked before the attempt is recorded, so a refused login leaves no pending state to poll.
     _link_pool.require_capacity()
-    if not link_states.begin(user_id):
-        raise core_exceptions.ConflictError("A Garmin Connect link is already in progress")
-    try:
-        _link_pool.submit(
+    core_sync_runner.start_claimed(
+        lambda: link_states.begin(user_id),
+        "A Garmin Connect link is already in progress",
+        lambda: _link_pool.submit(
             link_garminconnect,
             user_id,
             login.username,
@@ -111,11 +103,9 @@ def start_link(
             mfa_codes,
             link_states,
             login.is_cn,
-        )
-    except BaseException:
-        # The attempt never started, so nothing would ever release its claim.
-        link_states.release(user_id)
-        raise
+        ),
+        lambda: link_states.release(user_id),
+    )
     return garmin_schema.GarminLinkStatus(status=garmin_constants.LinkStatus.PENDING)
 
 
@@ -145,6 +135,11 @@ def link_garminconnect(
     mfa_prompted = False
 
     def prompt_mfa() -> str | None:
+        """Mark the login as prompted and wait for the user's MFA code.
+
+        Returns:
+            The submitted code, or ``None`` when none arrived in time.
+        """
         nonlocal mfa_prompted
         mfa_prompted = True
         return wait_for_mfa_code(user_id, mfa_codes, link_states)
@@ -193,7 +188,7 @@ def link_garminconnect(
     finally:
         mfa_codes.delete_code(user_id)
         # Whatever the outcome was, it is recorded by now.
-        websocket_integration.push_job_changed(user_id, _LINK_JOB)
+        websocket_integration.push_job_changed(user_id, garmin_constants.LINK_JOB)
 
 
 def get_link_status(

@@ -9,6 +9,7 @@ import type {
 } from '@/features/identityProviders/types'
 
 import { apiFetch } from '@/services/http'
+import { ifMatchHeaders, rowVersion } from '@/services/ifMatch'
 
 /**
  * Maps a raw `IdentityProvider` payload to the clean {@link IdentityProvider}
@@ -21,6 +22,7 @@ import { apiFetch } from '@/services/http'
 export function mapIdentityProvider(dto: IdentityProviderDto): IdentityProvider {
   return {
     id: dto.id,
+    version: rowVersion(dto.version),
     name: dto.name,
     slug: dto.slug,
     providerType: dto.provider_type,
@@ -112,7 +114,7 @@ function toWireBase(input: IdentityProviderInput) {
  * @throws {HttpError} When the request fails.
  */
 export async function fetchIdentityProviders(signal?: AbortSignal): Promise<IdentityProvider[]> {
-  const dtos = await apiFetch<IdentityProviderDto[] | null>('/idp', { signal })
+  const dtos = await apiFetch<IdentityProviderDto[] | null>('/identity-providers', { signal })
   return (dtos ?? []).map(mapIdentityProvider)
 }
 
@@ -127,7 +129,10 @@ export async function fetchIdentityProviders(signal?: AbortSignal): Promise<Iden
 export async function fetchIdentityProviderTemplates(
   signal?: AbortSignal,
 ): Promise<IdentityProviderTemplate[]> {
-  const dtos = await apiFetch<IdentityProviderTemplateDto[] | null>('/idp/templates', { signal })
+  const dtos = await apiFetch<IdentityProviderTemplateDto[] | null>(
+    '/identity-providers/templates',
+    { signal },
+  )
   return (dtos ?? []).map(mapIdentityProviderTemplate)
 }
 
@@ -146,7 +151,7 @@ export async function createIdentityProvider(
     ...toWireBase(input),
     client_secret: input.clientSecret ?? '',
   }
-  const dto = await apiFetch<IdentityProviderDto>('/idp', {
+  const dto = await apiFetch<IdentityProviderDto>('/identity-providers', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
@@ -160,19 +165,22 @@ export async function createIdentityProvider(
  *
  * @param id - The provider id.
  * @param input - The clean provider input.
+ * @param version - The provider version read by the editor.
  * @returns The updated provider, mapped to the clean model.
  * @throws {HttpError} When the request fails (e.g. duplicate slug, not found).
  */
 export async function updateIdentityProvider(
   id: number,
   input: IdentityProviderInput,
+  version: number,
 ): Promise<IdentityProvider> {
   const payload: IdentityProviderUpdateDto = { ...toWireBase(input) }
   if (input.clientSecret) {
     payload.client_secret = input.clientSecret
   }
-  const dto = await apiFetch<IdentityProviderDto>(`/idp/${id}`, {
+  const dto = await apiFetch<IdentityProviderDto>(`/identity-providers/${id}`, {
     method: 'PUT',
+    headers: ifMatchHeaders(version),
     body: JSON.stringify(payload),
   })
   return mapIdentityProvider(dto)
@@ -183,8 +191,13 @@ export async function updateIdentityProvider(
  * backend returns `409` when users are still linked to the provider.
  *
  * @param id - The provider id.
- * @throws {HttpError} When the request fails (e.g. users still linked).
+ * @param version - The provider version the list item was read at, for `If-Match`.
+ * @throws {HttpError} When the request fails (e.g. users still linked, or `412` when stale).
  */
-export async function deleteIdentityProvider(id: number): Promise<void> {
-  await apiFetch(`/idp/${id}`, { method: 'DELETE', responseType: 'void' })
+export async function deleteIdentityProvider(id: number, version: number): Promise<void> {
+  await apiFetch(`/identity-providers/${id}`, {
+    method: 'DELETE',
+    headers: ifMatchHeaders(version),
+    responseType: 'void',
+  })
 }

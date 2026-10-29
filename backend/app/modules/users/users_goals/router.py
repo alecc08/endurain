@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query, Request, Response, Security, status
 
 import core.dependencies as core_dependencies
 import core.etag as core_etag
+import core.pagination as core_pagination
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
 import modules.users.users_goals.progress_service as user_goals_progress_service
@@ -18,11 +19,12 @@ router = APIRouter()
 
 @router.get(
     "",
-    response_model=list[user_goals_schema.UsersGoalRead],
+    response_model=user_goals_schema.UsersGoalPage,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
 def get_user_goals(
     token_user_id: auth_dependencies.CurrentUserId,
+    page: core_pagination.ListPage,
     db: core_dependencies.DbSession,
     interval: Annotated[
         user_goals_schema.Interval | None,
@@ -36,22 +38,24 @@ def get_user_goals(
         user_goals_schema.GoalType | None,
         Query(description="Filter by goal type"),
     ] = None,
-) -> list[user_goals_schema.UsersGoalRead]:
-    """Retrieve goals for the authenticated user with optional filters.
+) -> user_goals_schema.UsersGoalPage:
+    """Retrieve one page of goals for the authenticated user with optional filters.
 
     Args:
         token_user_id: User ID from access token.
+        page: The requested window.
         db: Database session dependency.
         interval: Optional filter by goal interval.
         activity_type: Optional filter by activity type.
         goal_type: Optional filter by goal type.
 
     Returns:
-        List of user goal objects matching the filters.
+        The page of user goals matching the filters.
     """
     return user_goals_service.list_goals(
         user_id=token_user_id,
         db=db,
+        page=page,
         interval=interval,
         activity_type=activity_type,
         goal_type=goal_type,
@@ -60,26 +64,28 @@ def get_user_goals(
 
 @router.get(
     "/results",
-    response_model=list[user_goals_schema.UsersGoalProgress],
+    response_model=user_goals_schema.UsersGoalProgressPage,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.EXPENSIVE_READ)
 def get_user_goals_results(
     request: Request,
     token_user_id: auth_dependencies.CurrentUserId,
+    page: core_pagination.ListPage,
     db: core_dependencies.DbSession,
-) -> list[user_goals_schema.UsersGoalProgress]:
-    """Calculate and retrieve goal progress for authenticated user.
+) -> user_goals_schema.UsersGoalProgressPage:
+    """Calculate and retrieve one page of goal progress for the authenticated user.
 
     Args:
         request: The incoming request, read by the rate limiter.
         token_user_id: User ID from access token.
+        page: The requested window.
         db: Database session dependency.
 
     Returns:
-        List of goal progress objects, empty if no goals.
+        The page of goal progress objects, empty if no goals.
     """
-    return user_goals_progress_service.get_goals_progress(token_user_id, db)
+    return user_goals_progress_service.get_goals_progress(token_user_id, page, db)
 
 
 @router.post(
@@ -139,7 +145,7 @@ def update_user_goal(
         The updated goal object.
     """
     updated = user_goals_service.update_goal(token_user_id, goal_id, user_goal, db, if_match=if_match)
-    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    core_etag.set_etag(response, updated.version)
     return updated
 
 
@@ -154,6 +160,7 @@ def delete_user_goal(
     request: Request,
     goal_id: core_dependencies.PositiveId,
     token_user_id: auth_dependencies.CurrentUserId,
+    if_match: core_dependencies.IfMatch,
     db: core_dependencies.DbSession,
 ) -> None:
     """Delete a goal for the authenticated user.
@@ -162,6 +169,10 @@ def delete_user_goal(
         request: The incoming request, read by the rate limiter.
         goal_id: ID of the goal to delete.
         token_user_id: User ID from access token.
+        if_match: The ``If-Match`` precondition.
         db: Database session dependency.
+
+    Raises:
+        PreconditionFailedError: If the goal changed since the client read it.
     """
-    return user_goals_service.delete_goal(token_user_id, goal_id, db)
+    user_goals_service.delete_goal(token_user_id, goal_id, db, if_match=if_match)

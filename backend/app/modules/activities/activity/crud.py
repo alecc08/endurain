@@ -63,6 +63,12 @@ _NUMERIC_SORT_COLUMNS = {
     activity_models.Activity.average_hr,
 }
 
+# Columns that say when an activity happened, which an owner may hide from other readers.
+_TIME_SORT_COLUMNS = {
+    activity_models.Activity.start_time,
+    activity_models.Activity.end_time,
+}
+
 # Text columns coalesced to "" so an unset place name orders with the empty ones
 # instead of wherever the backend happens to put NULL.
 _TEXT_SORT_COLUMNS = {
@@ -72,27 +78,33 @@ _TEXT_SORT_COLUMNS = {
 }
 
 
-def _sort_order_by(sort_by: str | None, sort_order: str | None) -> list[Any]:
+def _sort_order_by(sort_by: str | None, sort_order: str | None, *, mask_hidden_times: bool = False) -> list[Any]:
     """Build the ORDER BY clauses for an activity list request.
 
     Args:
         sort_by: The requested sort key, already validated by the transport layer.
         sort_order: ``asc`` or ``desc``; anything else orders descending.
+        mask_hidden_times: Whether the reader must not learn a hidden start time. An activity whose owner hid
+            its start time then ties with the other hidden ones on a time key, because its place in the
+            order would otherwise reveal when it happened.
 
     Returns:
-        One clause per column the key orders by, highest precedence first.
+        One clause per column the key orders by, highest precedence first, then the id so pages are stable.
     """
     ascending = bool(sort_order and sort_order.lower() == "asc")
     columns = SORT_MAP.get(sort_by or "", _DEFAULT_SORT_COLUMNS)
     clauses = []
     for column in columns:
-        if column in _NUMERIC_SORT_COLUMNS:
+        if mask_hidden_times and column in _TIME_SORT_COLUMNS:
+            ordered = case((activity_models.Activity.hide_start_time.is_(True), None), else_=column)
+        elif column in _NUMERIC_SORT_COLUMNS:
             ordered = func.coalesce(column, _NULL_SORT_SENTINEL if ascending else -_NULL_SORT_SENTINEL)
         elif column in _TEXT_SORT_COLUMNS:
             ordered = func.coalesce(column, "")
         else:
             ordered = column
         clauses.append(ordered.asc() if ascending else ordered.desc())
+    clauses.append(activity_models.Activity.id.asc() if ascending else activity_models.Activity.id.desc())
     return clauses
 
 
@@ -199,6 +211,10 @@ def _apply_user_activity_filters(
     # Date filters are evaluated in each activity's own timezone, so a
     # user filtering "1 May" gets their 1 May, not UTC's.
     stmt = stmt.where(*activity_query.local_date_range_conditions(start_date, end_date, end_exclusive=False))
+    if not user_is_owner and (start_date is not None or end_date is not None):
+        # A window that matched a hidden start time would reveal it: narrowing the window until the activity
+        # drops out of the results pins down the date.
+        stmt = stmt.where(activity_models.Activity.hide_start_time.is_(False))
     if name_search:
         stmt = stmt.where(activity_query.name_search_condition(name_search))
     return stmt
@@ -348,33 +364,41 @@ def count_user_activities(
     return count or 0
 
 
-def get_user_activities_by_user_id_and_garminconnect_gear_set(
-    user_id: int, db: Session
-) -> list[activity_schema.ActivityRead]:
-    """Get activities for a user that have a Garmin gear ID.
+def get_garminconnect_gear_activity_refs(
+    user_id: int,
+    db: Session,
+    *,
+    after_id: int = 0,
+    limit: int = core_pagination.DEFAULT_MAINTENANCE_BATCH_SIZE,
+) -> list[activity_contracts.ActivityGarminGearRef]:
+    """Return one bounded page of a user's activities that carry a Garmin gear id.
+
+    Ordered by id and paged via ``after_id``, so assigning gear walks the user's
+    history in bounded batches of two columns instead of loading every activity.
 
     Args:
         user_id: Owner user ID.
         db: Database session.
+        after_id: Return only activities with ``id`` greater than this.
+        limit: Maximum number of rows to return.
 
     Returns:
-        The matching activity schemas, empty when there are none.
+        The activity id and Garmin gear id of each matching row, empty when there are none.
     """
     stmt = (
-        select(activity_models.Activity)
+        select(activity_models.Activity.id, activity_models.Activity.garminconnect_gear_id)
         .where(
             activity_models.Activity.user_id == user_id,
             activity_models.Activity.garminconnect_gear_id.isnot(None),
+            activity_models.Activity.id > after_id,
         )
-        .order_by(desc(activity_models.Activity.start_time))
+        .order_by(activity_models.Activity.id)
+        .limit(limit)
     )
-    activities = db.execute(stmt).scalars().all()
-    if not activities:
-        return []
-    return activity_serializers.serialize_and_mask(
-        list(activities),
-        requester_user_id=user_id,
-    )
+    return [
+        activity_contracts.ActivityGarminGearRef(id=row.id, garminconnect_gear_id=row.garminconnect_gear_id)
+        for row in db.execute(stmt)
+    ]
 
 
 def get_user_activities_with_pagination(
@@ -426,7 +450,7 @@ def get_user_activities_with_pagination(
         followee_ids=followee_ids,
     )
 
-    stmt = stmt.order_by(*_sort_order_by(sort_by, sort_order))
+    stmt = stmt.order_by(*_sort_order_by(sort_by, sort_order, mask_hidden_times=not user_is_owner))
 
     stmt = stmt.offset((page_number - 1) * num_records).limit(num_records)
 
@@ -943,50 +967,6 @@ def get_activity_by_id_if_is_public(activity_id: int, db: Session) -> activity_s
     schema = activity_serializers.to_read_schema(activity)
     activity_serializers.apply_visibility_mask(schema, is_owner=False)
     return schema
-
-
-def get_public_activity_for_child_read(
-    activity_id: int,
-    db: Session,
-    *,
-    hide_attr: str,
-) -> activity_schema.ActivityRead | None:
-    """Return a publicly readable activity for an unauthenticated child-resource read.
-
-    The single public gate for activity sub-resources (laps / sets / workout
-    steps / streams). It composes the two checks that must *both* hold before any
-    child rows are served anonymously:
-
-    1. The activity itself is publicly shareable — delegated to
-       :func:`get_activity_by_id_if_is_public`, which enforces ``visibility == 0``
-       **and** ``is_hidden is False``. The server-wide ``public_shareable_links``
-       setting is checked by the caller, before this is reached.
-    2. The per-activity privacy flag guarding this particular child resource
-       (e.g. ``hide_laps``, ``hide_workout_sets_steps``) is not set.
-
-    The ``is_hidden`` check is part of step 1 so a hidden (duplicate-start-time)
-    activity does not serve its laps, sets and workout steps to anonymous callers
-    (OWASP A01: broken access control). Routing every child through this one
-    function keeps that rule from diverging by copy-paste.
-
-    Args:
-        activity_id: Activity ID being read.
-        db: Database session.
-        hide_attr: Name of the boolean ``hide_*`` attribute on the activity
-            schema that gates this child resource.
-
-    Returns:
-        The public activity schema when the child rows may be served anonymously,
-        otherwise ``None``.
-    """
-    activity = get_activity_by_id_if_is_public(activity_id, db)
-    if activity is None:
-        return None
-
-    if getattr(activity, hide_attr):
-        return None
-
-    return activity
 
 
 def get_existing_activity_ids(activity_ids: Sequence[int], db: Session) -> set[int]:
@@ -1568,22 +1548,39 @@ def _lock_user_activities(user_id: int, db: Session, activity_ids: Sequence[int]
     db.execute(stmt.order_by(activity_models.Activity.id).with_for_update())
 
 
-def edit_user_activities_visibility(user_id: int, visibility: int, db: Session) -> list[int]:
-    """Stage a bulk visibility update for every activity of a user.
+def edit_user_activities_visibility_batch(user_id: int, visibility: int, limit: int, db: Session) -> list[int]:
+    """Stage a visibility update for up to ``limit`` of a user's activities that do not have it yet.
+
+    Only rows whose visibility differs are touched, so a repeated edit rewrites nothing and the batches of
+    a run shrink to none. The rows are locked in id order first, like every multi-row write here.
 
     Args:
         user_id: Owner user ID.
         visibility: New visibility value (0, 1, 2).
+        limit: The most activities to change.
         db: Database session.
 
     Returns:
-        The IDs of the updated activities, so the caller can publish one event
-        per row instead of re-deriving which activities the user owns.
+        The IDs of the updated activities, so the caller can publish one event per row. Empty once every
+        activity has the visibility.
     """
-    _lock_user_activities(user_id, db)
+    ids = list(
+        db.scalars(
+            select(activity_models.Activity.id)
+            .where(
+                activity_models.Activity.user_id == user_id,
+                activity_models.Activity.visibility != visibility,
+            )
+            .order_by(activity_models.Activity.id)
+            .limit(limit)
+            .with_for_update()
+        ).all()
+    )
+    if not ids:
+        return []
     stmt = (
         sa_update(activity_models.Activity)
-        .where(activity_models.Activity.user_id == user_id)
+        .where(activity_models.Activity.user_id == user_id, activity_models.Activity.id.in_(ids))
         # Core UPDATEs bypass the ORM version bump, so an ETag would survive a
         # change it should have invalidated.
         .values(visibility=visibility, version=activity_models.Activity.version + 1)
@@ -1659,32 +1656,38 @@ def clear_gear_from_activities(gear_id: int, user_id: int, db: Session) -> list[
     return sorted(row_id for (row_id,) in db.execute(stmt).all())
 
 
-def delete_activity(activity_id: int, user_id: int, db: Session) -> None:
+def delete_activity(activity_id: int, user_id: int, db: Session, *, if_match: str) -> None:
     """Stage the deletion of an activity owned by ``user_id``.
 
     Ownership is part of the ``WHERE`` clause rather than a precondition the
-    caller is trusted to have checked: a delete that does not match the owner
-    affects zero rows and raises 404, so a caller that forgets to pre-fetch the
-    activity cannot turn this into an IDOR (OWASP A01). The 404 is deliberately
-    indistinguishable from "no such activity" so it does not disclose the
-    existence of another user's activity.
+    caller is trusted to have checked: an activity the owner does not match is
+    not found, so a caller that forgets to pre-fetch the activity cannot turn
+    this into an IDOR (OWASP A01). The 404 is deliberately indistinguishable
+    from "no such activity" so it does not disclose the existence of another
+    user's activity.
 
     Args:
         activity_id: Activity ID.
         user_id: ID of the user that must own the activity.
         db: Database session.
+        if_match: The ``If-Match`` precondition, checked against the very row
+            that is deleted; the flush's ``version_id_col`` guard then holds the
+            ``DELETE`` to that version.
 
     Raises:
         NotFoundError: When the activity is missing or not owned by ``user_id``.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
-    stmt = sa_delete(activity_models.Activity).where(
+    stmt = select(activity_models.Activity).where(
         activity_models.Activity.id == activity_id,
         activity_models.Activity.user_id == user_id,
     )
-    result = cast("CursorResult[Any]", db.execute(stmt))
-    if result.rowcount == 0:
-        # Nothing matched, so nothing was staged; the 404 needs no rollback.
+    db_activity = db.execute(stmt).scalar_one_or_none()
+    if db_activity is None:
         raise core_exceptions.NotFoundError(f"Activity with id {activity_id} not found")
+    core_etag.require_if_match(if_match, db_activity.version, "activity")
+    db.delete(db_activity)
+    db.flush()
 
 
 def delete_all_strava_activities_for_user(user_id: int, db: Session, *, limit: int) -> list[int]:

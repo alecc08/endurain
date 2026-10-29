@@ -69,10 +69,11 @@ describe('strava service', () => {
     })
   })
 
-  it('setStravaClient PUTs the client credentials', async () => {
-    await setStravaClient({ clientId: 123456, clientSecret: 'sekret' })
+  it('setStravaClient PUTs the client credentials with the version it read', async () => {
+    await setStravaClient({ clientId: 123456, clientSecret: 'sekret' }, 4)
     expect(apiFetch).toHaveBeenCalledWith('/strava/client', {
       method: 'PUT',
+      headers: { 'If-Match': '"4"' },
       body: JSON.stringify({ client_id: 123456, client_secret: 'sekret' }),
       responseType: 'void',
     })
@@ -217,7 +218,7 @@ describe('garmin service', () => {
 
     const status = await linkGarmin({ username: 'rider', password: 'pw', isCn: false })
 
-    expect(apiFetch).toHaveBeenCalledWith('/garminconnect/link', {
+    expect(apiFetch).toHaveBeenCalledWith('/garmin/link', {
       method: 'POST',
       body: JSON.stringify({ username: 'rider', password: 'pw', is_cn: false }),
     })
@@ -230,7 +231,7 @@ describe('garmin service', () => {
 
     const status = await fetchGarminLinkStatus(controller.signal)
 
-    expect(apiFetch).toHaveBeenCalledWith('/garminconnect/link/status', {
+    expect(apiFetch).toHaveBeenCalledWith('/garmin/link/status', {
       signal: controller.signal,
     })
     expect(status.status).toBe('mfa_required')
@@ -238,7 +239,7 @@ describe('garmin service', () => {
 
   it('linkGarmin forwards the China-region flag', async () => {
     await linkGarmin({ username: 'rider', password: 'pw', isCn: true })
-    expect(apiFetch).toHaveBeenCalledWith('/garminconnect/link', {
+    expect(apiFetch).toHaveBeenCalledWith('/garmin/link', {
       method: 'POST',
       body: JSON.stringify({ username: 'rider', password: 'pw', is_cn: true }),
     })
@@ -246,7 +247,7 @@ describe('garmin service', () => {
 
   it('submitGarminMfa POSTs the code', async () => {
     await submitGarminMfa('123456')
-    expect(apiFetch).toHaveBeenCalledWith('/garminconnect/mfa', {
+    expect(apiFetch).toHaveBeenCalledWith('/garmin/mfa', {
       method: 'POST',
       body: JSON.stringify({ mfa_code: '123456' }),
       responseType: 'void',
@@ -256,14 +257,14 @@ describe('garmin service', () => {
   it('retrieveGarminActivities POSTs the activities path with the window', async () => {
     await retrieveGarminActivities(range)
     expect(apiFetch).toHaveBeenCalledWith(
-      '/garminconnect/activities?start_date=2026-01-01&end_date=2026-01-07',
+      '/garmin/activities?start_date=2026-01-01&end_date=2026-01-07',
       { method: 'POST', responseType: 'void' },
     )
   })
 
   it('retrieveGarminGear POSTs the gear path', async () => {
     await retrieveGarminGear()
-    expect(apiFetch).toHaveBeenCalledWith('/garminconnect/gear', {
+    expect(apiFetch).toHaveBeenCalledWith('/garmin/gear', {
       method: 'POST',
       responseType: 'void',
     })
@@ -272,14 +273,14 @@ describe('garmin service', () => {
   it('retrieveGarminHealth POSTs the health path with the window', async () => {
     await retrieveGarminHealth(range)
     expect(apiFetch).toHaveBeenCalledWith(
-      '/garminconnect/health?start_date=2026-01-01&end_date=2026-01-07',
+      '/garmin/health?start_date=2026-01-01&end_date=2026-01-07',
       { method: 'POST', responseType: 'void' },
     )
   })
 
   it('unlinkGarmin DELETEs the link', async () => {
     await unlinkGarmin()
-    expect(apiFetch).toHaveBeenCalledWith('/garminconnect/link', {
+    expect(apiFetch).toHaveBeenCalledWith('/garmin/link', {
       method: 'DELETE',
       responseType: 'void',
     })

@@ -66,6 +66,7 @@ export function mapProfileDetails(dto: ProfileDto): ProfileDetails {
     timezone: dto.timezone ?? null,
     accessType: dto.access_type,
     hasLocalPassword: dto.has_local_password ?? true,
+    integrationsVersion: rowVersion(dto.integrations_version),
     stravaLinked: dto.is_strava_linked === 1,
     garminLinked: dto.is_garminconnect_linked === 1,
     photoPath: dto.photo_path ?? null,
@@ -112,7 +113,6 @@ export async function updateProfile(input: ProfileEditInput, version: number): P
     method: 'PATCH',
     headers: ifMatchHeaders(version),
     body: JSON.stringify(payload),
-    responseType: 'void',
   })
 }
 
@@ -142,7 +142,6 @@ export async function updatePrivacySettings(privacy: PrivacySettings): Promise<v
     method: 'PATCH',
     headers: ifMatchHeaders(privacy.version),
     body: JSON.stringify(payload),
-    responseType: 'void',
   })
 }
 
@@ -157,7 +156,7 @@ export async function updatePrivacySettings(privacy: PrivacySettings): Promise<v
 export async function uploadProfilePhoto(file: File): Promise<void> {
   const formData = new FormData()
   formData.append('file', file, file.name)
-  await apiFetch('/profile/image', { method: 'POST', body: formData, timeoutMs: 0 })
+  await apiFetch('/profile/photo', { method: 'POST', body: formData, timeoutMs: 0 })
 }
 
 /**

@@ -11,6 +11,7 @@ import type {
 
 import { apiFetch } from '@/services/http'
 import { ifMatchHeaders, rowVersion } from '@/services/ifMatch'
+import { fetchAllPages } from '@/services/pagination'
 
 /**
  * Maps a raw goal payload to the clean {@link Goal} model — the single boundary
@@ -77,7 +78,7 @@ export function mapGoalProgress(dto: GoalProgressDto): GoalProgress {
  * @throws {HttpError} When the request fails.
  */
 export async function fetchGoalResults(signal?: AbortSignal): Promise<GoalProgress[]> {
-  const dtos = await apiFetch<GoalProgressDto[]>('/profile/goals/results', { signal })
+  const dtos = await fetchAllPages<GoalProgressDto>('/profile/goals/results', undefined, signal)
   return dtos.map(mapGoalProgress)
 }
 
@@ -126,12 +127,8 @@ export async function fetchGoals(
   if (filters.goalType) {
     params.set('goal_type', filters.goalType)
   }
-  const query = params.toString()
-  const dtos = await apiFetch<GoalDto[] | null>(
-    query ? `/profile/goals?${query}` : '/profile/goals',
-    { signal },
-  )
-  return (dtos ?? []).map(mapGoal)
+  const dtos = await fetchAllPages<GoalDto>('/profile/goals', params, signal)
+  return dtos.map(mapGoal)
 }
 
 /**
@@ -174,8 +171,13 @@ export async function updateGoal(id: number, input: GoalInput, version: number):
  * Deletes a goal for the authenticated user.
  *
  * @param id - The goal id.
- * @throws {HttpError} When the request fails.
+ * @param version - The goal version the list item was read at, for `If-Match`.
+ * @throws {HttpError} When the request fails (`412` when the goal changed since it was read).
  */
-export async function deleteGoal(id: number): Promise<void> {
-  await apiFetch(`/profile/goals/${id}`, { method: 'DELETE', responseType: 'void' })
+export async function deleteGoal(id: number, version: number): Promise<void> {
+  await apiFetch(`/profile/goals/${id}`, {
+    method: 'DELETE',
+    headers: ifMatchHeaders(version),
+    responseType: 'void',
+  })
 }

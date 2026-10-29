@@ -1,7 +1,7 @@
 import type { Schemas } from '@/types'
 
 /** Raw authenticated identity-provider payload (snake_case wire shape). */
-export type IdentityProviderDto = Schemas['IdentityProvider']
+export type IdentityProviderDto = Schemas['IdentityProviderRead']
 
 /** Create body for a new identity provider (client secret required). */
 export type IdentityProviderCreateDto = Schemas['IdentityProviderCreate']
@@ -10,7 +10,7 @@ export type IdentityProviderCreateDto = Schemas['IdentityProviderCreate']
 export type IdentityProviderUpdateDto = Schemas['IdentityProviderUpdate']
 
 /** Raw identity-provider preset payload (snake_case wire shape). */
-export type IdentityProviderTemplateDto = Schemas['IdentityProviderTemplate']
+export type IdentityProviderTemplateDto = Schemas['IdentityProviderTemplateRead']
 
 /**
  * The clean, camel-cased identity-provider model used across the admin zone.
@@ -35,6 +35,8 @@ export type IdentityProviderTemplateDto = Schemas['IdentityProviderTemplate']
  */
 export interface IdentityProvider {
   id: number
+  /** Row version echoed as `If-Match` when the provider is edited. */
+  version: number
   name: string
   slug: string
   providerType: string

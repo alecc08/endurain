@@ -10,7 +10,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import HTTPException, status
 
 import core.exceptions as core_exceptions
 import modules.auth.mfa.models as auth_mfa_models
@@ -90,15 +89,14 @@ class TestSetupUserMFAReadSwitch:
         """
         user = _make_user(mfa_enabled=True, mfa_secret="enc")
 
-        with _patch_get_user(user), pytest.raises(HTTPException) as exc:
+        with _patch_get_user(user), pytest.raises(core_exceptions.InvalidInputError) as exc:
             mfa_service.setup_user_mfa(1, mock_db)
 
-        assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
         assert "already enabled" in exc.value.detail
 
     def test_proceeds_when_auth_mfa_disabled(self, mock_db):
         """
-        Returns MFASetupResponse when auth_mfa.mfa_enabled is False.
+        Returns MFASetupRead when auth_mfa.mfa_enabled is False.
         """
         user = _make_user(mfa_enabled=False)
         user.auth_mfa = MagicMock(spec=auth_mfa_models.UsersMFA)
@@ -111,7 +109,7 @@ class TestSetupUserMFAReadSwitch:
 
     def test_proceeds_when_auth_mfa_row_missing(self, mock_db):
         """
-        Returns MFASetupResponse when auth_mfa is None
+        Returns MFASetupRead when auth_mfa is None
         (pre-migration edge case).
         """
         user = _make_user()
@@ -137,10 +135,13 @@ class TestEnableUserMFAReadSwitch:
         """
         user = _make_user(mfa_enabled=True, mfa_secret="enc")
 
-        with _patch_get_user(user), pytest.raises(HTTPException) as exc:
+        with (
+            _patch_get_user(user),
+            patch("modules.auth.mfa.service.is_mfa_enabled_for_user", return_value=True),
+            pytest.raises(core_exceptions.InvalidInputError) as exc,
+        ):
             mfa_service.enable_user_mfa(1, "secret", "123456", MagicMock(), mock_db)
 
-        assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
         assert "already enabled" in exc.value.detail
 
 
@@ -158,10 +159,9 @@ class TestDisableUserMFAReadSwitch:
         """
         user = _make_user(mfa_enabled=False)
 
-        with _patch_get_user(user), pytest.raises(HTTPException) as exc:
+        with _patch_get_user(user), pytest.raises(core_exceptions.InvalidInputError) as exc:
             mfa_service.disable_user_mfa(1, mock_db)
 
-        assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
         assert "not enabled" in exc.value.detail
 
     def test_raises_when_auth_mfa_row_missing(self, mock_db):
@@ -171,10 +171,8 @@ class TestDisableUserMFAReadSwitch:
         user = _make_user()
         user.auth_mfa = None
 
-        with _patch_get_user(user), pytest.raises(HTTPException) as exc:
+        with _patch_get_user(user), pytest.raises(core_exceptions.InvalidInputError):
             mfa_service.disable_user_mfa(1, mock_db)
-
-        assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +193,7 @@ class TestVerifyUserMFAReadSwitch:
         user.mfa_secret = "enc"  # legacy — must be ignored
 
         with _patch_get_user(user):
-            result = mfa_service.verify_user_mfa(1, "123456", MagicMock(), mock_db)
+            result = mfa_service.verify_user_mfa(1, "123456", MagicMock(), mock_db, replay_guard=MagicMock())
 
         assert result is False
 
@@ -206,7 +204,7 @@ class TestVerifyUserMFAReadSwitch:
         user.mfa_enabled = True  # legacy True — must be ignored
 
         with _patch_get_user(user):
-            result = mfa_service.verify_user_mfa(1, "123456", MagicMock(), mock_db)
+            result = mfa_service.verify_user_mfa(1, "123456", MagicMock(), mock_db, replay_guard=MagicMock())
 
         assert result is False
 
@@ -225,7 +223,7 @@ class TestVerifyUserMFAReadSwitch:
                 return_value=None,  # decrypt fails → returns False cleanly
             ) as mock_decrypt,
         ):
-            mfa_service.verify_user_mfa(1, "123456", MagicMock(), mock_db)
+            mfa_service.verify_user_mfa(1, "123456", MagicMock(), mock_db, replay_guard=MagicMock())
 
         mock_decrypt.assert_called_once_with("auth_enc_secret")
 

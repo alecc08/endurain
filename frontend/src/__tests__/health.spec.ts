@@ -28,6 +28,7 @@ import {
   fetchActiveFasting,
   fetchFastingEntries,
   fetchFastingStats,
+  fetchHealthChart,
   fetchHealthDashboard,
   fetchPoopEntries,
   fetchRhrEntries,
@@ -241,10 +242,11 @@ describe('weight service requests', () => {
   it('deleteWeightEntry DELETEs the entry path (void)', async () => {
     vi.mocked(apiFetch).mockResolvedValue(undefined)
 
-    await deleteWeightEntry(5)
+    await deleteWeightEntry(5, 3)
 
     expect(apiFetch).toHaveBeenCalledWith('/health/weight/5', {
       method: 'DELETE',
+      headers: { 'If-Match': '"3"' },
       responseType: 'void',
     })
   })
@@ -361,10 +363,11 @@ describe('steps service requests', () => {
   it('deleteStepsEntry DELETEs the entry path (void)', async () => {
     vi.mocked(apiFetch).mockResolvedValue(undefined)
 
-    await deleteStepsEntry(5)
+    await deleteStepsEntry(5, 3)
 
     expect(apiFetch).toHaveBeenCalledWith('/health/steps/5', {
       method: 'DELETE',
+      headers: { 'If-Match': '"3"' },
       responseType: 'void',
     })
   })
@@ -481,10 +484,11 @@ describe('water service requests', () => {
   it('deleteWaterEntry DELETEs the entry path (void)', async () => {
     vi.mocked(apiFetch).mockResolvedValue(undefined)
 
-    await deleteWaterEntry(5)
+    await deleteWaterEntry(5, 3)
 
     expect(apiFetch).toHaveBeenCalledWith('/health/water/5', {
       method: 'DELETE',
+      headers: { 'If-Match': '"3"' },
       responseType: 'void',
     })
   })
@@ -616,10 +620,11 @@ describe('poop service requests', () => {
   it('deletePoopEntry DELETEs the entry path (void)', async () => {
     vi.mocked(apiFetch).mockResolvedValue(undefined)
 
-    await deletePoopEntry(5)
+    await deletePoopEntry(5, 3)
 
     expect(apiFetch).toHaveBeenCalledWith('/health/poop/5', {
       method: 'DELETE',
+      headers: { 'If-Match': '"3"' },
       responseType: 'void',
     })
   })
@@ -720,6 +725,29 @@ describe('resting heart rate service requests', () => {
     expect(page.records).toHaveLength(1)
     expect(page.records[0]).toMatchObject({ id: 5, restingHeartRate: 52 })
     expect(page.total).toBe(3)
+  })
+})
+
+describe('health chart service', () => {
+  beforeEach(() => vi.mocked(apiFetch).mockReset())
+
+  it.each([
+    ['sleep', '/health/sleep/chart?interval=last_year'],
+    ['rhr', '/health/sleep/chart/resting-heart-rate?interval=last_year'],
+    ['steps', '/health/steps/chart?interval=last_year'],
+    ['weight', '/health/weight/chart?interval=last_year'],
+    ['water', '/health/water/chart?interval=last_year'],
+    ['poop', '/health/poop/chart?interval=last_year'],
+  ] as const)('fetches the %s series from its own endpoint', async (metric, path) => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      bucket: 'week',
+      points: [{ date: '2026-06-22', value: 7.5 }],
+    } satisfies Schemas['HealthChartSeries'])
+
+    const series = await fetchHealthChart(metric, 'last_year')
+
+    expect(apiFetch).toHaveBeenCalledExactlyOnceWith(path, { signal: undefined })
+    expect(series).toEqual({ bucket: 'week', points: [{ date: '2026-06-22', value: 7.5 }] })
   })
 })
 
@@ -880,10 +908,11 @@ describe('fasting service requests', () => {
   it('completeFastingEntry POSTs the end time and status to the complete path', async () => {
     vi.mocked(apiFetch).mockResolvedValue(makeFastingDto())
 
-    await completeFastingEntry(5, '2026-06-25T22:00:00.000Z', 'broken')
+    await completeFastingEntry(5, '2026-06-25T22:00:00.000Z', 'broken', 3)
 
     expect(apiFetch).toHaveBeenCalledWith('/health/fasting/5/complete', {
       method: 'POST',
+      headers: { 'If-Match': '"3"' },
       body: JSON.stringify({ fast_end_time: '2026-06-25T22:00:00.000Z', status: 'broken' }),
     })
   })
@@ -891,10 +920,11 @@ describe('fasting service requests', () => {
   it('deleteFastingEntry DELETEs the entry path (void)', async () => {
     vi.mocked(apiFetch).mockResolvedValue(undefined)
 
-    await deleteFastingEntry(5)
+    await deleteFastingEntry(5, 3)
 
     expect(apiFetch).toHaveBeenCalledWith('/health/fasting/5', {
       method: 'DELETE',
+      headers: { 'If-Match': '"3"' },
       responseType: 'void',
     })
   })
@@ -1174,10 +1204,11 @@ describe('sleep service requests', () => {
   it('deleteSleepEntry DELETEs the entry path (void)', async () => {
     vi.mocked(apiFetch).mockResolvedValue(undefined)
 
-    await deleteSleepEntry(5)
+    await deleteSleepEntry(5, 3)
 
     expect(apiFetch).toHaveBeenCalledWith('/health/sleep/5', {
       method: 'DELETE',
+      headers: { 'If-Match': '"3"' },
       responseType: 'void',
     })
   })

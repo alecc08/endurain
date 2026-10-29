@@ -142,6 +142,7 @@ def accept_upload(
         filename, save_upload, fingerprint=idempotency_key is not None
     )
 
+    release_staged = False
     if idempotency_key:
         try:
             prior = activity_ingestion_crud.get_job_for_idempotency(
@@ -154,6 +155,7 @@ def accept_upload(
                     # Staged here and committed with the new job below, so the key
                     # is never left free without a job holding it.
                     activity_ingestion_crud.release_idempotency_key(prior[0].id, db)
+                    release_staged = True
                     logger.info(
                         "Released the idempotency key of an upload whose activities were deleted",
                         extra=core_logger.context(user_id=token_user_id, job_id=prior[0].id),
@@ -172,6 +174,10 @@ def accept_upload(
             )
             return replayed
 
+    if idempotency_key and not release_staged:
+        # The lookup read, which holds a pooled connection until the transaction ends, and the staged
+        # upload can be 200 MiB. A staged key release stays pending: it commits with the new job.
+        db.rollback()
     staged_key = activity_ingestion_upload_entry_service.store_received_upload(received, storage)
     job_id = str(uuid.uuid4())
 
@@ -868,6 +874,32 @@ def fail_stale_ingestion_jobs(
         logger.debug("Stale ingestion jobs: none found")
 
 
+def fail_orphaned_local_refreshes() -> int:
+    """Fail the refreshes a restart cost the in-process pool, so the next run queues them again.
+
+    Without durable jobs a pending or processing refresh lives only in the pool, which a restart
+    discards. Its row would otherwise make the fan-out skip the user until the stale-job reaper
+    fails it a day later. Does nothing when a durable worker or a sibling web worker may still own
+    the row.
+
+    Returns:
+        The number of refreshes failed.
+    """
+    if not activity_ingestion_dispatch_service.pool_owns_jobs():
+        logger.debug("Orphaned refresh cleanup: the in-process pool does not own the jobs")
+        return 0
+    with core_database.SessionLocal() as db:
+        failed = activity_ingestion_crud.fail_open_refresh_jobs(
+            activity_ingestion_constants.IngestionJobErrorCode.PROCESSING_FAILED, db
+        )
+        db.commit()
+    if failed:
+        logger.warning(
+            "Failed provider refreshes lost with the in-process pool", extra=core_logger.context(failed=failed)
+        )
+    return failed
+
+
 # Staged blobs are normally removed with their job. This sweeps what a crash, a
 # lost event or a failed delete left behind. The age sits well past the longest
 # time a live job can still need its blob: the stale-job reaper fails a job after
@@ -898,6 +930,8 @@ def sweep_stale_staged_blobs(
 
     A staged blob is removed with its job, but a crash between committing the
     outcome and deleting it, or a failed delete, leaves one that no row names.
+    Each batch is looked up in a short session of its own that closes before the
+    listing goes on or a blob is deleted, so no connection waits on object storage.
 
     Args:
         clock: The platform clock provider.
@@ -910,15 +944,15 @@ def sweep_stale_staged_blobs(
     prefix = activity_ingestion_upload_entry_service.UPLOAD_STAGING_KEY_PREFIX
     area = activity_ingestion_upload_entry_service.UPLOAD_STAGING_STORAGE_AREA
     upload_keys = _aged_keys(storage, area, prefix, (clock.now() - _STAGED_UPLOAD_MIN_AGE).timestamp())
-    with core_database.SessionLocal() as db:
-        for batch in batched(upload_keys, _STAGED_BLOB_BATCH_SIZE, strict=False):
+    for batch in batched(upload_keys, _STAGED_BLOB_BATCH_SIZE, strict=False):
+        with core_database.SessionLocal() as db:
             referenced = activity_ingestion_crud.get_referenced_staged_keys(
                 [key.removeprefix(prefix) for key in batch], db
             )
-            for key in batch:
-                if key.removeprefix(prefix) not in referenced:
-                    storage.delete(area, key)
-                    removed += 1
+        for key in batch:
+            if key.removeprefix(prefix) not in referenced:
+                storage.delete(area, key)
+                removed += 1
 
     if removed:
         logger.info("Removed stale staged ingestion blobs", extra=core_logger.context(removed=removed))

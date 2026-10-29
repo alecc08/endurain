@@ -186,7 +186,7 @@ Recurring jobs are declared by each module and run by the scheduler of the API p
 | Pull the last day of Garmin Connect health data | 4 h | yes | One sync per linked user |
 | Remove staged profile imports and exports | 6 h each | yes | Cleanup |
 | Purge read notifications past retention | 24 h | yes | Retention |
-| Authentication clean-ups (reset and sign-up tokens, OAuth states, link tokens, sessions, rotated tokens, pending MFA) | 1 to 60 min | no | Delete what has expired |
+| Authentication clean-ups (reset and sign-up tokens, OAuth states, link tokens, sessions, rotated tokens) | 1 to 60 min | no | Delete what has expired |
 | Refresh trusted-proxy hostnames | 1 min | no | Keeps `TRUSTED_PROXIES` names current |
 | Prune event log, outbox and job bookkeeping | 24 h | yes | Retention |
 
@@ -308,6 +308,7 @@ Every durable job is one subscriber reacting to one event. The **subscriber id**
 | `auth.send_sign_up_verification_email` | `auth.sign_up_verification_requested` | Bus | The user signs up again, or an administrator helps | Nothing |
 | `auth.send_sign_up_approval_request_email` | `auth.sign_up_approval_requested` | Bus | Administrators also see the pending user and a notification | Nothing |
 | `auth.send_sign_up_approved_email` | `auth.sign_up_approved` | Bus | Nothing: the email is a courtesy | Nothing |
+| `auth.send_sign_up_existing_account_email` | `auth.sign_up_existing_account` | Bus | Nothing: the email is a courtesy | Nothing |
 | `auth.send_password_reset_email` | `auth.password_reset_requested` | Bus | The user requests another reset | Nothing |
 | `users.profile_import_requested` | `users.profile_import_requested` | Bus, then the profile transfer pool | The user starts again | Import state closed as failed |
 | `users.profile_export_requested` | `users.profile_export_requested` | Bus, then the profile transfer pool | The user starts again | Export state closed as failed |

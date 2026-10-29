@@ -1,8 +1,6 @@
 """Gear components API router endpoints."""
 
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, Request, Response, Security, status
+from fastapi import APIRouter, Request, Response, Security, status
 
 import core.dependencies as core_dependencies
 import core.etag as core_etag
@@ -33,29 +31,11 @@ def read_gear_component_types() -> gear_components_schema.GearComponentTypesRead
 def read_gear_components(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    page: Annotated[core_pagination.PageParams, Depends(core_pagination.child_page_params)],
+    page: core_pagination.ChildPage,
 ) -> core_pagination.Page[gear_components_schema.GearComponentRead]:
     """Retrieve one page of the authenticated user's gear components, with the total."""
     return gear_components_service.list_gear_components(
         token_user_id, db, page_number=page.page_number, num_records=page.num_records
-    )
-
-
-@router.get(
-    "/gears/{gear_id}",
-    response_model=core_pagination.Page[gear_components_schema.GearComponentRead],
-    dependencies=[Security(auth_dependencies.check_scopes, scopes=["gears:read"])],
-)
-def read_gear_components_gear_id(
-    gear_id: core_dependencies.PositiveId,
-    token_user_id: auth_dependencies.CurrentUserId,
-    db: core_dependencies.DbSession,
-    page: Annotated[core_pagination.PageParams, Depends(core_pagination.child_page_params)],
-    active: bool | None = None,
-) -> core_pagination.Page[gear_components_schema.GearComponentRead]:
-    """Retrieve one page of a gear's components with the distance and time each has accumulated."""
-    return gear_components_service.list_components_for_gear(
-        gear_id, token_user_id, db, active=active, page_number=page.page_number, num_records=page.num_records
     )
 
 
@@ -109,7 +89,7 @@ def edit_gear_component(
     updated = gear_components_service.edit_gear_component(
         gear_component_id, gear_component, token_user_id, db, if_match=if_match
     )
-    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    core_etag.set_etag(response, updated.version)
     return updated
 
 
@@ -124,7 +104,11 @@ def delete_component_gear(
     request: Request,
     gear_component_id: core_dependencies.PositiveId,
     token_user_id: auth_dependencies.CurrentUserId,
+    if_match: core_dependencies.IfMatch,
     db: core_dependencies.DbSession,
 ) -> None:
-    """Delete one of the authenticated user's gear components."""
-    gear_components_service.delete_gear_component(token_user_id, gear_component_id, db)
+    """Delete one of the authenticated user's gear components.
+
+    Send ``If-Match`` with the component's ``version`` as an ETag; a stale tag is refused with 412.
+    """
+    gear_components_service.delete_gear_component(token_user_id, gear_component_id, db, if_match=if_match)

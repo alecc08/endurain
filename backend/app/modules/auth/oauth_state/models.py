@@ -1,22 +1,16 @@
 """SQLAlchemy ORM model for OAuth/SSO flow state persistence."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from core.database import Base
 
-if TYPE_CHECKING:
-    from modules.auth.identity_providers.models import IdentityProvider
-    from modules.auth.sessions.models import UsersSessions
-
 
 class OAuthState(Base):
-    """
-    Server-side storage for OAuth/SSO flow state.
+    """Server-side storage for OAuth/SSO flow state.
 
     This replaces cookie-based state with database persistence
     for enhanced security and mobile support. Stores PKCE
@@ -35,8 +29,8 @@ class OAuthState(Base):
         created_at: Timestamp for expiry calculation.
         expires_at: Hard expiry at 10 minutes.
         used: Prevents replay attacks.
-        identity_provider: Relationship to IdentityProvider model.
-        users_sessions: Relationship to UsersSessions model.
+        browser_binding_hash: SHA-256 of the secret the browser that started a link holds in a cookie.
+        idp_code_verifier: PKCE verifier this server sends the identity provider at the token exchange.
     """
 
     __tablename__ = "oauth_states"
@@ -122,8 +116,14 @@ class OAuthState(Base):
         comment="True when state is consumed (prevents replay)",
     )
 
-    # Relationships
-    identity_provider: Mapped["IdentityProvider | None"] = relationship(
-        "IdentityProvider", back_populates="oauth_states"
+    browser_binding_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        comment="SHA-256 of the link's browser-binding cookie (link mode only)",
     )
-    users_sessions: Mapped[list["UsersSessions"]] = relationship("UsersSessions", back_populates="oauth_state")
+
+    idp_code_verifier: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+        comment="PKCE verifier sent to the identity provider at the token exchange",
+    )

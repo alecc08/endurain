@@ -5,36 +5,19 @@ boundary. What other modules may consume lives in
 :mod:`modules.health.health_steps.integration_service`.
 """
 
-from datetime import date as date_type
-
 from sqlalchemy.orm import Session
 
-import core.etag as core_etag
 import core.logger as core_logger
 import core.pagination as core_pagination
 import modules.health.computation as health_computation
 import modules.health.constants as health_constants
 import modules.health.health_steps.crud as health_steps_crud
 import modules.health.health_steps.schema as health_steps_schema
+import modules.health.record_service as health_record_service
+import modules.health.schema as health_schema
 import modules.users.users.integration_service as users_integration
 
 logger = core_logger.get_logger(__name__)
-
-
-def _since(user_id: int, interval: health_constants.Interval | None, db: Session) -> date_type | None:
-    """Return the first date of an interval in the user's own calendar, or ``None``.
-
-    Args:
-        user_id: The user whose "today" anchors the interval.
-        interval: The interval to resolve.
-        db: Database session.
-
-    Returns:
-        The interval's start date, or ``None`` when no interval is given.
-    """
-    if interval is None:
-        return None
-    return health_computation.get_start_date_for_interval(interval.value, users_integration.local_today(user_id, db))
 
 
 def list_health_steps(
@@ -57,7 +40,7 @@ def list_health_steps(
     Returns:
         The page of records; ``total`` counts every record within the interval.
     """
-    since = _since(user_id, interval, db)
+    since = health_computation.interval_start(interval, lambda: users_integration.local_today(user_id, db))
     total = health_steps_crud.get_health_steps_number_by_user_id(user_id, db, since)
     records = health_steps_crud.get_health_steps_by_user_id(user_id, db, page_number, num_records, since)
     return core_pagination.Page.build(records, total, page_number, num_records)
@@ -143,7 +126,7 @@ def create_health_steps(
         health_steps.date = users_integration.local_today(user_id, db)
     created = health_steps_crud.create_health_steps(user_id, health_steps, db)
     db.commit()
-    logger.debug("Stored a steps record", extra=core_logger.context(user_id=user_id))
+    logger.info("Stored a steps record", extra=core_logger.context(user_id=user_id))
     return created
 
 
@@ -171,29 +154,56 @@ def edit_health_steps(
         NotFoundError: If the user has no such record.
         PreconditionFailedError: If the record changed since the client read it.
     """
-    with core_etag.refuse_stale_write(
+    updated = health_record_service.commit_write(
+        health_steps_crud.SPEC,
+        health_steps_id,
+        user_id,
+        lambda: stage_edit_health_steps(user_id, health_steps_id, health_steps, db, if_match=if_match),
         db,
-        "steps record",
-        lambda: health_steps_crud.health_steps_exists(health_steps_id, user_id, db),
-        "Steps record not found",
-    ):
-        updated = stage_edit_health_steps(user_id, health_steps_id, health_steps, db, if_match=if_match)
-        db.commit()
-    logger.debug("Edited a steps record", extra=core_logger.context(user_id=user_id))
+        log_message="Edited a steps record",
+    )
     return updated
 
 
-def delete_health_steps(user_id: int, health_steps_id: int, db: Session) -> None:
+def delete_health_steps(user_id: int, health_steps_id: int, db: Session, *, if_match: str) -> None:
     """Delete a steps record and commit.
 
     Args:
         user_id: The record's owner.
         health_steps_id: The record to delete.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    health_steps_crud.delete_health_steps(user_id, health_steps_id, db)
-    db.commit()
-    logger.debug("Deleted a steps record", extra=core_logger.context(user_id=user_id, health_steps_id=health_steps_id))
+    health_record_service.commit_write(
+        health_steps_crud.SPEC,
+        health_steps_id,
+        user_id,
+        lambda: health_steps_crud.delete_health_steps(user_id, health_steps_id, db, if_match=if_match),
+        db,
+        log_message="Deleted a steps record",
+    )
+
+
+def get_health_steps_chart(
+    user_id: int, interval: health_constants.Interval, db: Session
+) -> health_schema.HealthChartSeries:
+    """Chart a user's steps over an interval.
+
+    Args:
+        user_id: The records' owner.
+        interval: The window to chart.
+        db: Database session.
+
+    Returns:
+        The interval's buckets, one point per bucket that holds a value.
+    """
+    return health_record_service.chart(
+        user_id,
+        interval,
+        lambda since, bucket: health_steps_crud.get_health_steps_chart(user_id, since, bucket, db),
+        db,
+    )

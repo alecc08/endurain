@@ -1,6 +1,7 @@
 """CRUD operations for user goals."""
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import core.etag as core_etag
@@ -8,6 +9,26 @@ import core.exceptions as core_exceptions
 import modules.users.users_goals.models as user_goals_models
 import modules.users.users_goals.schema as user_goals_schema
 import modules.users.users_goals.serializers as user_goals_serializers
+
+
+def _flush_goal(db: Session) -> None:
+    """Flush a staged goal, turning a clash with another of the user's goals into a conflict.
+
+    The database enforces one goal per user, interval, activity type and goal type, so two concurrent
+    requests cannot both succeed.
+
+    Args:
+        db: Database session holding the staged goal.
+
+    Raises:
+        ConflictError: If the user already has a goal for this activity type, interval and goal type.
+    """
+    try:
+        db.flush()
+    except IntegrityError as err:
+        raise core_exceptions.ConflictError(
+            "User already has a goal for this activity type, interval, and goal type."
+        ) from err
 
 
 def _select_goal(user_id: int, goal_id: int, db: Session) -> user_goals_models.UsersGoal:
@@ -35,6 +56,35 @@ def _select_goal(user_id: int, goal_id: int, db: Session) -> user_goals_models.U
     return db_goal
 
 
+def _filtered_goals(
+    stmt,
+    user_id: int,
+    interval: user_goals_schema.Interval | None,
+    activity_type: user_goals_schema.ActivityType | None,
+    goal_type: user_goals_schema.GoalType | None,
+):
+    """Restrict a goals statement to one user's goals and the optional filters.
+
+    Args:
+        stmt: The statement to restrict.
+        user_id: The ID of the user.
+        interval: Optional filter by goal interval.
+        activity_type: Optional filter by activity type.
+        goal_type: Optional filter by goal type.
+
+    Returns:
+        The restricted statement.
+    """
+    stmt = stmt.where(user_goals_models.UsersGoal.user_id == user_id)
+    if interval is not None:
+        stmt = stmt.where(user_goals_models.UsersGoal.interval == interval.value)
+    if activity_type is not None:
+        stmt = stmt.where(user_goals_models.UsersGoal.activity_type == activity_type.value)
+    if goal_type is not None:
+        stmt = stmt.where(user_goals_models.UsersGoal.goal_type == goal_type.value)
+    return stmt
+
+
 def get_user_goals_by_user_id(
     user_id: int,
     db: Session,
@@ -42,7 +92,10 @@ def get_user_goals_by_user_id(
     activity_type: user_goals_schema.ActivityType | None = None,
     goal_type: user_goals_schema.GoalType | None = None,
 ) -> list[user_goals_schema.UsersGoalRead]:
-    """Retrieve goals for a specific user with optional filters.
+    """Retrieve every goal of a user with optional filters.
+
+    A user has at most one goal per interval, activity type and goal type, so the set is small; use
+    :func:`get_user_goals_page` for a response.
 
     Args:
         user_id: The ID of the user.
@@ -54,16 +107,66 @@ def get_user_goals_by_user_id(
     Returns:
         The goals matching the filters.
     """
-    stmt = select(user_goals_models.UsersGoal).where(user_goals_models.UsersGoal.user_id == user_id)
-
-    if interval is not None:
-        stmt = stmt.where(user_goals_models.UsersGoal.interval == interval.value)
-    if activity_type is not None:
-        stmt = stmt.where(user_goals_models.UsersGoal.activity_type == activity_type.value)
-    if goal_type is not None:
-        stmt = stmt.where(user_goals_models.UsersGoal.goal_type == goal_type.value)
-
+    stmt = _filtered_goals(select(user_goals_models.UsersGoal), user_id, interval, activity_type, goal_type)
     return [user_goals_serializers.to_read_schema(goal) for goal in db.execute(stmt).scalars().all()]
+
+
+def get_user_goals_page(
+    user_id: int,
+    db: Session,
+    interval: user_goals_schema.Interval | None = None,
+    activity_type: user_goals_schema.ActivityType | None = None,
+    goal_type: user_goals_schema.GoalType | None = None,
+    *,
+    limit: int,
+    offset: int,
+) -> list[user_goals_schema.UsersGoalRead]:
+    """Retrieve one window of a user's goals, in id order.
+
+    Args:
+        user_id: The ID of the user.
+        db: Database session.
+        interval: Optional filter by goal interval.
+        activity_type: Optional filter by activity type.
+        goal_type: Optional filter by goal type.
+        limit: The most goals to return.
+        offset: How many matching goals to skip.
+
+    Returns:
+        The goals in the window.
+    """
+    stmt = (
+        _filtered_goals(select(user_goals_models.UsersGoal), user_id, interval, activity_type, goal_type)
+        .order_by(user_goals_models.UsersGoal.id)
+        .limit(limit)
+        .offset(offset)
+    )
+    return [user_goals_serializers.to_read_schema(goal) for goal in db.execute(stmt).scalars().all()]
+
+
+def count_user_goals(
+    user_id: int,
+    db: Session,
+    interval: user_goals_schema.Interval | None = None,
+    activity_type: user_goals_schema.ActivityType | None = None,
+    goal_type: user_goals_schema.GoalType | None = None,
+) -> int:
+    """Count a user's goals matching the optional filters.
+
+    Args:
+        user_id: The ID of the user.
+        db: Database session.
+        interval: Optional filter by goal interval.
+        activity_type: Optional filter by activity type.
+        goal_type: Optional filter by goal type.
+
+    Returns:
+        The number of matching goals.
+    """
+    stmt = _filtered_goals(
+        select(func.count(user_goals_models.UsersGoal.id)), user_id, interval, activity_type, goal_type
+    )
+    return db.execute(stmt).scalar_one()
 
 
 def create_user_goal(
@@ -84,15 +187,6 @@ def create_user_goal(
     Raises:
         ConflictError: If the user already has a goal for this activity type, interval and goal type.
     """
-    stmt = select(user_goals_models.UsersGoal.id).where(
-        user_goals_models.UsersGoal.user_id == user_id,
-        user_goals_models.UsersGoal.interval == user_goal.interval,
-        user_goals_models.UsersGoal.activity_type == user_goal.activity_type,
-        user_goals_models.UsersGoal.goal_type == user_goal.goal_type,
-    )
-    if db.execute(stmt).first() is not None:
-        raise core_exceptions.ConflictError("User already has a goal for this activity type, interval, and goal type.")
-
     db_goal = user_goals_models.UsersGoal(
         user_id=user_id,
         interval=user_goal.interval,
@@ -105,7 +199,7 @@ def create_user_goal(
         goal_duration=user_goal.goal_duration,
     )
     db.add(db_goal)
-    db.flush()
+    _flush_goal(db)
     db.refresh(db_goal)
 
     return user_goals_serializers.to_read_schema(db_goal)
@@ -133,34 +227,37 @@ def update_user_goal(
 
     Raises:
         NotFoundError: If the user has no such goal.
+        ConflictError: If the new values match another of the user's goals.
         PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
     db_goal = _select_goal(user_id, goal_id, db)
     core_etag.require_if_match(if_match, db_goal.version, "goal")
 
-    changes = user_goal.model_dump(exclude_unset=True)
-    for field, value in changes.items():
+    # The update is the whole goal: a target the body leaves out is cleared, not kept from the old goal.
+    for field, value in user_goal.model_dump().items():
         setattr(db_goal, field, value)
 
-    db.flush()
+    _flush_goal(db)
     db.refresh(db_goal)
 
     return user_goals_serializers.to_read_schema(db_goal)
 
 
-def delete_user_goal(user_id: int, goal_id: int, db: Session) -> None:
+def delete_user_goal(user_id: int, goal_id: int, db: Session, *, if_match: str) -> None:
     """Stage the deletion of a user's goal (flushed, not committed).
 
     Args:
         user_id: The ID of the user who owns the goal.
         goal_id: The ID of the goal to delete.
         db: Database session.
+        if_match: The ``If-Match`` precondition, checked against the very row that is deleted.
 
     Raises:
         NotFoundError: If the user has no such goal.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
     db_goal = _select_goal(user_id, goal_id, db)
-
+    core_etag.require_if_match(if_match, db_goal.version, "goal")
     db.delete(db_goal)
     db.flush()
 

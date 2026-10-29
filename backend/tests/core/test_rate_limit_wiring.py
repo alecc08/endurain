@@ -19,6 +19,7 @@ So this module asserts three things:
 
 import ast
 import pathlib
+import time
 from collections.abc import Iterator
 
 import pytest
@@ -28,7 +29,6 @@ from joserfc import jwt
 from joserfc.jwk import OctKey
 from limits import parse as parse_limit
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
 import core.rate_limit as core_rate_limit
 import modules.activities.activity.public_router as activity_public_router
@@ -45,14 +45,19 @@ import modules.activities.activity_streams.public_router as activity_streams_pub
 import modules.activities.activity_streams.router as activity_streams_router
 import modules.activities.activity_thumbnail.public_router as activity_thumbnail_public_router
 import modules.activities.activity_workout_steps.public_router as activity_workout_steps_public_router
-import modules.auth.identity_providers.profile_router as auth_idp_profile_router
+import modules.auth.account_security.api_keys_router as auth_api_keys_router
+import modules.auth.account_security.identity_links_router as auth_idp_profile_router
+import modules.auth.account_security.mfa_router as auth_mfa_profile_router
+import modules.auth.account_security.sessions_router as auth_sessions_profile_router
+import modules.auth.authentication.public_router as auth_router
+import modules.auth.authentication.sso_public_router as sso_public_router
 import modules.auth.identity_providers.public_router as idp_public_router
-import modules.auth.mfa.profile_router as auth_mfa_profile_router
-import modules.auth.password_reset_tokens.router as password_reset_router
-import modules.auth.router as auth_router
-import modules.auth.sessions.profile_router as auth_sessions_profile_router
-import modules.auth.sign_up_tokens.router as sign_up_tokens_router
+import modules.auth.identity_providers.router as identity_providers_router
+import modules.auth.password_reset_tokens.public_router as password_reset_router
+import modules.auth.sessions.router as auth_sessions_router
+import modules.auth.sign_up_tokens.public_router as sign_up_tokens_router
 import modules.followers.router as followers_router
+import modules.followers.user_router as followers_user_router
 import modules.garmin.router as garmin_router
 import modules.gears.gear.router as gear_router
 import modules.gears.gear_components.router as gear_components_router
@@ -126,10 +131,13 @@ _TIERED_ENDPOINTS = [
     pytest.param(idp_public_router.initiate_login, core_rate_limit.SENSITIVE, id="oidc-initiate"),
     pytest.param(idp_public_router.handle_callback, core_rate_limit.SENSITIVE, id="oidc-callback"),
     pytest.param(
-        idp_public_router.exchange_tokens_for_session,
+        sso_public_router.exchange_tokens_for_session,
         core_rate_limit.SENSITIVE,
         id="oidc-token-exchange",
     ),
+    pytest.param(identity_providers_router.create_identity_provider, core_rate_limit.WRITE, id="idp-create"),
+    pytest.param(identity_providers_router.update_identity_provider, core_rate_limit.WRITE, id="idp-update"),
+    pytest.param(identity_providers_router.delete_identity_provider, core_rate_limit.WRITE, id="idp-delete"),
     pytest.param(
         auth_idp_profile_router.generate_link_token,
         core_rate_limit.SENSITIVE,
@@ -140,6 +148,9 @@ _TIERED_ENDPOINTS = [
         core_rate_limit.SENSITIVE,
         id="mfa-backup-codes",
     ),
+    pytest.param(auth_api_keys_router.create_user_api_key, core_rate_limit.SENSITIVE, id="api-key-create"),
+    pytest.param(auth_api_keys_router.revoke_user_api_key, core_rate_limit.SENSITIVE, id="api-key-revoke"),
+    pytest.param(auth_api_keys_router.delete_user_api_key, core_rate_limit.SENSITIVE, id="api-key-delete"),
     pytest.param(
         auth_idp_profile_router.delete_my_identity_provider,
         core_rate_limit.SENSITIVE,
@@ -150,6 +161,7 @@ _TIERED_ENDPOINTS = [
     pytest.param(users_router.edit_user, core_rate_limit.WRITE, id="user-edit"),
     pytest.param(users_router.approve_user, core_rate_limit.WRITE, id="user-approve"),
     pytest.param(users_router.edit_user_password, core_rate_limit.SENSITIVE, id="user-password-reset"),
+    pytest.param(users_router.lookup_user_by_email, core_rate_limit.SENSITIVE, id="user-email-lookup"),
     pytest.param(users_router.delete_user_photo, core_rate_limit.WRITE, id="user-photo-delete"),
     pytest.param(users_router.delete_user, core_rate_limit.SENSITIVE, id="user-delete"),
     pytest.param(users_router.delete_user_identity_provider, core_rate_limit.WRITE, id="user-idp-unlink"),
@@ -169,6 +181,9 @@ _TIERED_ENDPOINTS = [
     pytest.param(
         auth_sessions_profile_router.delete_profile_session, core_rate_limit.WRITE, id="profile-session-delete"
     ),
+    pytest.param(auth_sessions_router.read_sessions_user, core_rate_limit.EXPENSIVE_READ, id="admin-sessions-read"),
+    pytest.param(auth_sessions_router.delete_session_user, core_rate_limit.WRITE, id="admin-session-delete"),
+    pytest.param(auth_sessions_router.delete_sessions_user, core_rate_limit.WRITE, id="admin-sessions-delete"),
     pytest.param(users_profile_router.import_profile_data, core_rate_limit.UPLOAD, id="profile-import"),
     pytest.param(users_profile_router.delete_my_account, core_rate_limit.SENSITIVE, id="profile-account-delete"),
     pytest.param(auth_mfa_profile_router.setup_mfa, core_rate_limit.SENSITIVE, id="mfa-setup"),
@@ -224,10 +239,10 @@ _TIERED_ENDPOINTS = [
     pytest.param(activity_router.edit_activities, core_rate_limit.WRITE, id="activity-bulk-edit"),
     pytest.param(activity_router.delete_activity, core_rate_limit.WRITE, id="activity-delete"),
     pytest.param(websocket_router.issue_ws_ticket, core_rate_limit.WRITE, id="websocket-ticket"),
-    pytest.param(followers_router.follow_user, core_rate_limit.WRITE, id="follow-user"),
+    pytest.param(followers_user_router.follow_user, core_rate_limit.WRITE, id="follow-user"),
     pytest.param(followers_router.accept_follow_request, core_rate_limit.WRITE, id="accept-follow-request"),
     pytest.param(followers_router.reject_follow_request, core_rate_limit.WRITE, id="reject-follow-request"),
-    pytest.param(followers_router.delete_follow_relationship, core_rate_limit.WRITE, id="unfollow"),
+    pytest.param(followers_user_router.delete_follow_relationship, core_rate_limit.WRITE, id="unfollow"),
     pytest.param(health_fasting_router.create_health_fasting, core_rate_limit.WRITE, id="health-fasting-create"),
     pytest.param(health_fasting_router.edit_health_fasting, core_rate_limit.WRITE, id="health-fasting-edit"),
     pytest.param(health_fasting_router.complete_health_fasting, core_rate_limit.WRITE, id="health-fasting-complete"),
@@ -401,7 +416,7 @@ def _app_with(tier: str, probe_name: str) -> FastAPI:
         RateLimitExceeded,
         core_rate_limit.rate_limit_exceeded_handler,  # type: ignore[arg-type]
     )
-    app.add_middleware(SlowAPIMiddleware)
+    app.add_middleware(core_rate_limit.RateLimitMiddleware)
 
     def probe(request: Request) -> dict[str, bool]:
         return {"ok": True}
@@ -456,7 +471,10 @@ def test_buckets_are_per_caller_not_global(enabled_limiter, monkeypatch):
     """
     key = OctKey.import_key("rate-limit-test-secret-key-min-32-chars")
     monkeypatch.setattr(core_rate_limit, "_jwt_verification_key", lambda: key)
-    noisy, quiet = (jwt.encode({"alg": "HS256"}, {"sub": sub}, key) for sub in ("noisy", "quiet"))
+    noisy, quiet = (
+        jwt.encode({"alg": "HS256"}, {"sub": sub, "typ": "access", "exp": int(time.time()) + 300}, key)
+        for sub in ("noisy", "quiet")
+    )
     client = TestClient(_app_with(core_rate_limit.PROVIDER_SYNC, "probe_per_caller"))
 
     assert _burst(client, noisy, 7)[-1] == 429

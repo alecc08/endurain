@@ -30,6 +30,7 @@ vi.mock('@/services/http', () => ({
 function makeProviderDto(overrides: Partial<IdentityProviderDto> = {}): IdentityProviderDto {
   return {
     id: 3,
+    version: 1,
     name: 'Keycloak',
     slug: 'keycloak',
     provider_type: 'oidc',
@@ -51,7 +52,7 @@ function makeProviderDto(overrides: Partial<IdentityProviderDto> = {}): Identity
   }
 }
 
-/** Builds a full `IdentityProviderTemplate` wire payload, overridable per case. */
+/** Builds a full `IdentityProviderTemplateRead` wire payload, overridable per case. */
 function makeTemplateDto(
   overrides: Partial<IdentityProviderTemplateDto> = {},
 ): IdentityProviderTemplateDto {
@@ -91,6 +92,7 @@ describe('mapIdentityProvider', () => {
   it('maps the wire shape to the clean camel-cased model', () => {
     expect(mapIdentityProvider(makeProviderDto())).toEqual({
       id: 3,
+      version: 1,
       name: 'Keycloak',
       slug: 'keycloak',
       providerType: 'oidc',
@@ -148,7 +150,7 @@ describe('identity providers service requests', () => {
   it('fetchIdentityProviders maps the list and tolerates a null payload', async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce([makeProviderDto()])
     expect(await fetchIdentityProviders()).toHaveLength(1)
-    expect(apiFetch).toHaveBeenCalledWith('/idp', { signal: undefined })
+    expect(apiFetch).toHaveBeenCalledWith('/identity-providers', { signal: undefined })
 
     vi.mocked(apiFetch).mockResolvedValueOnce(null)
     expect(await fetchIdentityProviders()).toEqual([])
@@ -157,7 +159,7 @@ describe('identity providers service requests', () => {
   it('fetchIdentityProviderTemplates reads the templates endpoint', async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce([makeTemplateDto()])
     expect(await fetchIdentityProviderTemplates()).toHaveLength(1)
-    expect(apiFetch).toHaveBeenCalledWith('/idp/templates', { signal: undefined })
+    expect(apiFetch).toHaveBeenCalledWith('/identity-providers/templates', { signal: undefined })
   })
 
   it('createIdentityProvider posts the wire body including the client secret', async () => {
@@ -169,7 +171,10 @@ describe('identity providers service requests', () => {
 
     await createIdentityProvider(makeInput())
 
-    expect(apiFetch).toHaveBeenCalledWith('/idp', expect.objectContaining({ method: 'POST' }))
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/identity-providers',
+      expect.objectContaining({ method: 'POST' }),
+    )
     expect(JSON.parse(body as string)).toEqual({
       name: 'Keycloak',
       slug: 'keycloak',
@@ -192,9 +197,12 @@ describe('identity providers service requests', () => {
       return Promise.resolve(makeProviderDto())
     })
 
-    await updateIdentityProvider(3, makeInput({ clientSecret: null }))
+    await updateIdentityProvider(3, makeInput({ clientSecret: null }), 4)
 
-    expect(apiFetch).toHaveBeenCalledWith('/idp/3', expect.objectContaining({ method: 'PUT' }))
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/identity-providers/3',
+      expect.objectContaining({ method: 'PUT', headers: { 'If-Match': '"4"' } }),
+    )
     const parsed = JSON.parse(body as string) as Record<string, unknown>
     expect(parsed).not.toHaveProperty('client_secret')
     expect(parsed).toMatchObject({ name: 'Keycloak', enabled: true })
@@ -207,7 +215,7 @@ describe('identity providers service requests', () => {
       return Promise.resolve(makeProviderDto())
     })
 
-    await updateIdentityProvider(3, makeInput({ clientSecret: 'rotated' }))
+    await updateIdentityProvider(3, makeInput({ clientSecret: 'rotated' }), 4)
 
     expect((JSON.parse(body as string) as Record<string, unknown>).client_secret).toBe('rotated')
   })
@@ -215,9 +223,13 @@ describe('identity providers service requests', () => {
   it('deleteIdentityProvider issues a DELETE', async () => {
     vi.mocked(apiFetch).mockResolvedValue(undefined)
 
-    await deleteIdentityProvider(3)
+    await deleteIdentityProvider(3, 5)
 
-    expect(apiFetch).toHaveBeenCalledWith('/idp/3', { method: 'DELETE', responseType: 'void' })
+    expect(apiFetch).toHaveBeenCalledWith('/identity-providers/3', {
+      method: 'DELETE',
+      headers: { 'If-Match': '"5"' },
+      responseType: 'void',
+    })
   })
 })
 

@@ -1,59 +1,52 @@
-"""CRUD operations for sign-up tokens."""
+"""Persistence operations for sign-up tokens."""
 
 from datetime import UTC, datetime
-from typing import Any
 
-from sqlalchemy import CursorResult, select
 from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
 from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
-import core.decorators as core_decorators
-import modules.auth.sign_up_tokens.models as sign_up_tokens_models
-import modules.auth.sign_up_tokens.schema as sign_up_tokens_schema
+import modules.auth.sign_up_tokens.contracts as sign_up_contracts
+import modules.auth.sign_up_tokens.models as sign_up_models
+import modules.auth.sign_up_tokens.schema as sign_up_schema
+import modules.auth.sign_up_tokens.serializers as sign_up_serializers
 
 
-@core_decorators.handle_db_errors
-def get_sign_up_token_by_hash(token_hash: str, db: Session) -> sign_up_tokens_models.SignUpToken | None:
-    """Retrieve an unused, unexpired token matching the hash.
+def claim_sign_up_token(token_hash: str, db: Session) -> int | None:
+    """Stage an atomic claim of an unused, unexpired token and return its user id.
+
+    One conditional ``UPDATE`` flips ``used``, so of two requests presenting the same link only one
+    matches a row.
 
     Args:
-        token_hash: The hashed token value to look up.
-        db: SQLAlchemy database session.
+        token_hash: SHA-256 hash of the presented token.
+        db: Database session.
 
     Returns:
-        The matching SignUpToken if found and valid,
-        None otherwise.
-
-    Raises:
-        HTTPException: 500 error if database query fails.
+        The user the token belongs to, or None when it is unknown, used or expired.
     """
-    stmt = select(sign_up_tokens_models.SignUpToken).where(
-        sign_up_tokens_models.SignUpToken.token_hash == token_hash,
-        sign_up_tokens_models.SignUpToken.used.is_(False),
-        sign_up_tokens_models.SignUpToken.expires_at > datetime.now(UTC),
+    stmt = (
+        sa_update(sign_up_models.SignUpToken)
+        .where(
+            sign_up_models.SignUpToken.token_hash == token_hash,
+            sign_up_models.SignUpToken.used.is_(False),
+            sign_up_models.SignUpToken.expires_at > datetime.now(UTC),
+        )
+        .values(used=True)
+        .returning(sign_up_models.SignUpToken.user_id)
     )
-    return db.execute(stmt).scalar_one_or_none()
+    user_id = db.execute(stmt).scalar_one_or_none()
+    db.flush()
+    return user_id
 
 
-@core_decorators.handle_db_errors
 def create_sign_up_token(
-    token: sign_up_tokens_schema.SignUpToken,
+    token: sign_up_schema.SignUpToken,
     db: Session,
-) -> sign_up_tokens_models.SignUpToken:
-    """Create and persist a new sign-up token.
-
-    Args:
-        token: Schema object with token data to persist.
-        db: SQLAlchemy database session.
-
-    Returns:
-        The persisted SignUpToken ORM instance.
-
-    Raises:
-        HTTPException: 500 error if database operation fails.
-    """
-    db_token = sign_up_tokens_models.SignUpToken(
+) -> sign_up_contracts.SignUpTokenState:
+    """Stage a token row and return its internal state."""
+    row = sign_up_models.SignUpToken(
         id=token.id,
         user_id=token.user_id,
         token_hash=token.token_hash,
@@ -61,82 +54,27 @@ def create_sign_up_token(
         expires_at=token.expires_at,
         used=token.used,
     )
-    db.add(db_token)
-    db.commit()
-    db.refresh(db_token)
-    return db_token
+    db.add(row)
+    db.flush()
+    return sign_up_serializers.to_state(row)
 
 
-@core_decorators.handle_db_errors
 def mark_user_sign_up_tokens_used(user_id: int, db: Session) -> int:
-    """Mark all unused sign-up tokens for a user as used, without committing.
-
-    Args:
-        user_id: User ID whose sign-up tokens should be invalidated.
-        db: SQLAlchemy database session.
-
-    Returns:
-        Number of rows marked as used.
-
-    Raises:
-        HTTPException: 500 error if database operation fails.
-    """
+    """Stage invalidation of all unused sign-up tokens for a user."""
     stmt = (
-        sa_update(sign_up_tokens_models.SignUpToken)
-        .where(
-            sign_up_tokens_models.SignUpToken.user_id == user_id,
-            sign_up_tokens_models.SignUpToken.used.is_(False),
-        )
+        sa_update(sign_up_models.SignUpToken)
+        .where(sign_up_models.SignUpToken.user_id == user_id, sign_up_models.SignUpToken.used.is_(False))
         .values(used=True)
     )
-    result: CursorResult[Any] = db.execute(stmt)
+    result = db.execute(stmt)
+    db.flush()
     return result.rowcount or 0
 
 
-@core_decorators.handle_db_errors
-def mark_sign_up_token_used(token_id: str, db: Session) -> sign_up_tokens_models.SignUpToken | None:
-    """Mark a sign-up token as used.
-
-    Args:
-        token_id: The unique identifier of the token.
-        db: SQLAlchemy database session.
-
-    Returns:
-        Updated SignUpToken instance if found,
-        None otherwise.
-
-    Raises:
-        HTTPException: 500 error if database operation fails.
-    """
-    stmt = select(sign_up_tokens_models.SignUpToken).where(
-        sign_up_tokens_models.SignUpToken.id == token_id,
-    )
-    db_token = db.execute(stmt).scalar_one_or_none()
-
-    if db_token:
-        db_token.used = True
-        db.commit()
-        db.refresh(db_token)
-
-    return db_token
-
-
-@core_decorators.handle_db_errors
-def delete_expired_sign_up_tokens(db: Session) -> int:
-    """Delete all expired sign-up tokens.
-
-    Args:
-        db: SQLAlchemy database session.
-
-    Returns:
-        Number of deleted rows.
-
-    Raises:
-        HTTPException: 500 error if database operation fails.
-    """
-    stmt = sa_delete(sign_up_tokens_models.SignUpToken).where(
-        sign_up_tokens_models.SignUpToken.expires_at < datetime.now(UTC)
-    )
-    result: CursorResult[Any] = db.execute(stmt)
-    db.commit()
-    return result.rowcount
+def delete_expired_sign_up_tokens(now: datetime, limit: int, db: Session) -> int:
+    """Stage deletion of up to ``limit`` sign-up tokens that expired before ``now`` and return the row count."""
+    model = sign_up_models.SignUpToken
+    expired = select(model.id).where(model.expires_at < now).limit(limit)
+    result = db.execute(sa_delete(model).where(model.id.in_(expired)))
+    db.flush()
+    return result.rowcount or 0

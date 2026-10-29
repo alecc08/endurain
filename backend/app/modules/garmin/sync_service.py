@@ -17,6 +17,7 @@ import core.database as core_database
 import core.exceptions as core_exceptions
 import core.local_pool as core_local_pool
 import core.logger as core_logger
+import core.sync_runner as core_sync_runner
 import modules.activities.activity_ingestion.integration_service as activity_ingestion_integration
 import modules.activities.activity_ingestion.schema as activity_ingestion_schema
 import modules.garmin.constants as garmin_constants
@@ -34,8 +35,7 @@ import modules.websocket.integration_service as websocket_integration
 
 logger = core_logger.get_logger(__name__)
 
-# Small on purpose: syncs are Garmin round trips and compete with the request threads.
-_sync_pool = core_local_pool.BoundedPool("garmin-sync", workers=2, max_pending=garmin_constants.MAX_PENDING_LOCAL_SYNCS)
+_sync_pool = core_sync_runner.sync_pool("garmin-sync")
 
 _USERS_PAGE_SIZE = 100
 
@@ -47,27 +47,6 @@ def shutdown_sync_pool(*, wait: bool = False) -> None:
         wait: Whether to wait for syncs still running.
     """
     _sync_pool.shutdown(wait=wait)
-
-
-def _validate_range(start_date: date, end_date: date, max_days: int, today: date) -> None:
-    """Refuse a reversed date range, a future one, or one longer than ``max_days``.
-
-    Args:
-        start_date: First day of the range.
-        end_date: Last day of the range.
-        max_days: Longest range allowed.
-        today: The user's current calendar date.
-
-    Raises:
-        InvalidInputError: When ``start_date`` is after ``end_date``, ``end_date`` is in the future or
-            the range is too long.
-    """
-    if start_date > end_date:
-        raise core_exceptions.InvalidInputError("start_date must not be after end_date")
-    if end_date > today:
-        raise core_exceptions.InvalidInputError("end_date must not be in the future")
-    if end_date - start_date >= timedelta(days=max_days):
-        raise core_exceptions.InvalidInputError(f"The date range must not exceed {max_days} days")
 
 
 def run_sync(
@@ -96,36 +75,40 @@ def run_sync(
     Raises:
         Exception: Whatever the sync raised, after recording its state, so a durable worker retries it.
     """
-    states.set_status(payload.user_id, payload.kind, garmin_constants.SyncStatus.RUNNING)
-    synced = False
-    try:
+
+    def work() -> bool:
+        """Run the gear or health sync the payload asks for.
+
+        Returns:
+            Whether the sync did anything.
+        """
         if payload.kind == garmin_constants.SyncKind.GEAR:
-            synced = garmin_gear_service.get_user_gear(payload.user_id, rate_limits)
-        elif payload.start_date is not None and payload.end_date is not None:
-            synced = garmin_health_service.sync_health_for_dates(
+            return garmin_gear_service.get_user_gear(payload.user_id, rate_limits)
+        if payload.start_date is not None and payload.end_date is not None:
+            return garmin_health_service.sync_health_for_dates(
                 payload.start_date, payload.end_date, payload.user_id, rate_limits
             )
-    except garminconnect.GarminConnectTooManyRequestsError as err:
-        # Recorded for every process, so the next sync waits out the cooldown instead of meeting the limit again.
-        garmin_service.rate_limit_error(err, payload.user_id, rate_limits)
-        states.set_status(payload.user_id, payload.kind, garmin_constants.SyncStatus.FAILED)
-        return
-    except core_exceptions.TooManyRequestsError:
-        logger.warning(
-            "Garmin Connect rate limit active; the sync was not attempted",
-            extra=core_logger.context(user_id=payload.user_id, kind=payload.kind),
-        )
-        states.set_status(payload.user_id, payload.kind, garmin_constants.SyncStatus.FAILED)
-        return
-    except Exception:
-        states.set_status(
-            payload.user_id,
-            payload.kind,
-            garmin_constants.SyncStatus.QUEUED if will_retry else garmin_constants.SyncStatus.FAILED,
-        )
-        raise
-    outcome = garmin_constants.SyncStatus.COMPLETED if synced else garmin_constants.SyncStatus.FAILED
-    states.set_status(payload.user_id, payload.kind, outcome)
+        return False
+
+    def record_refusal(err: Exception) -> None:
+        """Record a Garmin Connect rate limit for every process.
+
+        Args:
+            err: The error that made Garmin Connect or the rate-limit state refuse the sync.
+        """
+        if isinstance(err, garminconnect.GarminConnectTooManyRequestsError):
+            # Recorded for every process, so the next sync waits out the cooldown instead of meeting the limit again.
+            garmin_service.rate_limit_error(err, payload.user_id, rate_limits)
+
+    synced = core_sync_runner.run_recorded(
+        states,
+        payload.user_id,
+        payload.kind,
+        work,
+        will_retry=will_retry,
+        refusals=(garminconnect.GarminConnectTooManyRequestsError, core_exceptions.TooManyRequestsError),
+        on_refused=record_refusal,
+    )
     if synced:
         # Best effort: the synced rows are already committed, so a lost hint only delays the refresh.
         websocket_integration.push_to_user(
@@ -151,11 +134,7 @@ def close_dead_lettered_sync(
         payload: What was to be synced.
         states: Shared store of the sync's state.
     """
-    if states.close_pending(payload.user_id, payload.kind):
-        logger.error(
-            "A Garmin Connect sync was dead-lettered",
-            extra=core_logger.context(user_id=payload.user_id, kind=payload.kind),
-        )
+    core_sync_runner.close_dead_lettered(states, payload.user_id, payload.kind, "Garmin Connect")
 
 
 def _queue(
@@ -190,29 +169,27 @@ def _queue(
         ConflictError: When a sync of this kind is already pending for the user.
         PoolFullError: When the in-process pool is still full after the wait.
     """
-    if not states.begin(user_id, kind):
-        raise core_exceptions.ConflictError(f"A Garmin Connect {kind.value} sync is already in progress")
-    try:
-        if core_config.settings.JOBS_ENABLED:
-            garmin_event_publishers.publish_sync_requested(
-                user_id, kind, start_date, end_date, db, commit=db.commit, source=source
-            )
-            logger.info(
-                "Garmin Connect sync queued for a worker", extra=core_logger.context(user_id=user_id, kind=kind)
-            )
-        else:
-            payload = garmin_events.SyncRequestedPayload(
-                user_id=user_id, kind=kind, start_date=start_date, end_date=end_date
-            )
-            _sync_pool.submit(run_sync, payload, states, rate_limits, wait_seconds=wait_seconds)
-            logger.info(
-                "Garmin Connect sync queued on the in-process pool",
-                extra=core_logger.context(user_id=user_id, kind=kind),
-            )
-    except BaseException:
-        # The sync never started, so nothing else would finish its claim.
-        states.set_status(user_id, kind, garmin_constants.SyncStatus.FAILED)
-        raise
+    core_sync_runner.queue_sync(
+        states,
+        user_id,
+        kind,
+        "Garmin Connect",
+        durable=core_config.settings.JOBS_ENABLED,
+        publish=lambda: garmin_event_publishers.publish_sync_requested(
+            user_id, kind, start_date, end_date, db, commit=db.commit, source=source
+        ),
+        submit=lambda: _sync_pool.submit(
+            run_sync,
+            garmin_events.SyncRequestedPayload(user_id=user_id, kind=kind, start_date=start_date, end_date=end_date),
+            states,
+            rate_limits,
+            wait_seconds=wait_seconds,
+        ),
+    )
+    logger.info(
+        "Garmin Connect sync queued",
+        extra=core_logger.context(user_id=user_id, kind=kind, durable=core_config.settings.JOBS_ENABLED),
+    )
     return garmin_schema.GarminSyncStatus(kind=kind, status=garmin_constants.SyncStatus.QUEUED)
 
 
@@ -261,7 +238,7 @@ def request_health_sync(
         InvalidInputError: When ``start_date`` is after ``end_date``, ``end_date`` is in the future or the
             range is longer than ``MAX_HEALTH_RANGE_DAYS``.
     """
-    _validate_range(
+    core_sync_runner.validate_range(
         start_date,
         end_date,
         garmin_constants.MAX_HEALTH_RANGE_DAYS,
@@ -286,9 +263,7 @@ def get_sync_status(
     Raises:
         NotFoundError: When no sync is recorded or it has expired.
     """
-    state = states.get(user_id, kind)
-    if state is None:
-        raise core_exceptions.NotFoundError(f"No Garmin Connect {kind.value} sync recorded")
+    state = core_sync_runner.read_state(states, user_id, kind, "Garmin Connect")
     return garmin_schema.GarminSyncStatus(kind=kind, status=state.status)
 
 
@@ -318,10 +293,10 @@ def request_activities_sync(
         InvalidInputError: When ``start_date`` is after ``end_date``, ``end_date`` is in the future or the
             range is longer than ``MAX_ACTIVITIES_RANGE_DAYS``.
     """
-    _validate_range(
+    core_sync_runner.validate_range(
         start_date,
         end_date,
-        garmin_constants.MAX_ACTIVITIES_RANGE_DAYS,
+        core_sync_runner.MAX_ACTIVITIES_RANGE_DAYS,
         users_integration.local_today(user_id, db),
     )
 
@@ -361,6 +336,8 @@ def _sync_recent_health_for_user(
     """
     with core_database.SessionLocal() as db:
         end_date = users_integration.local_today(user_id, db)
+        # Return the connection to the pool now: queueing may wait minutes for a pool slot.
+        db.close()
         try:
             _queue(
                 user_id,

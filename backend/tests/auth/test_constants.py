@@ -1,5 +1,6 @@
 """Tests for auth.constants module."""
 
+import modules.auth.access_tokens.service as access_tokens_service
 import modules.auth.constants as auth_constants
 
 
@@ -8,15 +9,15 @@ class TestJWTConstants:
 
     def test_jwt_algorithm_is_set(self):
         """Test that JWT algorithm is defined and is a valid algorithm."""
-        assert auth_constants.JWT_ALGORITHM is not None
-        assert isinstance(auth_constants.JWT_ALGORITHM, str)
-        assert auth_constants.JWT_ALGORITHM in ["HS256", "HS384", "HS512"]
+        assert access_tokens_service.JWT_ALGORITHM is not None
+        assert isinstance(access_tokens_service.JWT_ALGORITHM, str)
+        assert access_tokens_service.JWT_ALGORITHM in ["HS256", "HS384", "HS512"]
 
     def test_secret_key_is_set(self):
         """Test that SECRET_KEY is configured."""
-        assert auth_constants.JWT_SECRET_KEY is not None
-        assert isinstance(auth_constants.JWT_SECRET_KEY, str)
-        assert len(auth_constants.JWT_SECRET_KEY) >= 32
+        assert access_tokens_service.JWT_SECRET_KEY is not None
+        assert isinstance(access_tokens_service.JWT_SECRET_KEY, str)
+        assert len(access_tokens_service.JWT_SECRET_KEY) >= 32
 
 
 class TestScopeConstants:
@@ -64,13 +65,15 @@ class TestScopeConstants:
 
     def test_identity_providers_scope_defined(self):
         """Test that identity providers scopes are properly defined."""
-        assert auth_constants.IDENTITY_PROVIDERS_REGULAR_SCOPE is not None
-        assert isinstance(auth_constants.IDENTITY_PROVIDERS_REGULAR_SCOPE, tuple)
-        assert "identity_providers:read" in auth_constants.IDENTITY_PROVIDERS_REGULAR_SCOPE
-
         assert auth_constants.IDENTITY_PROVIDERS_ADMIN_SCOPE is not None
         assert isinstance(auth_constants.IDENTITY_PROVIDERS_ADMIN_SCOPE, tuple)
+        assert "identity_providers:read" in auth_constants.IDENTITY_PROVIDERS_ADMIN_SCOPE
         assert "identity_providers:write" in auth_constants.IDENTITY_PROVIDERS_ADMIN_SCOPE
+
+    def test_identity_provider_configuration_is_not_readable_by_regular_users(self):
+        """The full provider configuration (client ids, endpoints, mappings) is administrator-only."""
+        assert "identity_providers:read" not in auth_constants.REGULAR_ACCESS_SCOPE
+        assert "identity_providers:read" in auth_constants.ADMIN_ACCESS_SCOPE
 
     def test_server_settings_scope_defined(self):
         """Test that server settings scopes are properly defined."""
@@ -166,5 +169,5 @@ class TestScopeConstants:
         actually execute it since constants are already initialized.
         """
         # Verify constants are set correctly
-        assert auth_constants.JWT_SECRET_KEY is not None
-        assert len(auth_constants.JWT_SECRET_KEY) >= 32
+        assert access_tokens_service.JWT_SECRET_KEY is not None
+        assert len(access_tokens_service.JWT_SECRET_KEY) >= 32

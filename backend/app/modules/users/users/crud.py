@@ -169,12 +169,15 @@ def get_user_by_username(username: str, db: Session) -> users_schema.UsersRead |
     return users_serializers.to_read_schema(user) if user else None
 
 
-def search_active_users_by_username(username: str, limit: int, db: Session) -> list[users_schema.UsersRead]:
+def search_active_users_by_username(
+    username: str, limit: int, offset: int, db: Session
+) -> list[users_schema.UsersRead]:
     """Retrieve the active users whose username contains the search term.
 
     Args:
         username: The partial username to search for.
         limit: The most users to return.
+        offset: How many matching users to skip.
         db: Database session.
 
     Returns:
@@ -184,6 +187,7 @@ def search_active_users_by_username(username: str, limit: int, db: Session) -> l
         _filtered(select(users_models.Users), False, True, True, username)
         .order_by(users_models.Users.username)
         .limit(limit)
+        .offset(offset)
     )
     return [users_serializers.to_read_schema(user) for user in db.execute(stmt).scalars().all()]
 
@@ -260,6 +264,22 @@ def get_photo_key(user_id: int, db: Session) -> str | None:
     """
     stmt = select(users_models.Users.photo_path).where(users_models.Users.id == user_id)
     return db.execute(stmt).scalar_one_or_none()
+
+
+def get_photo_keys_by_user_ids(user_ids: list[int], db: Session) -> dict[int, str]:
+    """Return the photo each of the given users names, as stored on the row.
+
+    Args:
+        user_ids: The users to look up.
+        db: Database session.
+
+    Returns:
+        The stored photo by user id; a user with no photo, or that does not exist, is left out.
+    """
+    stmt = select(users_models.Users.id, users_models.Users.photo_path).where(
+        users_models.Users.id.in_(user_ids), users_models.Users.photo_path.is_not(None)
+    )
+    return {user_id: photo for user_id, photo in db.execute(stmt).all()}
 
 
 def replace_photo_key(user_id: int, photo_key: str | None, db: Session) -> str | None:
@@ -467,6 +487,25 @@ def record_deletion_attempt(user_id: int, db: Session) -> int | None:
     db_user.deletion_attempts += 1
     db.flush()
     return db_user.deletion_attempts
+
+
+def is_deletion_cancelled(user_id: int, db: Session) -> bool:
+    """Tell whether an administrator reactivated a user whose deletion was queued.
+
+    The row is locked until the caller's transaction ends, so a reactivation cannot slip in between
+    this answer and the deletion it guards.
+
+    Args:
+        user_id: ID of the user being deleted.
+        db: Database session.
+
+    Returns:
+        True when the user exists and is no longer queued for deletion. False when the deletion should
+        go on, including when the user is already gone.
+    """
+    stmt = select(users_models.Users).where(users_models.Users.id == user_id).with_for_update()
+    db_user = db.execute(stmt).scalar_one_or_none()
+    return db_user is not None and db_user.deletion_requested_at is None
 
 
 def delete_user(user_id: int, db: Session) -> None:

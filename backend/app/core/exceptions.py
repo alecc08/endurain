@@ -53,8 +53,10 @@ class DomainError(Exception):
         title: Short human-readable summary of the error *kind*. Constant per
             subclass; the per-occurrence message is ``detail``.
         detail: Caller-safe message returned in the response body.
+        headers: Response headers the error adds (``WWW-Authenticate``, ``Retry-After``); ``None`` when it adds none.
     """
 
+    headers: dict[str, str] | None = None
     status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR
     code: str = "internal-error"
     title: str = "Internal Server Error"
@@ -106,6 +108,25 @@ class PermissionDeniedError(DomainError):
     default_detail = "Forbidden"
 
 
+class UnauthenticatedError(DomainError):
+    """The caller did not provide valid authentication credentials."""
+
+    status_code = status.HTTP_401_UNAUTHORIZED
+    code = "unauthorized"
+    title = "Unauthorized"
+    default_detail = "Not authenticated"
+
+    def __init__(self, detail: str | None = None, *, scheme: str = "Bearer") -> None:
+        """Initialise the error with the authentication challenge to return.
+
+        Args:
+            detail: Message returned to the client.
+            scheme: Authentication scheme named by ``WWW-Authenticate``.
+        """
+        super().__init__(detail)
+        self.headers = {"WWW-Authenticate": scheme}
+
+
 class InvalidInputError(DomainError):
     """The request is well-formed but semantically unusable."""
 
@@ -113,6 +134,26 @@ class InvalidInputError(DomainError):
     code = "invalid-input"
     title = "Bad Request"
     default_detail = "Bad Request"
+
+
+class InvalidMfaCodeError(InvalidInputError):
+    """A submitted MFA code did not verify.
+
+    Renders as the same ``400`` and ``invalid-input`` problem as :class:`InvalidInputError`; callers branch on the
+    type to tell a wrong code from other input failures.
+    """
+
+    default_detail = "Invalid MFA code"
+
+
+class MfaRequiredError(PermissionDeniedError):
+    """The account has MFA enabled and the request carried no MFA code.
+
+    Clients branch on the ``mfa-required`` problem type to ask for a code and send the same request again.
+    """
+
+    code = "mfa-required"
+    default_detail = "MFA verification required"
 
 
 class ConflictError(DomainError):
@@ -340,6 +381,7 @@ async def domain_error_handler(request: Request, exc: DomainError) -> JSONRespon
         code=exc.code,
         title=exc.title,
         detail=exc.detail,
+        headers=exc.headers,
     )
 
 
@@ -347,9 +389,9 @@ async def database_error_handler(request: Request, exc: SQLAlchemyError) -> JSON
     """Render a database error that reached the boundary as an opaque 500.
 
     The one place a database failure raised outside ``crud`` is translated. A
-    ``service`` owns the commit, so a failed commit is raised there rather than
-    inside a ``handle_db_errors``-wrapped persistence function; wrapping every
-    ``db.commit()`` in its own ``try`` would repeat this in each service.
+    ``service`` owns the commit, so a failed commit reaches this boundary;
+    wrapping every ``db.commit()`` in its own ``try`` would repeat this in each
+    service.
     The session has already been rolled back by ``core.database.get_db``.
 
     Only the exception class goes in the log message: SQLAlchemy error strings
@@ -365,6 +407,33 @@ async def database_error_handler(request: Request, exc: SQLAlchemyError) -> JSON
     """
     logger.error(
         f"Database error on {request.method} {request.url.path}: {type(exc).__name__}",
+        exc_info=exc,
+        extra=core_logger.context(path=request.url.path, method=request.method, error=type(exc).__name__),
+    )
+    return build_problem_response(
+        request=request,
+        status_code=ProcessingError.status_code,
+        code=ProcessingError.code,
+        title=ProcessingError.title,
+        detail=ProcessingError.default_detail,
+    )
+
+
+async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Render an error nothing else handled as the same opaque problem document.
+
+    Without it Starlette answers a plain-text 500, so clients would see a second error shape. Only the
+    exception class is logged in the message; the traceback goes in ``exc_info``.
+
+    Args:
+        request: The incoming request (used for log context and ``instance``).
+        exc: The unhandled exception.
+
+    Returns:
+        The same problem document a :class:`ProcessingError` produces.
+    """
+    logger.error(
+        f"Unhandled error on {request.method} {request.url.path}: {type(exc).__name__}",
         exc_info=exc,
         extra=core_logger.context(path=request.url.path, method=request.method, error=type(exc).__name__),
     )
@@ -473,3 +542,4 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, validation_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(Exception, unhandled_error_handler)

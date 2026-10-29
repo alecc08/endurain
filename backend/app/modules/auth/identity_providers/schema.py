@@ -19,8 +19,7 @@ import core.cryptography as core_cryptography
 
 
 class IdentityProviderBase(BaseModel):
-    """
-    Base schema for an Identity Provider (IdP) configuration.
+    """Base schema for an Identity Provider (IdP) configuration.
 
     Attributes:
         name (str): Display name of the IdP (1-100 characters).
@@ -69,8 +68,7 @@ class IdentityProviderBase(BaseModel):
     @field_validator("slug")
     @classmethod
     def validate_slug(cls, v: str) -> str:
-        """
-        Validates that the provided slug contains only lowercase letters, numbers, and hyphens.
+        """Validates that the provided slug contains only lowercase letters, numbers, and hyphens.
 
         Args:
             v (str): The slug string to validate.
@@ -88,8 +86,7 @@ class IdentityProviderBase(BaseModel):
     @field_validator("provider_type")
     @classmethod
     def validate_provider_type(cls, v: str) -> str:
-        """
-        Validates that the given provider type is one of the allowed values.
+        """Validates that the given provider type is one of the allowed values.
 
         Args:
             v (str): The provider type to validate.
@@ -107,8 +104,7 @@ class IdentityProviderBase(BaseModel):
 
 
 class IdentityProviderCreate(IdentityProviderBase):
-    """
-    Schema for creating a new Identity Provider.
+    """Schema for creating a new Identity Provider.
 
     Inherits from:
         IdentityProviderBase
@@ -121,8 +117,7 @@ class IdentityProviderCreate(IdentityProviderBase):
 
 
 class IdentityProviderUpdate(IdentityProviderBase):
-    """
-    Schema for updating an existing Identity Provider.
+    """Schema for updating an existing Identity Provider.
 
     Inherits from:
         IdentityProviderBase
@@ -134,9 +129,8 @@ class IdentityProviderUpdate(IdentityProviderBase):
     client_secret: StrictStr | None = Field(default=None, min_length=1, max_length=512)
 
 
-class IdentityProvider(IdentityProviderBase):
-    """
-    Represents an identity provider with decrypted client credentials.
+class IdentityProviderRead(IdentityProviderBase):
+    """Represents an identity provider with decrypted client credentials.
 
     Inherits from:
         IdentityProviderBase
@@ -145,6 +139,7 @@ class IdentityProvider(IdentityProviderBase):
         id (int): Unique identifier of the identity provider.
         created_at (datetime): Timestamp when the identity provider was created.
         updated_at (datetime): Timestamp when the identity provider was last updated.
+        version (int): Optimistic-concurrency counter, also sent as the ETag.
 
     Config:
         model_config (ConfigDict): Pydantic model configuration to enable attribute-based initialization,
@@ -154,12 +149,17 @@ class IdentityProvider(IdentityProviderBase):
         decrypt_client_id():
             Decrypts the `client_id` attribute after loading from the database.
 
-                IdentityProvider: The instance with the decrypted `client_id`.
+                IdentityProviderRead: The instance with the decrypted `client_id`.
     """
 
     id: StrictInt
     created_at: datetime
     updated_at: datetime
+    version: StrictInt = Field(
+        default=1,
+        ge=1,
+        description="Optimistic-concurrency counter, also sent as the ETag",
+    )
 
     model_config = ConfigDict(from_attributes=True, extra="forbid", validate_assignment=True)
 
@@ -171,9 +171,8 @@ class IdentityProvider(IdentityProviderBase):
         return value
 
 
-class IdentityProviderPublic(BaseModel):
-    """
-    Represents the public-facing information of an identity provider.
+class IdentityProviderPublicRead(BaseModel):
+    """Represents the public-facing information of an identity provider.
 
     Attributes:
         id (int): Unique identifier of the identity provider.
@@ -193,9 +192,8 @@ class IdentityProviderPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid", validate_assignment=True)
 
 
-class IdentityProviderTemplate(BaseModel):
-    """
-    Represents a template for an identity provider configuration.
+class IdentityProviderTemplateRead(BaseModel):
+    """Represents a template for an identity provider configuration.
 
     Attributes:
         template_id (str): Template identifier (e.g., 'keycloak', 'authentik').
@@ -218,71 +216,3 @@ class IdentityProviderTemplate(BaseModel):
     user_mapping: dict[str, Any] | None = None
     description: StrictStr = Field(..., description="Description of this template")
     configuration_notes: StrictStr | None = Field(default=None, description="Setup instructions for this IdP")
-
-
-class TokenExchangeRequest(BaseModel):
-    """
-    Request schema for mobile PKCE token exchange.
-
-    After OAuth callback completes, mobile clients exchange the session_id
-    for actual JWT tokens by proving they possess the code_verifier that
-    matches the code_challenge sent during login initiation.
-
-    Attributes:
-        code_verifier (str): PKCE code verifier (43-128 chars, base64url).
-            Must hash to the code_challenge stored in OAuth state.
-    """
-
-    code_verifier: StrictStr = Field(
-        ...,
-        min_length=43,
-        max_length=128,
-        description="PKCE code verifier (base64url, 43-128 chars)",
-    )
-
-    @field_validator("code_verifier")
-    @classmethod
-    def validate_code_verifier(cls, v: str) -> str:
-        """
-        Validate PKCE code_verifier format according to RFC 7636.
-
-        Args:
-            v (str): The code verifier string.
-
-        Returns:
-            str: The validated code verifier.
-
-        Raises:
-            ValueError: If format is invalid (wrong length or characters).
-        """
-        if not re.match(r"^[A-Za-z0-9_-]+$", v):
-            raise ValueError("code_verifier must be valid base64url")
-        return v
-
-
-class TokenExchangeResponse(BaseModel):
-    """
-    Response schema for successful PKCE token exchange.
-
-    Returns the actual JWT tokens that clients need for API access.
-    Response format varies by client type:
-    - Web clients: access_token, csrf_token (refresh_token in httpOnly cookie)
-    - Mobile clients: access_token, refresh_token (no CSRF token)
-
-    Attributes:
-        session_id (str): Session identifier.
-        access_token (str): JWT access token (15-minute expiry).
-        refresh_token (str | None): JWT refresh token (7-day expiry). Only for mobile clients.
-        csrf_token (str | None): CSRF protection token. Only for web clients.
-        expires_in (int): Access token lifetime in seconds (900 = 15 minutes).
-        refresh_token_expires_in (int): Refresh token lifetime in seconds (604800 = 7 days).
-        token_type (str): Token type, always "Bearer".
-    """
-
-    session_id: StrictStr = Field(..., description="Session identifier")
-    access_token: StrictStr = Field(..., description="JWT access token")
-    refresh_token: StrictStr | None = Field(default=None, description="JWT refresh token (mobile only)")
-    csrf_token: StrictStr | None = Field(default=None, description="CSRF protection token (web only)")
-    expires_in: StrictInt = Field(default=900, description="Access token lifetime in seconds")
-    refresh_token_expires_in: StrictInt = Field(default=604800, description="Refresh token lifetime in seconds")
-    token_type: StrictStr = Field(default="Bearer", description="Token type")

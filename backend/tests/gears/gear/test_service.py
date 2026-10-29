@@ -45,11 +45,14 @@ class TestReadGearDetail:
 
 
 class TestCreateGear:
-    def test_create_commits_and_returns_the_gear(self, db, commit_spy):
-        created = service.create_gear(gear_create(), 1, db)
+    def test_create_commits_and_returns_the_gear(self, db, commit_spy, caplog):
+        with caplog.at_level("DEBUG", logger=service.logger.name):
+            created = service.create_gear(gear_create(), 1, db)
 
         commit_spy.assert_called_once_with()
         assert created.nickname == "Road Bike"
+        # A completed state change, reported as the other modules report theirs.
+        assert [record.levelname for record in caplog.records] == ["INFO"]
 
     def test_a_repeated_nickname_is_a_conflict_and_nothing_is_committed(self, db, commit_spy):
         crud.create_gear(gear_create("Road Bike"), 1, db)
@@ -110,17 +113,27 @@ class TestEditAndDelete:
 
         install_readers()
 
-        service.delete_gear(created.id, 1, db)
+        service.delete_gear(created.id, 1, db, if_match=f'"{created.version}"')
 
         commit_spy.assert_called_once_with()
         assert crud.get_gear_user_by_id(1, created.id, db) is None
+
+    def test_a_stale_delete_is_a_precondition_failure_and_not_committed(self, db, commit_spy):
+        created = crud.create_gear(gear_create(), 1, db)
+        install_readers()
+
+        with pytest.raises(core_exceptions.PreconditionFailedError):
+            service.delete_gear(created.id, 1, db, if_match='"99"')
+
+        commit_spy.assert_not_called()
+        assert crud.get_gear_user_by_id(1, created.id, db) is not None
 
     def test_delete_unassigns_the_activities_before_removing_the_gear(self, db):
         created = crud.create_gear(gear_create(), 1, db)
         clear = MagicMock(return_value=2)
         install_readers(clear_activities_gear=clear)
 
-        service.delete_gear(created.id, 1, db)
+        service.delete_gear(created.id, 1, db, if_match="*")
 
         clear.assert_called_once_with(created.id, 1, db)
 
@@ -129,7 +142,7 @@ class TestEditAndDelete:
         install_readers()
 
         with pytest.raises(core_exceptions.NotFoundError):
-            service.delete_gear(created.id, 2, db)
+            service.delete_gear(created.id, 2, db, if_match="*")
 
         commit_spy.assert_not_called()
 

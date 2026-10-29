@@ -10,12 +10,12 @@ Certain sensitive account operations require the user to re-prove possession of 
 | --------- | -------- |
 | Change own password | `POST /profile/password/change` |
 | Change own email | `POST /profile/email/change` |
-| Enable MFA | `PUT /profile/mfa/enable` |
-| Disable MFA | `PUT /profile/mfa/disable` |
+| Enable MFA | `POST /profile/mfa/enable` |
+| Disable MFA | `POST /profile/mfa/disable` |
 | Regenerate MFA backup codes | `POST /profile/mfa/backup-codes` |
-| Create API key | `POST /profile/api_keys` |
-| Generate IdP link token | `POST /profile/idp/{idp_id}/link/token` |
-| Remove IdP link | `POST /profile/idp/{idp_id}/unlink` |
+| Create API key | `POST /profile/api-keys` |
+| Generate IdP link token | `POST /profile/identity-providers/{idp_id}/link/token` |
+| Remove IdP link | `POST /profile/identity-providers/{idp_id}/unlink` |
 
 ### Step-up Request Body
 
@@ -102,24 +102,13 @@ X-Client-Type: web|mobile
 username=user@example.com&password=userpassword
 ```
 
-**Response (when MFA is enabled):**
-
-- **Web clients**: HTTP 202 Accepted
+**Response (when MFA is enabled):** HTTP 200 OK for web and mobile clients. `mfa_challenge` names this login; send it with the code in step 2.
 
 ```json
 {
   "mfa_required": true,
   "username": "example",
-  "message": "MFA verification required"
-}
-```
-
-- **Mobile clients**: HTTP 200 OK
-
-```json
-{
-  "mfa_required": true,
-  "username": "example",
+  "mfa_challenge": "<opaque challenge>",
   "message": "MFA verification required"
 }
 ```
@@ -134,10 +123,13 @@ Content-Type: application/json
 X-Client-Type: web|mobile
 
 {
-  "username": "user@example.com",
+  "mfa_challenge": "<mfa_challenge from the login response>",
   "mfa_code": "123456"
 }
 ```
+
+!!! note "A TOTP code works once"
+    The server accepts each authenticator code a single time. Submitting the same code again, on this endpoint or on any other that asks for an MFA code, fails like an invalid code until the next 30-second code appears.
 
 !!! tip "Backup Code Format"
     Users can also use a backup code instead of a TOTP code. Backup codes are in `XXXX-XXXX` format (e.g., `A3K9-7BDF`). See [MFA Backup Codes](#mfa-backup-codes) for details.
@@ -279,7 +271,7 @@ Content-Type: application/json
 X-Client-Type: web|mobile
 
 {
-  "username": "user@example.com",
+  "mfa_challenge": "<mfa_challenge from the login response>",
   "mfa_code": "A3K9-7BDF"
 }
 ```

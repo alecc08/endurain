@@ -6,11 +6,8 @@ boundary. What other modules may consume lives in
 :mod:`modules.health.health_fasting.integration_service`.
 """
 
-from datetime import date as date_type
-
 from sqlalchemy.orm import Session
 
-import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.pagination as core_pagination
@@ -20,25 +17,10 @@ import modules.health.constants as health_constants
 import modules.health.health_fasting.crud as health_fasting_crud
 import modules.health.health_fasting.schema as health_fasting_schema
 import modules.health.health_fasting.streaks as health_fasting_streaks
+import modules.health.record_service as health_record_service
 import modules.users.users.integration_service as users_integration
 
 logger = core_logger.get_logger(__name__)
-
-
-def _since(user_id: int, interval: health_constants.Interval | None, db: Session) -> date_type | None:
-    """Return the first date of an interval in the user's own calendar, or ``None``.
-
-    Args:
-        user_id: The user whose "today" anchors the interval.
-        interval: The interval to resolve.
-        db: Database session.
-
-    Returns:
-        The interval's start date, or ``None`` when no interval is given.
-    """
-    if interval is None:
-        return None
-    return health_computation.get_start_date_for_interval(interval.value, users_integration.local_today(user_id, db))
 
 
 def list_health_fasting(
@@ -61,7 +43,7 @@ def list_health_fasting(
     Returns:
         The page of records; ``total`` counts every record within the interval.
     """
-    since = _since(user_id, interval, db)
+    since = health_computation.interval_start(interval, lambda: users_integration.local_today(user_id, db))
     total = health_fasting_crud.get_health_fasting_number_by_user_id(user_id, db, since)
     records = health_fasting_crud.get_health_fasting_by_user_id(user_id, db, page_number, num_records, since)
     return core_pagination.Page.build(records, total, page_number, num_records)
@@ -153,7 +135,7 @@ def create_health_fasting(
 
     created = health_fasting_crud.create_health_fasting(user_id, health_fasting, db)
     db.commit()
-    logger.debug("Stored a fasting session", extra=core_logger.context(user_id=user_id))
+    logger.info("Stored a fasting session", extra=core_logger.context(user_id=user_id))
     return created
 
 
@@ -207,17 +189,16 @@ def edit_health_fasting(
         NotFoundError: If the user has no such record.
         PreconditionFailedError: If the record changed since the client read it.
     """
-    with core_etag.refuse_stale_write(
-        db,
-        "fasting session record",
-        lambda: health_fasting_crud.health_fasting_exists(health_fasting_id, user_id, db),
-        "Fasting session record not found",
-    ):
-        updated = health_fasting_crud.edit_health_fasting(
+    updated = health_record_service.commit_write(
+        health_fasting_crud.SPEC,
+        health_fasting_id,
+        user_id,
+        lambda: health_fasting_crud.edit_health_fasting(
             user_id, health_fasting_id, health_fasting, db, if_match=if_match
-        )
-        db.commit()
-    logger.debug("Edited a fasting session", extra=core_logger.context(user_id=user_id))
+        ),
+        db,
+        log_message="Edited a fasting session",
+    )
     return updated
 
 
@@ -226,6 +207,8 @@ def complete_health_fasting(
     health_fasting_id: int,
     complete_data: health_fasting_schema.HealthFastingComplete,
     db: Session,
+    *,
+    if_match: str,
 ) -> health_fasting_schema.HealthFastingRead:
     """End an in-progress fasting session, derive its duration, and commit.
 
@@ -234,6 +217,7 @@ def complete_health_fasting(
         health_fasting_id: The session to end.
         complete_data: End time, final status and optional notes.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The ended session.
@@ -242,6 +226,7 @@ def complete_health_fasting(
         NotFoundError: If the user has no such session.
         ConflictError: If the session is not in progress.
         InvalidInputError: If the end time is before the start time.
+        PreconditionFailedError: If the session changed since the client read it.
     """
     session = get_health_fasting(user_id, health_fasting_id, db)
     if session.status != health_fasting_schema.FastingStatus.IN_PROGRESS.value:
@@ -252,35 +237,44 @@ def complete_health_fasting(
     if end_time < start_time:
         raise core_exceptions.InvalidInputError("Fasting session cannot end before it started")
 
-    ended = health_fasting_crud.end_health_fasting(
-        user_id,
+    ended = health_record_service.commit_write(
+        health_fasting_crud.SPEC,
         health_fasting_id,
-        end_time,
-        complete_data.status,
-        int((end_time - start_time).total_seconds()),
-        complete_data.notes,
+        user_id,
+        lambda: health_fasting_crud.end_health_fasting(
+            user_id,
+            health_fasting_id,
+            end_time,
+            complete_data.status,
+            int((end_time - start_time).total_seconds()),
+            complete_data.notes,
+            db,
+            if_match=if_match,
+        ),
         db,
-    )
-    db.commit()
-    logger.debug(
-        "Completed a fasting session", extra=core_logger.context(user_id=user_id, health_fasting_id=health_fasting_id)
+        log_message="Completed a fasting session",
     )
     return ended
 
 
-def delete_health_fasting(user_id: int, health_fasting_id: int, db: Session) -> None:
+def delete_health_fasting(user_id: int, health_fasting_id: int, db: Session, *, if_match: str) -> None:
     """Delete a fasting record and commit.
 
     Args:
         user_id: The record's owner.
         health_fasting_id: The record to delete.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    health_fasting_crud.delete_health_fasting(user_id, health_fasting_id, db)
-    db.commit()
-    logger.debug(
-        "Deleted a fasting session", extra=core_logger.context(user_id=user_id, health_fasting_id=health_fasting_id)
+    health_record_service.commit_write(
+        health_fasting_crud.SPEC,
+        health_fasting_id,
+        user_id,
+        lambda: health_fasting_crud.delete_health_fasting(user_id, health_fasting_id, db, if_match=if_match),
+        db,
+        log_message="Deleted a fasting session",
     )

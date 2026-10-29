@@ -7,21 +7,24 @@ runs on a small in-process pool that is not the request threadpool. Either way t
 state store is what an administrator polls, and its claim stops a user being queued twice.
 
 The job erases the activities a batch per transaction, so no transaction holds the whole account, then
-deletes the user row, which removes everything else through the database cascade. Every step can be
-repeated, so a job a worker died in is simply run again.
+the profile photo, then deletes the user row, which removes everything else through the database
+cascade. Every step can be repeated, so a job a worker died in is simply run again, and every step
+that can fail runs while the row still marks the deletion, so the stalled-deletion sweep finds it.
 """
 
 from datetime import timedelta
-from typing import TYPE_CHECKING
 
 import jasil.providers as platform_providers
 from sqlalchemy.orm import Session
 
 import core.config as core_config
 import core.database as core_database
+import core.etag as core_etag
 import core.exceptions as core_exceptions
 import core.local_pool as core_local_pool
 import core.logger as core_logger
+import modules.auth.account_security.integration_service as account_security_integration
+import modules.auth.sign_up_tokens.integration_service as sign_up_tokens_integration
 import modules.users.contributor_registry as users_contributor_registry
 import modules.users.users.constants as users_constants
 import modules.users.users.crud as users_crud
@@ -32,13 +35,15 @@ import modules.users.users.photo_service as users_photo_service
 import modules.users.users.schema as users_schema
 import modules.users.users.service as users_service
 
-if TYPE_CHECKING:
-    import modules.auth.identity_service as auth_identity_service
-
 logger = core_logger.get_logger(__name__)
 
 _Status = users_constants.DeletionStatus
 _Kind = users_constants.DeletionKind
+
+
+class _DeletionCancelledError(Exception):
+    """An administrator reactivated the account, so the deletion queued for it must not go on."""
+
 
 # Deletions are long and rare, so they get a pool of their own rather than the subscriber pool, where
 # they would hold the threads that deliver notifications and thumbnails.
@@ -60,10 +65,11 @@ def shutdown_deletion_pool(*, wait: bool = False) -> None:
 
 def request_deletion(
     user_id: int,
-    identity_service: "auth_identity_service.IdentityService",
     states: users_deletion_state_store.UserDeletionStateStore,
     storage: platform_providers.StorageProvider,
     db: Session,
+    *,
+    if_match: str,
 ) -> users_schema.UserDeletionStatus:
     """Queue the erasure of a user's account and data.
 
@@ -72,30 +78,32 @@ def request_deletion(
 
     Args:
         user_id: The user to delete.
-        identity_service: Identity service that revokes the user's sessions.
         states: Shared store of the deletion's state.
         storage: The platform storage provider, for the in-process pool.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         The deletion's initial status.
 
     Raises:
         NotFoundError: If the user does not exist.
+        PreconditionFailedError: If the user changed since the client read it.
         ConflictError: If the user is the only administrator, or a deletion is already pending.
         PoolFullError: When there is no durable worker and the in-process pool is full.
     """
-    users_service.require_deletable_user(user_id, db)
+    users_service.require_deletable_user(user_id, db, if_match=if_match)
     if not core_config.settings.JOBS_ENABLED:
         _deletion_pool.require_capacity()
     if not states.begin(user_id, _Kind.ACCOUNT):
-        logger.warning(
+        logger.debug(
             "Refused a second account deletion while one is pending", extra=core_logger.context(user_id=user_id)
         )
         raise core_exceptions.ConflictError("An account deletion is already in progress")
 
     try:
-        identity_service.delete_all_user_sessions(user_id)
+        account_security_integration.delete_all_user_sessions(user_id, db)
+        sign_up_tokens_integration.revoke_pending_tokens(user_id, db)
         users_crud.stage_deletion_request(user_id, db)
         _dispatch(user_id, states, storage, db, source=users_constants.DELETION_SOURCE_API)
     except BaseException:
@@ -105,6 +113,42 @@ def request_deletion(
 
     logger.info("Account deletion queued", extra=core_logger.context(user_id=user_id))
     return users_schema.UserDeletionStatus(status=_Status.QUEUED)
+
+
+def request_deletion_by_administrator(
+    user_id: int,
+    actor_id: int,
+    states: users_deletion_state_store.UserDeletionStateStore,
+    storage: platform_providers.StorageProvider,
+    db: Session,
+    *,
+    if_match: str,
+) -> users_schema.UserDeletionStatus:
+    """Queue the erasure of another user's account on an administrator's request.
+
+    Args:
+        user_id: The user to delete.
+        actor_id: ID of the administrator making the request.
+        states: Shared store of the deletion's state.
+        storage: The platform storage provider, for the in-process pool.
+        db: Database session.
+        if_match: The ``If-Match`` precondition.
+
+    Returns:
+        The deletion's initial status.
+
+    Raises:
+        PermissionDeniedError: If the administrator targets their own account, which needs step-up.
+        NotFoundError: If the user does not exist.
+        PreconditionFailedError: If the user changed since the client read it.
+        ConflictError: If the user is the only administrator, or a deletion is already pending.
+        PoolFullError: When there is no durable worker and the in-process pool is full.
+    """
+    users_service.require_other_user(user_id, actor_id, "delete your account")
+    with core_etag.refuse_stale_write(
+        db, "user", lambda: users_crud.get_user_by_id(user_id, db) is not None, "User not found"
+    ):
+        return request_deletion(user_id, states, storage, db, if_match=if_match)
 
 
 def _dispatch(
@@ -191,7 +235,12 @@ def run_deletion(
     states.set_status(user_id, _Kind.ACCOUNT, _Status.RUNNING)
     try:
         activities = _erase_activities(user_id)
+        _erase_photo(user_id, storage)
         _delete_user_row(user_id)
+    except _DeletionCancelledError:
+        states.discard(user_id, _Kind.ACCOUNT)
+        logger.info("Account deletion cancelled by a reactivation", extra=core_logger.context(user_id=user_id))
+        return
     except Exception as err:
         if will_retry:
             logger.warning(
@@ -203,7 +252,6 @@ def run_deletion(
         states.set_status(user_id, _Kind.ACCOUNT, _Status.FAILED)
         return
 
-    users_photo_service.delete_photo_files(user_id, storage)
     users_contributor_registry.erasers().delete_staged_files(user_id, storage)
     states.set_status(user_id, _Kind.ACCOUNT, _Status.COMPLETED)
     logger.info("User deleted", extra=core_logger.context(user_id=user_id, activities=activities))
@@ -217,11 +265,15 @@ def _erase_activities(user_id: int) -> int:
 
     Returns:
         How many activities were deleted.
+
+    Raises:
+        _DeletionCancelledError: When the account was reactivated before a batch.
     """
     delete_batch = users_contributor_registry.erasers().delete_activities
     total = 0
     while True:
         with core_database.SessionLocal() as db:
+            _require_not_cancelled(user_id, db)
             deleted = delete_batch(user_id, users_constants.DELETION_BATCH_SIZE, db)
             db.commit()
         if not deleted:
@@ -233,6 +285,42 @@ def _erase_activities(user_id: int) -> int:
         )
 
 
+def _require_not_cancelled(user_id: int, db: Session) -> None:
+    """Stop the deletion when the account was reactivated; the row stays locked for the caller's transaction.
+
+    Args:
+        user_id: The user being deleted.
+        db: Database session.
+
+    Raises:
+        _DeletionCancelledError: When the account is no longer queued for deletion.
+    """
+    if users_crud.is_deletion_cancelled(user_id, db):
+        raise _DeletionCancelledError
+
+
+def _erase_photo(user_id: int, storage: platform_providers.StorageProvider) -> None:
+    """Clear the user's photo reference, then delete every photo blob under their prefix.
+
+    The reference goes first, so a reactivation that stops the deletion afterwards leaves no row naming
+    a blob that is gone. A storage failure is raised, so the deletion is retried.
+
+    Args:
+        user_id: The user whose photo to erase.
+        storage: The platform storage provider.
+
+    Raises:
+        _DeletionCancelledError: When the account was reactivated.
+    """
+    with core_database.SessionLocal() as db:
+        _require_not_cancelled(user_id, db)
+        if users_crud.get_user_by_id(user_id, db) is not None:
+            users_crud.replace_photo_key(user_id, None, db)
+            db.commit()
+    users_photo_service.delete_photo_files(user_id, storage)
+    logger.debug("Erased the user's photo", extra=core_logger.context(user_id=user_id))
+
+
 def _delete_user_row(user_id: int) -> None:
     """Delete the user row, which removes everything else that references it through the database cascade.
 
@@ -240,8 +328,12 @@ def _delete_user_row(user_id: int) -> None:
 
     Args:
         user_id: The user to delete.
+
+    Raises:
+        _DeletionCancelledError: When the account was reactivated.
     """
     with core_database.SessionLocal() as db:
+        _require_not_cancelled(user_id, db)
         if users_crud.get_user_by_id(user_id, db) is None:
             logger.debug("The user row was already deleted", extra=core_logger.context(user_id=user_id))
             return

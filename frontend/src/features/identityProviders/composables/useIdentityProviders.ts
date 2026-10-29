@@ -82,9 +82,13 @@ export function useCreateIdentityProviderMutation() {
 export function useUpdateIdentityProviderMutation() {
   const client = useQueryClient()
 
-  return useMutation<IdentityProvider, Error, { id: number; input: IdentityProviderInput }>({
+  return useMutation<
+    IdentityProvider,
+    Error,
+    { id: number; input: IdentityProviderInput; version: number }
+  >({
     mutationKey: queryKeys.identityProviders.all(),
-    mutationFn: ({ id, input }) => updateIdentityProvider(id, input),
+    mutationFn: ({ id, input, version }) => updateIdentityProvider(id, input, version),
     onSettled: () => invalidateIdentityProviders(client),
   })
 }
@@ -97,9 +101,9 @@ export function useUpdateIdentityProviderMutation() {
 export function useDeleteIdentityProviderMutation() {
   const client = useQueryClient()
 
-  return useMutation<void, Error, number>({
+  return useMutation<void, Error, { id: number; version: number }>({
     mutationKey: queryKeys.identityProviders.all(),
-    mutationFn: (id) => deleteIdentityProvider(id),
+    mutationFn: ({ id, version }) => deleteIdentityProvider(id, version),
     onSettled: () => invalidateIdentityProviders(client),
   })
 }

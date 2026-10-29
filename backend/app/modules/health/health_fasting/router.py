@@ -6,7 +6,7 @@ including CRUD operations, active fast tracking, and statistics.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response, Security, status
+from fastapi import APIRouter, Query, Request, Response, Security, status
 
 import core.dependencies as core_dependencies
 import core.etag as core_etag
@@ -29,7 +29,7 @@ router = APIRouter()
 def read_health_fasting_all_pagination(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    page: Annotated[core_pagination.PageParams, Depends(core_pagination.list_page_params)],
+    page: core_pagination.ListPage,
     interval: Annotated[
         health_constants.Interval | None,
         Query(description="Filter by goal interval"),
@@ -76,7 +76,7 @@ def read_active_fasting(
     """
     active = health_fasting_service.get_active_fasting(token_user_id, db)
     if active is not None:
-        response.headers["ETag"] = core_etag.format_etag(active.version)
+        core_etag.set_etag(response, active.version)
     return active
 
 
@@ -127,7 +127,7 @@ def read_health_fasting_by_id(
         NotFoundError: If record not found.
     """
     record = health_fasting_service.get_health_fasting(token_user_id, health_fasting_id, db)
-    response.headers["ETag"] = core_etag.format_etag(record.version)
+    core_etag.set_etag(response, record.version)
     return record
 
 
@@ -193,7 +193,7 @@ def edit_health_fasting(
     updated = health_fasting_service.edit_health_fasting(
         token_user_id, health_fasting_id, health_fasting, db, if_match=if_match
     )
-    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    core_etag.set_etag(response, updated.version)
     return updated
 
 
@@ -209,6 +209,8 @@ def complete_health_fasting(
     complete_data: health_fasting_schema.HealthFastingComplete,
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
+    response: Response,
+    if_match: core_dependencies.IfMatch,
 ) -> health_fasting_schema.HealthFastingRead:
     """Complete or end a fasting session.
 
@@ -218,11 +220,17 @@ def complete_health_fasting(
         complete_data: Completion data with end time and status.
         token_user_id: User ID from the access token.
         db: Database session dependency.
+        response: The response, which carries the new ETag.
+        if_match: The ``If-Match`` precondition.
 
     Returns:
         Updated HealthFastingRead record.
     """
-    return health_fasting_service.complete_health_fasting(token_user_id, health_fasting_id, complete_data, db)
+    ended = health_fasting_service.complete_health_fasting(
+        token_user_id, health_fasting_id, complete_data, db, if_match=if_match
+    )
+    core_etag.set_etag(response, ended.version)
+    return ended
 
 
 @router.delete(
@@ -236,6 +244,7 @@ def delete_health_fasting(
     request: Request,
     health_fasting_id: core_dependencies.PositiveId,
     token_user_id: auth_dependencies.CurrentUserId,
+    if_match: core_dependencies.IfMatch,
     db: core_dependencies.DbSession,
 ) -> None:
     """Delete a fasting record.
@@ -244,6 +253,11 @@ def delete_health_fasting(
         request: The incoming request, read by the rate limiter.
         health_fasting_id: ID of the fasting record to delete.
         token_user_id: User ID from the access token.
+        if_match: The ``If-Match`` precondition.
         db: Database session dependency.
+
+    Raises:
+        NotFoundError: If the user has no such record.
+        PreconditionFailedError: If the record changed since the client read it.
     """
-    health_fasting_service.delete_health_fasting(token_user_id, health_fasting_id, db)
+    health_fasting_service.delete_health_fasting(token_user_id, health_fasting_id, db, if_match=if_match)

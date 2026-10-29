@@ -18,6 +18,7 @@ import jasil.jobs as platform_jobs
 import jasil.providers as platform_providers
 from sqlalchemy.orm import Session
 
+import core.blob_sweep as core_blob_sweep
 import core.config as core_config
 import core.exceptions as core_exceptions
 import core.logger as core_logger
@@ -29,7 +30,7 @@ import modules.activities.activity_streams.integration_service as activity_strea
 import modules.activities.activity_thumbnail.constants as activity_thumbnail_constants
 import modules.activities.activity_thumbnail.render as activity_thumbnail_render
 import modules.activities.activity_thumbnail.signing as activity_thumbnail_signing
-import modules.activities.orphan_sweep as activities_orphan_sweep
+import modules.server_settings.constants as server_settings_constants
 import modules.server_settings.integration_service as server_settings_integration
 
 logger = core_logger.get_logger(__name__)
@@ -83,22 +84,6 @@ def _iter_activity_pages(
         after_id = page[-1].id
 
 
-def _iter_activities_with_thumbnail(db: Session) -> Iterator[activity_contracts.ActivityThumbnailRef]:
-    """Yield every activity carrying a thumbnail key, one bounded page at a time.
-
-    Args:
-        db: Database session.
-
-    Yields:
-        Thumbnail references, ascending by activity id.
-
-    Returns:
-        Thumbnail references, in id order.
-    """
-    for page in _iter_activity_pages(activity_integration.list_activities_with_thumbnail, db):
-        yield from page
-
-
 def _iter_activities_without_thumbnail(
     due_at: datetime, db: Session
 ) -> Iterator[list[activity_contracts.ActivityThumbnailRef]]:
@@ -136,7 +121,7 @@ def resolve_tile_settings(db: Session) -> tuple[str, str, str | None]:
     """
     settings = server_settings_integration.get_tile_server_settings(db)
     return (
-        settings.tile_url or activity_thumbnail_render.DEFAULT_TILE_URL,
+        settings.tile_url or server_settings_constants.DEFAULT_TILE_URL,
         settings.background_color or activity_thumbnail_render.DEFAULT_BG_COLOR,
         settings.api_key,
     )
@@ -195,7 +180,7 @@ def generate_and_store_thumbnail(
         storage.delete(activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA, key)
         return None
     db.commit()
-    logger.info("Thumbnail stored", extra=core_logger.context(activity_id=activity_id))
+    logger.debug("Thumbnail stored", extra=core_logger.context(activity_id=activity_id))
     return key
 
 
@@ -325,7 +310,7 @@ def delete_and_regenerate_all_activity_thumbnails(
         if not acquired:
             # Dropping the request would leave the old tiles in every thumbnail,
             # so the caller is told; a durable job retries with backoff.
-            logger.warning("Thumbnail regeneration: another replica holds the backfill lock")
+            logger.debug("Thumbnail regeneration: another replica holds the backfill lock")
             raise core_exceptions.ConflictError("Thumbnail generation is already running")
         if not _delete_all_thumbnails(storage, db):
             return
@@ -346,22 +331,25 @@ def _delete_all_thumbnails(storage: platform_providers.StorageProvider, db: Sess
     logger.info("Thumbnail regeneration: deleting all existing thumbnails")
 
     deleted = 0
-    for activity in _iter_activities_with_thumbnail(db):
-        if platform_jobs.lease_lost():
-            logger.warning("Thumbnail regeneration: lease lost; stopping before the keys are cleared")
-            return False
-        key = activity.map_thumbnail_path
-        if key is None:
-            continue
-        try:
-            storage.delete(activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA, key)
-            deleted += 1
-        except Exception as err:
-            logger.warning(
-                "Thumbnail regeneration: could not delete the existing thumbnail",
-                exc_info=err,
-                extra=core_logger.context(activity_id=activity.id),
-            )
+    for page in _iter_activity_pages(activity_integration.list_activities_with_thumbnail, db):
+        # The page is plain data, so the read ends here: no transaction stays open across the blob deletes.
+        db.commit()
+        for activity in page:
+            if platform_jobs.lease_lost():
+                logger.warning("Thumbnail regeneration: lease lost; stopping before the keys are cleared")
+                return False
+            key = activity.map_thumbnail_path
+            if key is None:
+                continue
+            try:
+                storage.delete(activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA, key)
+                deleted += 1
+            except Exception as err:
+                logger.warning(
+                    "Thumbnail regeneration: could not delete the existing thumbnail",
+                    exc_info=err,
+                    extra=core_logger.context(activity_id=activity.id),
+                )
     # Clear DB references so the generation pass picks them all up.
     activity_integration.clear_all_thumbnail_keys(db)
     db.commit()
@@ -410,20 +398,32 @@ def _clear_references_to_missing_blobs(storage: platform_providers.StorageProvid
         for key, _modified in storage.iter_objects(activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA)
         if (activity_id := _activity_id_of_thumbnail_key(key)) is not None
     }
-    for activity in _iter_activities_with_thumbnail(db):
-        key = activity.map_thumbnail_path
-        if key is None or activity.id in existing:
-            continue
-        if storage.exists(activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA, key):
-            continue
-        # Conditional on the key still being the one read: a subscriber may have stored a
-        # fresh thumbnail since, and that one must survive.
-        if activity_integration.set_thumbnail_key(activity.id, None, db, expected_key=key):
-            logger.info(
-                "Thumbnail scheduler: cleared a thumbnail path whose blob is missing",
-                extra=core_logger.context(activity_id=activity.id),
-            )
+    cleared = 0
+    for page in _iter_activity_pages(activity_integration.list_activities_with_thumbnail, db):
+        unlisted = [
+            activity for activity in page if activity.map_thumbnail_path is not None and activity.id not in existing
+        ]
+        # The page is plain data, so the read ends here: the existence checks below are storage
+        # round trips and must not keep a transaction open.
+        db.commit()
+        for activity in unlisted:
+            key = activity.map_thumbnail_path
+            if key is None or storage.exists(activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA, key):
+                continue
+            # Conditional on the key still being the one read: a subscriber may have stored a
+            # fresh thumbnail since, and that one must survive.
+            if activity_integration.set_thumbnail_key(activity.id, None, db, expected_key=key):
+                cleared += 1
+                logger.debug(
+                    "Thumbnail scheduler: cleared a thumbnail path whose blob is missing",
+                    extra=core_logger.context(activity_id=activity.id),
+                )
             db.commit()
+    if cleared:
+        logger.info(
+            "Thumbnail scheduler: cleared thumbnail paths whose blob is missing",
+            extra=core_logger.context(count=cleared),
+        )
 
 
 def _run_missing_thumbnail_generation(storage: platform_providers.StorageProvider, now: datetime, db: Session) -> None:
@@ -523,23 +523,23 @@ def _activity_id_of_thumbnail_key(key: str) -> int | None:
     return int(stem) if suffix == "webp" and stem.isdecimal() else None
 
 
-def sweep_orphaned_thumbnails(storage: platform_providers.StorageProvider, db: Session) -> int:
+def sweep_orphaned_thumbnails(storage: platform_providers.StorageProvider) -> int:
     """Delete thumbnail blobs whose activity no longer exists.
 
     The storage-side net for the cleanup subscriber: a dropped
     ``activity.deleted`` event leaves a blob no row names, so only a scan of the
-    area can find it.
+    area can find it. The lookups run in their own short sessions, so none is
+    open during a storage call.
 
     Args:
         storage: The blob-storage provider.
-        db: Database session.
 
     Returns:
         The number of blobs deleted.
     """
-    return activities_orphan_sweep.sweep_orphaned_blobs(
+    return core_blob_sweep.sweep_orphaned_blobs(
         storage,
         activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA,
-        lambda ids: activity_integration.filter_existing_activity_ids(ids, db),
+        activity_integration.filter_existing_activity_ids,
         _activity_id_of_thumbnail_key,
     )

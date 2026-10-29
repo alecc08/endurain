@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+import core.database as core_database
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.pagination as core_pagination
@@ -112,7 +113,7 @@ def mark_notification_as_read(notification_id: int, user_id: int, db: Session) -
     if notifications_crud.mark_notification_as_read(notification_id, user_id, db) is None:
         raise core_exceptions.NotFoundError("Notification not found")
     db.commit()
-    logger.debug(
+    logger.info(
         "Marked notification as read",
         extra=core_logger.context(notification_id=notification_id, user_id=user_id),
     )
@@ -127,10 +128,10 @@ def mark_all_notifications_as_read(user_id: int, db: Session) -> None:
     """
     notifications_crud.mark_all_notifications_as_read(user_id, db)
     db.commit()
-    logger.debug("Marked all notifications as read", extra=core_logger.context(user_id=user_id))
+    logger.info("Marked all notifications as read", extra=core_logger.context(user_id=user_id))
 
 
-def purge_read_notifications(db: Session) -> int:
+def delete_read_notifications(db: Session) -> int:
     """Delete read notifications past the retention period, one batch per commit.
 
     Args:
@@ -143,16 +144,11 @@ def purge_read_notifications(db: Session) -> int:
     if retention_days <= 0:
         return 0
     cutoff = datetime.now(UTC) - timedelta(days=retention_days)
-    total = 0
-    while True:
-        deleted = notifications_crud.delete_read_notifications_before(
-            cutoff, notifications_constants.PURGE_BATCH_SIZE, db
-        )
-        db.commit()
-        total += deleted
-        if deleted < notifications_constants.PURGE_BATCH_SIZE:
-            logger.info("Purged read notifications", extra=core_logger.context(deleted=total))
-            return total
+    total = core_database.delete_in_batches(
+        lambda limit: notifications_crud.delete_read_notifications_before(cutoff, limit, db), db
+    )
+    logger.info("Purged read notifications", extra=core_logger.context(deleted=total))
+    return total
 
 
 def _record_event_notification(

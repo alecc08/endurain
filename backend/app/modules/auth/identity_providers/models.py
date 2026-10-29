@@ -1,22 +1,17 @@
 """SQLAlchemy ORM models for the identity providers module."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from core.database import Base
 
-if TYPE_CHECKING:
-    from modules.auth.identity_providers.links.models import IdentityLink
-    from modules.auth.oauth_state.models import OAuthState
-
 
 class IdentityProvider(Base):
-    """
-    Represents an external Identity Provider (IdP) configuration for authentication.
+    """Represents an external Identity Provider (IdP) configuration for authentication.
 
     Attributes:
         id (int): Primary key.
@@ -40,9 +35,7 @@ class IdentityProvider(Base):
             fields.
         created_at (datetime): Timestamp when the provider was created.
         updated_at (datetime): Timestamp when the provider was last updated.
-        user_identity_providers (list[IdentityLink]): Relationship to
-            user identity providers (many-to-many through junction table).
-        oauth_states (list[OAuthState]): Relationship to OAuth states.
+        version (int): Optimistic-concurrency counter exposed as the ETag.
     """
 
     __tablename__ = "identity_providers"
@@ -152,15 +145,12 @@ class IdentityProvider(Base):
         onupdate=func.now(),
         comment="When this provider was last updated",
     )
-
-    # Relationship to user identity providers (many-to-many through junction table)
-    user_identity_providers: Mapped[list["IdentityLink"]] = relationship(
-        back_populates="identity_providers",
-        cascade="all, delete-orphan",
+    version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
+        comment="Optimistic-concurrency counter, surfaced to clients as the ETag",
     )
 
-    # Relationship to OAuth states
-    oauth_states: Mapped[list["OAuthState"]] = relationship(
-        back_populates="identity_provider",
-        cascade="all, delete-orphan",
-    )
+    __mapper_args__ = {"version_id_col": version}  # noqa: RUF012

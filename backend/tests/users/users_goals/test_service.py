@@ -2,6 +2,11 @@
 
 from unittest.mock import patch
 
+import pytest
+from sqlalchemy.orm.exc import StaleDataError
+
+import core.exceptions as core_exceptions
+import core.pagination as core_pagination
 import modules.users.users_goals.schema as user_goals_schema
 import modules.users.users_goals.service as user_goals_service
 
@@ -18,6 +23,18 @@ class TestUserGoalsService:
         assert result == mock_crud.create_user_goal.return_value
         mock_db.commit.assert_called_once()
 
+    def test_list_returns_a_page_with_the_total(self, mock_crud, mock_db):
+        goal = user_goals_schema.UsersGoalRead(
+            id=1, user_id=1, interval="weekly", activity_type="run", goal_type="calories", goal_calories=5000
+        )
+        mock_crud.get_user_goals_page.return_value = [goal]
+        mock_crud.count_user_goals.return_value = 30
+
+        page = user_goals_service.list_goals(1, core_pagination.PageParams(2, 25), mock_db)
+
+        assert (page.items, page.total, page.page, page.next) == ([goal], 30, 2, None)
+        assert mock_crud.get_user_goals_page.call_args.kwargs == {"limit": 25, "offset": 25}
+
     def test_update_commits(self, mock_crud, mock_db):
         goal = user_goals_schema.UsersGoalUpdate(
             interval="weekly", activity_type="run", goal_type="calories", goal_calories=5000
@@ -30,7 +47,16 @@ class TestUserGoalsService:
         mock_db.commit.assert_called_once()
 
     def test_delete_commits(self, mock_crud, mock_db):
-        user_goals_service.delete_goal(1, 5, mock_db)
+        user_goals_service.delete_goal(1, 5, mock_db, if_match='"2"')
 
-        mock_crud.delete_user_goal.assert_called_once_with(1, 5, mock_db)
+        mock_crud.delete_user_goal.assert_called_once_with(1, 5, mock_db, if_match='"2"')
         mock_db.commit.assert_called_once()
+
+    def test_a_delete_that_races_past_the_check_is_a_precondition_failure(self, mock_crud, mock_db):
+        mock_crud.delete_user_goal.side_effect = StaleDataError("row changed")
+        mock_crud.user_goal_exists.return_value = True
+
+        with pytest.raises(core_exceptions.PreconditionFailedError):
+            user_goals_service.delete_goal(1, 5, mock_db, if_match='"2"')
+
+        mock_db.commit.assert_not_called()

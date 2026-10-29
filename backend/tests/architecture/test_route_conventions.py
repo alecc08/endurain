@@ -10,6 +10,8 @@ import pathlib
 
 from tests._helpers.module_roles import CONVERTED_MODULES, files_with_role, role_of
 
+import modules.auth.constants as auth_constants
+
 _ROOT = pathlib.Path("app/modules")
 _CONVERTED = tuple(_ROOT / name for name in CONVERTED_MODULES)
 
@@ -63,8 +65,8 @@ def _limits(function: ast.FunctionDef) -> bool:
 
 
 def _scope_parameter_names(path: pathlib.Path) -> frozenset[str]:
-    """Names a route must not give its scope check; ``auth`` is held to the plural until it is converted."""
-    return frozenset({"_check_scopes"} if "modules/auth" in path.as_posix() else {"_check_scopes", "_check_scope"})
+    """Names a route must not give its scope check."""
+    return frozenset({"_check_scopes"})
 
 
 class TestRouteConventions:
@@ -290,7 +292,6 @@ class TestSignatureConventions:
 #: Writes to a versioned package that carry no ``If-Match``, with why (``optimistic-concurrency.md``, "What is not versioned").
 _UNVERSIONED_WRITES = {
     ("activities/activity/router.py", "edit_activities"): "the bulk edit has no single record to name",
-    ("users/users/router.py", "approve_user"): "an action does not replace a representation the client read",
 }
 
 #: Routes that take a ``{user_id}`` path parameter, hold only a regular-user scope and take no ``CurrentUserId``.
@@ -313,6 +314,29 @@ def _declared_scopes(call: ast.Call) -> set[str]:
 def _parameter_aliases(function: ast.FunctionDef) -> str:
     """Return the unparsed parameter list, for a check that an alias is among the annotations."""
     return ast.unparse(function.args)
+
+
+#: Last path segments that name an action on a resource, not a representation of it.
+_ACTION_SEGMENTS = {"approve", "revoke", "read", "enable", "disable", "unlink"}
+
+
+class TestActionRoutes:
+    def test_an_action_is_a_post(self):
+        """An action neither replaces nor partially edits a representation, so it is a ``POST``.
+
+        ``PUT`` and ``PATCH`` mean "this is what the resource looks like now"; mixing them with ``POST`` for
+        approve, revoke, read, enable, disable and unlink left clients guessing the verb of each.
+        """
+        offenders = []
+        for path, function in _router_functions():
+            for method, call in _route_decorators(function):
+                route = call.args[0].value if call.args and isinstance(call.args[0], ast.Constant) else ""
+                if route.rsplit("/", 1)[-1] in _ACTION_SEGMENTS and method != "post":
+                    offenders.append(
+                        f"{path.relative_to(_ROOT).as_posix()}::{function.name} ({method.upper()} {route})"
+                    )
+
+        assert offenders == [], "Make these actions POST routes:\n  " + "\n  ".join(offenders)
 
 
 class TestVersionedAndOwnedRoutes:
@@ -342,9 +366,12 @@ class TestVersionedAndOwnedRoutes:
         """A route with a ``{user_id}`` path parameter takes ``CurrentUserId`` or requires an admin-class scope.
 
         ``users:read`` and ``profile`` belong to every regular user, so a route guarded only by them that
-        names another user is open to any account (an IDOR). Admin scopes end in ``_all`` or are ``users:write``.
+        names another user is open to any account (an IDOR). Admin scopes end in ``_all`` or are minted only in an
+        ``*_ADMIN_SCOPE`` tuple of ``modules.auth.constants``.
         """
-        admin_scopes = {"users:write"}
+        admin_scopes = {
+            scope for name, scopes in vars(auth_constants).items() if name.endswith("_ADMIN_SCOPE") for scope in scopes
+        }
         offenders = []
         for path, function in _router_functions():
             relative = path.relative_to(_ROOT).as_posix()

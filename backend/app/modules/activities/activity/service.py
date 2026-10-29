@@ -283,6 +283,8 @@ def user_profile_summary(
     Returns:
         The profile's current-week and current-month stats and visible activity count.
     """
+    if anchor is None:
+        anchor = users_integration.local_today(requester_user_id, db)
     month_start, month_end = _month_bounds(requester_user_id, db, anchor=anchor)
     followee_ids = None if user_id == requester_user_id else _followees_of(requester_user_id, db)
     month_activity_count = activity_crud.count_user_activities(
@@ -716,49 +718,7 @@ def edit_activity(
     return _with_thumbnail_urls([updated])[0]
 
 
-def bulk_edit_activities(
-    user_id: int,
-    body: activity_schema.ActivitiesBulkEdit,
-    db: Session,
-) -> int:
-    """Apply a bulk edit across all of the user's activities.
-
-    Publishes one ``activity.updated`` per changed row, atomically with the
-    update, so a consumer of the single-activity edit needs no separate handling
-    for the bulk one — the fact is identical either way.
-
-    Args:
-        user_id: The owner whose activities to edit.
-        body: The fields to apply; only those present are changed.
-        db: Database session.
-
-    Returns:
-        How many activities changed.
-
-    Raises:
-        InvalidInputError: When the body asks for no change at all. An empty
-            patch is a client bug, not a no-op worth reporting as success.
-    """
-    if body.visibility is None:
-        raise core_exceptions.InvalidInputError("No supported field to update was provided")
-
-    updated_ids = activity_crud.edit_user_activities_visibility(user_id, body.visibility, db)
-    activity_event_publishers.publish_activities_updated(
-        updated_ids,
-        user_id,
-        db,
-        changed_fields=["visibility"],
-        source="api:bulk_edit_activities",
-    )
-    db.commit()
-    logger.info(
-        "Bulk-edited activity visibility",
-        extra=core_logger.context(user_id=user_id, visibility=body.visibility, updated=len(updated_ids)),
-    )
-    return len(updated_ids)
-
-
-def delete_activity(activity_id: int, user_id: int, db: Session) -> None:
+def delete_activity(activity_id: int, user_id: int, db: Session, *, if_match: str) -> None:
     """Delete one of the user's activities and publish ``activity.deleted``.
 
     The delete and the event are staged and committed together, so when durable
@@ -768,18 +728,29 @@ def delete_activity(activity_id: int, user_id: int, db: Session) -> None:
     best-effort path the event dispatches after the commit and a bus-dispatch
     failure is swallowed.
 
-    Ownership lives in the delete's ``WHERE`` clause (404 when the activity is
-    missing *or* owned by someone else), so there is no read-then-delete gap and
-    no caller-side precondition to forget.
+    Ownership lives in the delete's lookup (404 when the activity is missing
+    *or* owned by someone else), so there is no caller-side precondition to
+    forget.
 
     Args:
         activity_id: The activity to delete.
         user_id: The authenticated owner.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
+
+    Raises:
+        NotFoundError: When the activity is missing or not owned by ``user_id``.
+        PreconditionFailedError: When the activity changed since the client read it.
     """
-    activity_crud.delete_activity(activity_id, user_id, db)
-    activity_event_publishers.publish_activity_deleted(activity_id, user_id, db)
-    db.commit()
+    with core_etag.refuse_stale_write(
+        db,
+        "activity",
+        lambda: activity_crud.get_activity_by_id_from_user_id(activity_id, user_id, db) is not None,
+        f"Activity {activity_id} not found",
+    ):
+        activity_crud.delete_activity(activity_id, user_id, db, if_match=if_match)
+        activity_event_publishers.publish_activity_deleted(activity_id, user_id, db)
+        db.commit()
     logger.info(
         "Deleted an activity",
         extra=core_logger.context(activity_id=activity_id, user_id=user_id),

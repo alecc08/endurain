@@ -19,6 +19,7 @@ import core.logger as core_logger
 import core.mail as core_mail
 import core.scheduler as core_scheduler
 import modules.activities.activity.integration_service as activity_integration
+import modules.activities.activity.subscriber_registry as activity_subscriber_registry
 import modules.activities.activity_exercise_titles.integration_service as activity_exercise_titles_integration
 import modules.activities.activity_file_storage.constants as activity_file_storage_constants
 import modules.activities.activity_file_storage.scheduled_jobs as activity_file_storage_scheduled_jobs
@@ -26,6 +27,7 @@ import modules.activities.activity_file_storage.subscriber_registry as activity_
 import modules.activities.activity_geocoding.scheduled_jobs as activity_geocoding_scheduled_jobs
 import modules.activities.activity_geocoding.subscriber_registry as activity_geocoding_subscriber_registry
 import modules.activities.activity_ingestion.constants as activity_ingestion_constants
+import modules.activities.activity_ingestion.integration_service as activity_ingestion_integration
 import modules.activities.activity_ingestion.scheduled_jobs as activity_ingestion_scheduled_jobs
 import modules.activities.activity_ingestion.subscriber_registry as activity_ingestion_subscriber_registry
 import modules.activities.activity_laps.integration_service as activity_laps_integration
@@ -41,7 +43,15 @@ import modules.activities.activity_thumbnail.scheduled_jobs as activity_thumbnai
 import modules.activities.activity_thumbnail.subscriber_registry as activity_thumbnail_subscriber_registry
 import modules.activities.activity_workout_steps.integration_service as activity_workout_steps_integration
 import modules.activities.contributor_registry as activities_contributor_registry
+import modules.auth.authentication.subscriber_registry as authentication_subscriber_registry
+import modules.auth.identity_provider_link_tokens.scheduled_jobs as identity_provider_link_tokens_scheduled_jobs
+import modules.auth.identity_providers.subscriber_registry as identity_providers_subscriber_registry
+import modules.auth.oauth_state.scheduled_jobs as oauth_state_scheduled_jobs
+import modules.auth.password_reset_tokens.scheduled_jobs as password_reset_tokens_scheduled_jobs
 import modules.auth.password_reset_tokens.subscriber_registry as password_reset_tokens_subscriber_registry
+import modules.auth.rotated_refresh_tokens.scheduled_jobs as rotated_refresh_tokens_scheduled_jobs
+import modules.auth.sessions.scheduled_jobs as auth_sessions_scheduled_jobs
+import modules.auth.sign_up_tokens.scheduled_jobs as sign_up_tokens_scheduled_jobs
 import modules.auth.sign_up_tokens.subscriber_registry as sign_up_tokens_subscriber_registry
 import modules.garmin.integration_service as garmin_integration
 import modules.garmin.scheduled_jobs as garmin_scheduled_jobs
@@ -58,6 +68,7 @@ import modules.strava.subscriber_registry as strava_subscriber_registry
 import modules.users.contributor_registry as users_contributor_registry
 import modules.users.contributors as users_contributors
 import modules.users.users.constants as users_constants
+import modules.users.users.integration_service as users_integration
 import modules.users.users.scheduled_jobs as users_scheduled_jobs
 import modules.users.users.subscriber_registry as users_subscriber_registry
 import modules.users.users_profile.constants as users_profile_constants
@@ -80,6 +91,17 @@ _deferred_pool = core_local_pool.BoundedPool("event-subscriber", workers=2, max_
 def shutdown_deferred_subscribers() -> None:
     """Stop the subscriber pool without waiting; queued work is repaired by the reconciliation nets."""
     _deferred_pool.shutdown()
+
+
+def shutdown_module_pools() -> None:
+    """Stop the subscriber pool and every in-process pool an installed module declares.
+
+    Each entry point calls this one function, so a pool a module adds is released wherever the module runs.
+    """
+    shutdown_deferred_subscribers()
+    for module in MODULES:
+        if module.shutdown is not None:
+            module.shutdown()
 
 
 class _DeferredSubscriptions:
@@ -146,6 +168,17 @@ class StartupTask:
     name: str
     description: str
     func: Callable[[], None]
+    lock_name: str | None = None
+
+    def run(self) -> None:
+        """Run the task, holding its distributed lock when it declares one.
+
+        A replica that does not get the lock skips the task, so a purge every replica starts at once runs once.
+        """
+        if self.lock_name is None:
+            self.func()
+        else:
+            core_scheduler.run_locked_job(self.lock_name, self.func)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -159,9 +192,21 @@ class RuntimeModule:
     nets: tuple[DurableSubscriberNet, ...] = ()
     recurring_jobs: RecurringJobs | None = None
     startup_tasks: tuple[StartupTask, ...] = ()
+    #: Stops the in-process pools the module runs work on; a no-op when it never started one.
+    shutdown: Callable[[], None] | None = None
 
 
 MODULES: tuple[RuntimeModule, ...] = (
+    RuntimeModule(
+        name="authentication",
+        register_bus=authentication_subscriber_registry.register_bus_subscribers,
+    ),
+    RuntimeModule(
+        name="activity",
+        register_durable=activity_subscriber_registry.register_durable_handlers,
+        nets=activity_subscriber_registry.DURABLE_SUBSCRIBER_NETS,
+        shutdown=activity_integration.shutdown_bulk_edit_pool,
+    ),
     RuntimeModule(
         name="activity_thumbnail",
         register_bus=activity_thumbnail_subscriber_registry.register_bus_subscribers,
@@ -211,9 +256,47 @@ MODULES: tuple[RuntimeModule, ...] = (
         recurring_jobs=activity_ingestion_scheduled_jobs.recurring_jobs,
         startup_tasks=(
             StartupTask(
+                "fail_orphaned_local_refreshes",
+                "Failing provider refreshes lost with the previous process",
+                activity_ingestion_scheduled_jobs.fail_orphaned_local_refreshes,
+            ),
+            StartupTask(
                 "queue_provider_refreshes",
                 "Queueing a provider activity refresh for every linked user",
                 activity_ingestion_scheduled_jobs.schedule_provider_refresh,
+            ),
+        ),
+        shutdown=activity_ingestion_integration.shutdown_background_ingestion,
+    ),
+    RuntimeModule(
+        name="oauth_state",
+        recurring_jobs=oauth_state_scheduled_jobs.recurring_jobs,
+        startup_tasks=(
+            StartupTask(
+                "purge_expired_oauth_states",
+                "Purging expired OAuth states",
+                oauth_state_scheduled_jobs.delete_expired_oauth_states_from_db,
+                lock_name=oauth_state_scheduled_jobs.PURGE_LOCK_NAME,
+            ),
+        ),
+    ),
+    RuntimeModule(name="sessions", recurring_jobs=auth_sessions_scheduled_jobs.recurring_jobs),
+    RuntimeModule(name="rotated_refresh_tokens", recurring_jobs=rotated_refresh_tokens_scheduled_jobs.recurring_jobs),
+    RuntimeModule(
+        name="identity_providers",
+        register_bus=identity_providers_subscriber_registry.register_bus_subscribers,
+        register_durable=identity_providers_subscriber_registry.register_durable_handlers,
+        nets=identity_providers_subscriber_registry.DURABLE_SUBSCRIBER_NETS,
+    ),
+    RuntimeModule(
+        name="identity_provider_link_tokens",
+        recurring_jobs=identity_provider_link_tokens_scheduled_jobs.recurring_jobs,
+        startup_tasks=(
+            StartupTask(
+                "purge_expired_identity_provider_link_tokens",
+                "Purging expired identity-provider link tokens",
+                identity_provider_link_tokens_scheduled_jobs.delete_expired_tokens_from_db,
+                lock_name=identity_provider_link_tokens_scheduled_jobs.PURGE_LOCK_NAME,
             ),
         ),
     ),
@@ -222,18 +305,36 @@ MODULES: tuple[RuntimeModule, ...] = (
         register_bus=password_reset_tokens_subscriber_registry.register_bus_subscribers,
         register_durable=password_reset_tokens_subscriber_registry.register_durable_handlers,
         nets=password_reset_tokens_subscriber_registry.DURABLE_SUBSCRIBER_NETS,
+        recurring_jobs=password_reset_tokens_scheduled_jobs.recurring_jobs,
+        startup_tasks=(
+            StartupTask(
+                "purge_expired_password_reset_tokens",
+                "Purging expired password reset tokens",
+                password_reset_tokens_scheduled_jobs.delete_expired_tokens_from_db,
+                lock_name=password_reset_tokens_scheduled_jobs.PURGE_LOCK_NAME,
+            ),
+        ),
     ),
     RuntimeModule(
         name="sign_up_tokens",
         register_bus=sign_up_tokens_subscriber_registry.register_bus_subscribers,
         register_durable=sign_up_tokens_subscriber_registry.register_durable_handlers,
         nets=sign_up_tokens_subscriber_registry.DURABLE_SUBSCRIBER_NETS,
+        recurring_jobs=sign_up_tokens_scheduled_jobs.recurring_jobs,
+        startup_tasks=(
+            StartupTask(
+                "purge_expired_sign_up_tokens",
+                "Purging expired sign-up tokens",
+                sign_up_tokens_scheduled_jobs.delete_expired_tokens_from_db,
+                lock_name=sign_up_tokens_scheduled_jobs.PURGE_LOCK_NAME,
+            ),
+        ),
     ),
     RuntimeModule(
         name="notifications",
-        register_bus=notifications_subscriber_registry.register_all_notification_bus_subscribers,
-        register_durable=notifications_subscriber_registry.register_all_notification_durable_handlers,
-        nets=notifications_subscriber_registry.NOTIFICATION_DURABLE_SUBSCRIBER_NETS,
+        register_bus=notifications_subscriber_registry.register_bus_subscribers,
+        register_durable=notifications_subscriber_registry.register_durable_handlers,
+        nets=notifications_subscriber_registry.DURABLE_SUBSCRIBER_NETS,
         recurring_jobs=notifications_scheduled_jobs.recurring_jobs,
     ),
     RuntimeModule(
@@ -241,6 +342,7 @@ MODULES: tuple[RuntimeModule, ...] = (
         register_durable=users_subscriber_registry.register_durable_handlers,
         nets=users_subscriber_registry.DURABLE_SUBSCRIBER_NETS,
         recurring_jobs=users_scheduled_jobs.recurring_jobs,
+        shutdown=users_integration.shutdown_deletion_pool,
     ),
     RuntimeModule(
         name="users_profile",
@@ -248,6 +350,7 @@ MODULES: tuple[RuntimeModule, ...] = (
         register_durable=users_profile_subscriber_registry.register_durable_handlers,
         nets=users_profile_subscriber_registry.DURABLE_SUBSCRIBER_NETS,
         recurring_jobs=users_profile_scheduled_jobs.recurring_jobs,
+        shutdown=users_profile_integration.shutdown_transfer_pool,
     ),
     RuntimeModule(
         name="garmin",
@@ -261,11 +364,13 @@ MODULES: tuple[RuntimeModule, ...] = (
                 garmin_scheduled_jobs.schedule_recent_health,
             ),
         ),
+        shutdown=garmin_integration.shutdown_pools,
     ),
     RuntimeModule(
         name="strava",
         register_durable=strava_subscriber_registry.register_durable_handlers,
         nets=strava_subscriber_registry.DURABLE_SUBSCRIBER_NETS,
+        shutdown=strava_integration.shutdown_pools,
     ),
     RuntimeModule(
         name="websocket",

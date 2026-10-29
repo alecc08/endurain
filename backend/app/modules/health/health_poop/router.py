@@ -8,7 +8,6 @@ from typing import Annotated
 
 from fastapi import (
     APIRouter,
-    Depends,
     Query,
     Request,
     Response,
@@ -24,6 +23,7 @@ import modules.auth.dependencies as auth_dependencies
 import modules.health.constants as health_constants
 import modules.health.health_poop.schema as health_poop_schema
 import modules.health.health_poop.service as health_poop_service
+import modules.health.schema as health_schema
 
 # Define the API router
 router = APIRouter()
@@ -42,7 +42,7 @@ router = APIRouter()
 def read_health_poop_all_pagination(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    page: Annotated[core_pagination.PageParams, Depends(core_pagination.list_page_params)],
+    page: core_pagination.ListPage,
     interval: Annotated[
         health_constants.Interval | None,
         Query(description="Filter by goal interval"),
@@ -65,6 +65,36 @@ def read_health_poop_all_pagination(
     return health_poop_service.list_health_poop(
         token_user_id, db, page_number=page.page_number, num_records=page.num_records, interval=interval
     )
+
+
+@router.get(
+    "/chart",
+    response_model=health_schema.HealthChartSeries,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:read"])],
+)
+def read_health_poop_chart(
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
+    interval: Annotated[
+        health_constants.Interval,
+        Query(description="Interval to chart"),
+    ] = health_constants.Interval.LAST_7_DAYS,
+) -> health_schema.HealthChartSeries:
+    """Chart the authenticated user's daily bowel-movement frequency over an interval.
+
+    One aggregated point per day, week or month depending on the interval, so the response stays small
+    however long the history. Declared before the ``/{health_poop_id}`` route so ``chart`` is not read as an id.
+    Access is restricted to users with the 'health:read' scope.
+
+    Args:
+        token_user_id: The ID of the authenticated user extracted from the access token.
+        db: Database session for executing queries.
+        interval: The window to chart.
+
+    Returns:
+        The interval's bucket size and its points, oldest first.
+    """
+    return health_poop_service.get_health_poop_chart(token_user_id, interval, db)
 
 
 @router.get(
@@ -98,7 +128,7 @@ def read_health_poop_by_id(
         NotFoundError: If the user has no such record.
     """
     record = health_poop_service.get_health_poop(token_user_id, health_poop_id, db)
-    response.headers["ETag"] = core_etag.format_etag(record.version)
+    core_etag.set_etag(response, record.version)
     return record
 
 
@@ -176,7 +206,7 @@ def edit_health_poop(
         PreconditionFailedError: If the record changed since the client read it.
     """
     updated = health_poop_service.edit_health_poop(token_user_id, health_poop_id, health_poop, db, if_match=if_match)
-    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    core_etag.set_etag(response, updated.version)
     return updated
 
 
@@ -196,6 +226,7 @@ def delete_health_poop(
     request: Request,
     health_poop_id: core_dependencies.PositiveId,
     token_user_id: auth_dependencies.CurrentUserId,
+    if_match: core_dependencies.IfMatch,
     db: core_dependencies.DbSession,
 ) -> None:
     """Delete a poop record for the authenticated user.
@@ -204,9 +235,11 @@ def delete_health_poop(
         request: The incoming request, read by the rate limiter.
         health_poop_id: ID of the poop record to delete.
         token_user_id: User ID from the access token.
+        if_match: The ``If-Match`` precondition.
         db: Database session dependency.
 
     Raises:
+        PreconditionFailedError: If the record changed since the client read it.
         NotFoundError: If the user has no such record.
     """
-    health_poop_service.delete_health_poop(token_user_id, health_poop_id, db)
+    health_poop_service.delete_health_poop(token_user_id, health_poop_id, db, if_match=if_match)

@@ -13,8 +13,7 @@ from pydantic import (
 
 
 class OAuthStateCreate(BaseModel):
-    """
-    Request to create OAuth state.
+    """Request to create OAuth state.
 
     Used internally when initiating OAuth flow. Contains all
     data needed to create a new OAuth state in database.
@@ -42,11 +41,16 @@ class OAuthStateCreate(BaseModel):
     ip_address: StrictStr | None = Field(None, max_length=45, description="Client IP address")
     expires_at: datetime = Field(..., description="Expiry timestamp")
     user_id: StrictInt | None = Field(None, description="User ID (for link mode)")
+    browser_binding_hash: StrictStr | None = Field(
+        None, min_length=64, max_length=64, description="SHA-256 of the link's browser binding (link mode)"
+    )
+    idp_code_verifier: StrictStr | None = Field(
+        None, min_length=43, max_length=128, description="PKCE verifier sent to the identity provider"
+    )
 
 
 class OAuthStateRead(BaseModel):
-    """
-    Response with OAuth state details.
+    """Response with OAuth state details.
 
     Returned when querying OAuth state from database.
     """
@@ -65,3 +69,5 @@ class OAuthStateRead(BaseModel):
     expires_at: datetime = Field(..., description="Expiry timestamp")
     used: StrictBool = Field(..., description="Whether state has been used")
     user_id: StrictInt | None = Field(None, description="User ID if link mode")
+    browser_binding_hash: StrictStr | None = Field(None, description="SHA-256 of the link's browser binding")
+    idp_code_verifier: StrictStr | None = Field(None, description="PKCE verifier sent to the identity provider")

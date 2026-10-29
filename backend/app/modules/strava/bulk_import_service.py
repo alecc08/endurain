@@ -25,6 +25,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 import core.config as core_config
+import core.database as core_database
 import core.exceptions as core_exceptions
 import core.file_uploads as file_uploads
 import core.logger as core_logger
@@ -36,7 +37,6 @@ import modules.activities.activity_ingestion.integration_service as activity_ing
 import modules.activities.activity_media.integration_service as activity_media_integration
 import modules.gears.gear.integration_service as gears_integration
 import modules.strava.constants as strava_constants
-from core.database import SessionLocal
 
 logger = core_logger.get_logger(__name__)
 
@@ -107,7 +107,8 @@ def parse_activities_manifest(manifest_path: str) -> dict | None:
 def create_gear_dictionary_for_bulk_import(user_id: int, db: Session) -> dict[str, list[int]]:
     """Creates a dictionary that links gear nicknames in Endurain to their Endurain gear IDs.
 
-    The dictionary includes both base Endurain gear nickname and the gear name smoosh ("{brand} {model} {name}") that Strava uses for its shoe gear listing in activities.csv
+    The dictionary includes both base Endurain gear nickname and the gear name smoosh
+    ("{brand} {model} {name}") that Strava uses for its shoe gear listing in activities.csv
 
     Args:
         user_id: The importing user.
@@ -120,7 +121,8 @@ def create_gear_dictionary_for_bulk_import(user_id: int, db: Session) -> dict[st
     gear_by_name: dict[str, list[int]] = {}
     for item in gears_integration.get_gear_user(user_id, db) or []:
         gear_by_name[item.nickname] = [item.id]
-        # Strava apparently exports shoe names as a smoosh of "{brand} {model} {name}", so adding that as a second key for each gear item
+        # Strava apparently exports shoe names as a smoosh of "{brand} {model} {name}", so adding that as a
+        # second key for each gear item
         strava_name_smoosh = " ".join(
             part
             for part in [
@@ -159,7 +161,7 @@ def build_metadata_dict(
         # In a Strava import but with no data on the file: just the basic import record.
         strava_activity_metadata["metadata_found_in_csv"] = False
         strava_activity_metadata["import_dict"] = build_import_dictionary(file_base_name, import_initiated_time, False)
-        logger.info(
+        logger.debug(
             "Bulk file import: no data in activities.csv for activity",
             extra=core_logger.context(console=True, file_name=file_base_name),
         )
@@ -179,7 +181,7 @@ def build_metadata_dict(
     gear_ids = (users_existing_gear_nickname_to_id or {}).get(activity_gear) if activity_gear else None
     strava_activity_metadata["gear_id"] = gear_ids[0] if gear_ids else None
     if activity_gear and not gear_ids:
-        logger.info(
+        logger.debug(
             "Bulk file import: gear named in activities.csv not found, not adding gear to activity",
             extra=core_logger.context(console=True, file_name=file_base_name, gear=activity_gear),
         )
@@ -188,7 +190,7 @@ def build_metadata_dict(
         file_base_name, import_initiated_time, True, strava_activities
     )
     strava_activity_metadata["metadata_found_in_csv"] = True
-    logger.info(
+    logger.debug(
         "Bulk file import: activities.csv metadata extracted",
         extra=core_logger.context(console=True, file_name=file_base_name),
     )
@@ -232,11 +234,15 @@ def build_import_dictionary(
 
 def does_activity_start_time_match_the_data_in_strava_activities_csv(
     activity: activity_contracts.ActivityCore,  # A parsed activity about to be added to Endurain
-    activity_metadata_dict: dict,  # A dictionary containing parsed information from a Strava activities.csv file
+    # A dictionary containing parsed information from a Strava activities.csv file
+    activity_metadata_dict: dict,
 ) -> bool:
-    """Strava includes each multi-activity .fit file once for each activity inside the fit file.  Thus, run without filtering, a 5-activity fit file is imported 5 times for 25 activities imported.
+    """Strava includes each multi-activity .fit file once for each activity inside the fit file.
 
-    So, to find out which activity goes with which file, we check if start time of activity aligns with start time of the activity's strava activities.csv file data.  If it does import.
+    Thus, run without filtering, a 5-activity fit file is imported 5 times for 25 activities imported.
+
+    So, to find out which activity goes with which file, we check if start time of activity aligns with
+    start time of the activity's strava activities.csv file data.  If it does import.
 
     Formatting of times in the two files:
         Activity start time - from Endurain activity parser: 2023-10-21T07:41:47
@@ -293,7 +299,7 @@ def import_media_from_strava_bulk_export(
         return
     media_string = (row.get("Media") or "").strip()
     if not media_string:
-        logger.info(
+        logger.debug(
             "Bulk file import: no media list in activities.csv",
             extra=core_logger.context(console=True, file_name=file_base_name),
         )
@@ -350,7 +356,7 @@ def create_activity_media_from_strava_bulk_import(
         # validated bytes, which keeps the photo reachable on object storage and
         # only through the token-gated route.
         activity_media_integration.attach_media_bytes(activity_id, media_strava_filename, data, db)
-        logger.info(
+        logger.debug(
             "Bulk file import: media file imported",
             extra=core_logger.context(console=True, file_name=media_strava_filename),
         )
@@ -498,7 +504,7 @@ def _is_export_member(member_name: str) -> bool:
     """
     top = member_name.split("/", 1)[0]
     return (
-        member_name == core_config.STRAVA_BULK_IMPORT_ACTIVITIES_FILE
+        member_name == strava_constants.BULK_IMPORT_ACTIVITIES_FILE
         or _is_activity_member(member_name)
         or (top == MEDIA_FOLDER and "/" in member_name)
     )
@@ -522,18 +528,18 @@ def _build_source(
     Raises:
         InvalidInputError: When the archive has no usable ``activities.csv``.
     """
-    manifest = read_member(core_config.STRAVA_BULK_IMPORT_ACTIVITIES_FILE)
+    manifest = read_member(strava_constants.BULK_IMPORT_ACTIVITIES_FILE)
     if manifest is None:
         raise core_exceptions.InvalidInputError("The export has no activities.csv")
     with tempfile.TemporaryDirectory(prefix="strava-manifest-") as work_dir:
-        path = os.path.join(work_dir, core_config.STRAVA_BULK_IMPORT_ACTIVITIES_FILE)
+        path = os.path.join(work_dir, strava_constants.BULK_IMPORT_ACTIVITIES_FILE)
         with open(path, "wb") as handle:
             handle.write(manifest)
         strava_activities = parse_activities_manifest(path)
     if strava_activities is None:
         raise core_exceptions.InvalidInputError("The export's activities.csv could not be read")
 
-    with SessionLocal() as db:
+    with core_database.SessionLocal() as db:
         gear = create_gear_dictionary_for_bulk_import(user_id, db)
 
     return StravaBulkImportSource(
@@ -545,6 +551,20 @@ def _build_source(
     )
 
 
+def drop_directory_for(user_id: int) -> str:
+    """Return the directory one user drops their Strava export in.
+
+    Per user, so an import never ingests another user's export and attributes it to whoever started it.
+
+    Args:
+        user_id: The owning user's id. Coerced to ``int`` so the value can only ever be a single path segment.
+
+    Returns:
+        Absolute path of that user's Strava-export directory.
+    """
+    return f"{core_config.settings.FILES_DIR}/{strava_constants.BULK_IMPORT_DIR_NAME}/{int(user_id)}"
+
+
 def register_bulk_import_format() -> None:
     """Register the Strava export layout with activity ingestion."""
     activity_ingestion_integration.register_bulk_import_format(
@@ -552,7 +572,7 @@ def register_bulk_import_format() -> None:
             name=strava_constants.BULK_IMPORT_FORMAT_NAME,
             is_activity_member=_is_activity_member,
             is_export_member=_is_export_member,
-            drop_directory=core_config.strava_bulk_import_dir_for,
+            drop_directory=drop_directory_for,
             build_source=_build_source,
         )
     )

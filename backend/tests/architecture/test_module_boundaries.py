@@ -19,13 +19,12 @@ import fnmatch
 import pathlib
 import tomllib
 
-from tests._helpers.module_roles import CONVERTED_MODULES, UNCONVERTED_MODULES
+from tests._helpers.module_roles import CONVERTED_MODULES
 from tests._helpers.module_roles import role_of as _role
 
 #: Modules converted to the structure guide, shared with ``test_logging_rule.py`` (also in ``tests/architecture/``)
 #: through ``tests/_helpers/module_roles.py``. Opt-in, and ratcheted by
-#: ``TestModuleInventory`` so an unconverted module is visibly outstanding
-#: rather than silently exempt.
+#: ``TestModuleInventory`` so a newly added module cannot escape the rules.
 _CONVERTED = CONVERTED_MODULES
 
 _MODULES_ROOT = pathlib.Path("app/modules")
@@ -78,14 +77,6 @@ _SESSION_EXECUTION = frozenset({"execute", "scalars", "scalar", "query", "add", 
 #: staging a write so constraint errors and row counts surface is persistence's
 #: job; deciding when it becomes durable is not.
 _TRANSACTION_CONTROL = frozenset({"commit", "rollback"})
-
-#: ``crud`` files that still end transactions themselves, as
-#: ``{path relative to modules/: reason}``. This is the debt register for
-#: ``test_crud_does_not_end_transactions``. It is empty: every converted module
-#: stages and lets ``service`` commit. A module being converted lists its files
-#: here until its writers are stage-only; the test fails on an entry that no
-#: longer offends so the list cannot outlive the debt.
-_CRUD_TRANSACTION_DEBT: dict[str, str] = {}
 
 #: Cross-sub-package reaches that are part of the design, as
 #: ``(importer glob, imported glob): reason``. Globs are module paths relative
@@ -272,12 +263,18 @@ _TRANSPORT_FORBIDDEN = frozenset({"crud", "models", "query", "event_publishers"}
 #: behaviour.
 _DATA_ROLES = frozenset({"schema", "contracts", "constants"})
 
-#: Roles of another top-level module that a converted module may import: its
-#: published surface. ``identity_service`` is ``auth``'s surface under another
-#: name (see the guide); no other module may follow it.
-_OUTBOUND_ROLES = frozenset({"integration_service", "schema", "contracts", "constants", "events", "dependencies"})
-_OUTBOUND_SURFACE_STEMS = frozenset({"identity_service"})
+#: Roles of another package that persistence may also name: namespace-level pure helpers
+#: (``computation``), which own no table, run no statement and call no module.
+_PERSISTENCE_SHARED_ROLES = _DATA_ROLES | {"computation"}
 
+#: Role of a namespace-level file (directly under a module with sub-packages) that the packages' persistence may
+#: also import: the persistence steps they run identically, parametrised by the model and schema the package
+#: passes in (``health/record_crud.py``). Such a file declares no table.
+_PERSISTENCE_NAMESPACE_ROLES = frozenset({"crud"})
+
+#: Roles of another top-level module that a converted module may import: its
+#: published surface; no service implementation is an outbound surface.
+_OUTBOUND_ROLES = frozenset({"integration_service", "schema", "contracts", "constants", "events", "dependencies"})
 #: Layer-rule exceptions as ``{(importer, imported): reason}``, in dotted paths
 #: rooted at ``app``. Every entry is a deliberate seam; anything else fails.
 _LAYER_EXCEPTIONS: dict[tuple[str, str], str] = {
@@ -303,20 +300,6 @@ _LAYER_EXCEPTIONS: dict[tuple[str, str], str] = {
         "The activities packages restore their own section of a profile import through the contributors "
         "installed in this registry, so the profile does not enumerate or import them. The registry holds "
         "typed callbacks only: it owns no table and runs no query."
-    ),
-    (
-        "modules.health.health_fasting.crud",
-        "modules.health.computation",
-    ): (
-        "Day bucketing must match across the health packages, so the timestamptz-to-local-date SQL fragment "
-        "is written once. It owns no table or session and asks no module."
-    ),
-    (
-        "modules.health.health_poop.crud",
-        "modules.health.computation",
-    ): (
-        "Day bucketing must match across the health packages, so the timestamptz-to-local-date SQL fragment "
-        "is written once. It owns no table or session and asks no module."
     ),
 }
 
@@ -357,6 +340,26 @@ def _package_of(dotted: str) -> str:
     return ".".join(parts[:2])
 
 
+def _is_namespace_helper(importer: str, imported: str) -> bool:
+    """
+    Return whether an import reaches a persistence file the importer's namespace shares.
+
+    Args:
+        importer: The importing module's dotted path.
+        imported: The imported module's dotted path.
+
+    Returns:
+        True when ``imported`` sits directly under the namespace ``importer`` belongs to and plays a role in
+        ``_PERSISTENCE_NAMESPACE_ROLES``.
+    """
+    namespace = _package_of(imported)
+    return (
+        imported.count(".") == namespace.count(".") + 1
+        and importer.startswith(f"{namespace}.")
+        and _role(imported.rsplit(".", 1)[-1]) in _PERSISTENCE_NAMESPACE_ROLES
+    )
+
+
 def _layer_imports(*, only_roles: frozenset[str] | None = None) -> list[tuple[pathlib.Path, str, str, str]]:
     """
     Return every ``modules.*`` import made by a converted-module file.
@@ -377,6 +380,23 @@ def _layer_imports(*, only_roles: frozenset[str] | None = None) -> list[tuple[pa
                 if target.startswith("modules.") and target.count(".") >= 2:
                     found.append((path, _module_dotted(path), target, role))
     return found
+
+
+#: Services that still import FastAPI, as ``{"<dotted module>": reason}``.
+_SERVICE_FASTAPI_EXCEPTIONS: dict[str, str] = {
+    "modules.server_settings.login_photo_service": (
+        "Receives the UploadFile and hands it to core.file_uploads; not yet converted to take the stored bytes."
+    ),
+    "modules.strava.gear_service": (
+        "Receives the UploadFile and hands it to core.file_uploads; not yet converted to take the stored bytes."
+    ),
+    "modules.users.users.photo_service": (
+        "Receives the UploadFile and hands it to core.file_uploads; not yet converted to take the stored bytes."
+    ),
+    "modules.websocket.service": (
+        "The service is the WebSocket connection manager, so the socket and its close codes are its subject."
+    ),
+}
 
 
 def _excepted(importer: str, imported: str) -> bool:
@@ -794,11 +814,8 @@ class TestSubPackagePrivacy:
         counts); ``commit`` and ``rollback`` are not. Rolling back belongs to the
         transaction owner, which is the service or ``core.database.get_db``.
 
-        ``_CRUD_TRANSACTION_DEBT`` records the files that still do. It shrinks;
-        a stale entry fails, so it cannot outlive the debt.
         """
         offenders: list[str] = []
-        stale: list[str] = []
         for module_name in _CONVERTED:
             for path in _python_files(_MODULES_ROOT / module_name):
                 if _role(path.stem) != "crud":
@@ -814,17 +831,11 @@ class TestSubPackagePrivacy:
                     }
                 )
                 relative = path.relative_to(_MODULES_ROOT).as_posix()
-                if ended and relative not in _CRUD_TRANSACTION_DEBT:
+                if ended:
                     offenders.append(f"{relative}: .{', .'.join(ended)}()")
-                if not ended and relative in _CRUD_TRANSACTION_DEBT:
-                    stale.append(relative)
         assert not offenders, (
             "A crud-role file may flush but not commit or roll back. Stage the "
             "write and let the service own the transaction:\n  " + "\n  ".join(sorted(offenders))
-        )
-        assert not stale, (
-            "These files no longer end transactions; remove them from "
-            "_CRUD_TRANSACTION_DEBT:\n  " + "\n  ".join(sorted(stale))
         )
 
     def test_a_file_plays_the_role_its_content_declares(self):
@@ -898,34 +909,17 @@ class TestStoreRole:
 
 
 class TestModuleInventory:
-    """Every top-level module is either converted or explicitly outstanding."""
+    """Every top-level module is covered by the converted-module rules."""
 
     def test_every_top_level_module_is_classified(self):
-        """A module in neither list would start life outside every rule.
-
-        The conformance tests are opt-in (``CONVERTED_MODULES``), which is the
-        right default while modules convert one PR at a time, and the wrong one
-        for a module nobody has thought about yet: it is exempt from all of them
-        without a single line saying so. Naming the outstanding modules makes
-        "convert it" and "consciously leave it" the only two options for a new
-        one. Converting a module is moving its name between the two lists in
-        ``tests/_helpers/module_roles.py``.
-        """
+        """A new module cannot sit outside the structural checks."""
         on_disk = {
             path.name for path in _MODULES_ROOT.iterdir() if path.is_dir() and not path.name.startswith(("_", "."))
         }
-        declared = set(CONVERTED_MODULES) | set(UNCONVERTED_MODULES)
-        unclassified = sorted(on_disk - declared)
-        stale = sorted(declared - on_disk)
-        assert not unclassified, (
-            "Top-level module in neither CONVERTED_MODULES nor UNCONVERTED_MODULES "
-            "(tests/_helpers/module_roles.py). Convert it to the structure guide, "
-            "or list it as outstanding:\n  " + "\n  ".join(unclassified)
-        )
-        assert not stale, "Listed in module_roles.py but not on disk:\n  " + "\n  ".join(stale)
-        assert not set(CONVERTED_MODULES) & set(UNCONVERTED_MODULES), (
-            "A module cannot be both converted and outstanding"
-        )
+        missing = sorted(on_disk - set(CONVERTED_MODULES))
+        stale = sorted(set(CONVERTED_MODULES) - on_disk)
+        assert not missing, "Modules missing from CONVERTED_MODULES:\n  " + "\n  ".join(missing)
+        assert not stale, "Listed in CONVERTED_MODULES but not on disk:\n  " + "\n  ".join(stale)
 
 
 class TestLayerRules:
@@ -984,6 +978,29 @@ class TestLayerRules:
             sorted(offenders)
         )
 
+    def test_services_do_not_import_fastapi(self):
+        """A service takes plain values and raises domain errors; the router owns the transport.
+
+        Request headers, client addresses, cookies and status codes are read and set in the router, so a service
+        runs unchanged from a job, a subscriber or a test with no request.
+        """
+        offenders: list[str] = []
+        used: set[str] = set()
+        for module_name in _CONVERTED:
+            for path in _python_files(_MODULES_ROOT / module_name):
+                if _role(path.stem) != "service":
+                    continue
+                dotted = _module_dotted(path)
+                if not any(target == "fastapi" or target.startswith("fastapi.") for target in _imported_modules(path)):
+                    continue
+                if dotted in _SERVICE_FASTAPI_EXCEPTIONS:
+                    used.add(dotted)
+                else:
+                    offenders.append(dotted)
+        assert not offenders, "A service takes plain values, not FastAPI objects:\n  " + "\n  ".join(sorted(offenders))
+        stale = sorted(set(_SERVICE_FASTAPI_EXCEPTIONS) - used)
+        assert not stale, "Remove from _SERVICE_FASTAPI_EXCEPTIONS:\n  " + "\n  ".join(stale)
+
     def test_persistence_asks_no_other_package(self):
         """A query that must ask another bounded context first is a service decision.
 
@@ -996,7 +1013,8 @@ class TestLayerRules:
             f"{importer} -> {imported}"
             for _path, importer, imported, _role_ in _layer_imports(only_roles=_PERSISTENCE_ROLES)
             if _package_of(imported) != _package_of(importer)
-            and _role(imported.rsplit(".", 1)[-1]) not in _DATA_ROLES
+            and _role(imported.rsplit(".", 1)[-1]) not in _PERSISTENCE_SHARED_ROLES
+            and not _is_namespace_helper(importer, imported)
             and not _excepted(importer, imported)
         )
         assert not offenders, (
@@ -1008,16 +1026,16 @@ class TestLayerRules:
     def test_outbound_reach_uses_a_published_surface(self):
         """A converted module reaches another top-level module only through its surface.
 
-        Stated as an allowlist, so a file added to an unconverted module (a new
-        ``utils.py``) is not importable until someone publishes it, instead of
-        being importable until someone remembers to deny it.
+        Stated as an allowlist, so a new ``utils.py`` is not importable until
+        someone publishes its package surface, instead of being importable until
+        someone remembers to deny it.
         """
         offenders: list[str] = []
         for _path, importer, imported, _importer_role in _layer_imports():
             if imported.split(".")[1] == importer.split(".")[1]:
                 continue
             stem = imported.rsplit(".", 1)[-1]
-            if _role(stem) in _OUTBOUND_ROLES or stem in _OUTBOUND_SURFACE_STEMS:
+            if _role(stem) in _OUTBOUND_ROLES:
                 continue
             if not _excepted(importer, imported):
                 offenders.append(f"{importer} -> {imported}")
@@ -1075,25 +1093,14 @@ class TestSurfaceTransactions:
 class TestDocstringScope:
     """The docstring lint applies exactly to the converted modules."""
 
-    def test_unconverted_modules_are_the_ones_exempt_from_the_docstring_lint(self):
-        """Converting a module is removing it from the ruff ``D`` ignore list.
-
-        ``pyproject.toml`` exempts a module from the pydocstyle rules by name, so
-        the exemption list and ``UNCONVERTED_MODULES`` are one fact stated twice.
-        This test is what keeps them one: a module cannot be converted and stay
-        exempt, nor be unconverted and silently linted.
-        """
+    def test_no_module_is_exempt_from_the_docstring_lint(self):
+        """Every module follows the documented public API convention."""
         config = tomllib.loads((_BACKEND_ROOT / "pyproject.toml").read_text())
         ignores = config["tool"]["ruff"]["lint"]["per-file-ignores"]
-        exempt = {
-            pattern.split("/")[2]
-            for pattern, rules in ignores.items()
-            if pattern.startswith("app/modules/") and "D" in rules
-        }
-        assert exempt == set(UNCONVERTED_MODULES), (
-            "pyproject.toml per-file-ignores for rule D must list exactly the unconverted "
-            f"modules; exempt={sorted(exempt)}, unconverted={sorted(UNCONVERTED_MODULES)}"
+        exempt = sorted(
+            pattern for pattern, rules in ignores.items() if pattern.startswith("app/modules/") and "D" in rules
         )
+        assert not exempt, f"Remove module docstring exemptions from pyproject.toml: {exempt}"
 
 
 class TestProviderResolution:

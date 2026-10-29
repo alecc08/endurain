@@ -12,6 +12,8 @@ from pydantic import (
 )
 from pydantic_core import PydanticCustomError
 
+import core.pagination as core_pagination
+
 
 class Interval(StrEnum):
     """Recurrence intervals for user goals.
@@ -168,6 +170,10 @@ class UsersGoalRead(UsersGoalBase):
     version: StrictInt = Field(default=1, ge=1, description="Optimistic-concurrency counter, also sent as the ETag")
 
 
+#: One page of a user's goals.
+UsersGoalPage = core_pagination.Page[UsersGoalRead]
+
+
 class UsersGoalUpdate(UsersGoalBase):
     """Schema for replacing an existing users goal.
 
@@ -225,3 +231,7 @@ class UsersGoalProgress(BaseModel):
         validate_assignment=True,
         use_enum_values=True,
     )
+
+
+#: One page of a user's goal progress.
+UsersGoalProgressPage = core_pagination.Page[UsersGoalProgress]

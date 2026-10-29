@@ -216,6 +216,10 @@ class SyncState(BaseModel):
     status: SyncStatus
 
 
+#: Lifetime of a queued sync's claim and state: longer than any sync takes, shorter than a stuck claim should
+#: block the user.
+SYNC_TTL_SECONDS = 30 * 60
+
 _PENDING = (SyncStatus.QUEUED, SyncStatus.RUNNING)
 _FINISHED = (SyncStatus.COMPLETED, SyncStatus.FAILED)
 
@@ -231,7 +235,7 @@ class SyncStateStore:
         _attempts: The claim and state storage for the feature's syncs.
     """
 
-    def __init__(self, state: StateProvider, namespace: str, ttl_seconds: int) -> None:
+    def __init__(self, state: StateProvider, namespace: str, ttl_seconds: int = SYNC_TTL_SECONDS) -> None:
         """Initialize the store.
 
         Args:
@@ -269,6 +273,17 @@ class SyncStateStore:
             status: The new status.
         """
         self._attempts.record(self._subject(user_id, kind), SyncState(status=status), finished=status in _FINISHED)
+
+    def discard(self, user_id: int, kind: StrEnum) -> None:
+        """Drop a sync's claim and state, for one that was called off.
+
+        Unlike a finished sync, nothing is left for the status route to report.
+
+        Args:
+            user_id: The user being synced.
+            kind: What the sync does.
+        """
+        self._attempts.discard(self._subject(user_id, kind))
 
     def get(self, user_id: int, kind: StrEnum) -> SyncState | None:
         """Read a sync's state.

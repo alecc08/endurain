@@ -9,6 +9,7 @@ from jasil.events import Event
 from jasil.jobs.registry import JobHandlerRegistry
 
 import core.exceptions as core_exceptions
+import core.sync_runner as core_sync_runner
 import modules.garmin.constants as garmin_constants
 import modules.garmin.events as garmin_events
 import modules.garmin.subscribers as garmin_subscribers
@@ -158,7 +159,7 @@ def test_an_activities_range_beyond_the_cap_is_refused():
 
 
 def test_the_longest_allowed_activities_range_is_accepted():
-    first = DAY - timedelta(days=garmin_constants.MAX_ACTIVITIES_RANGE_DAYS - 1)
+    first = DAY - timedelta(days=core_sync_runner.MAX_ACTIVITIES_RANGE_DAYS - 1)
     with patch.object(garmin_sync_service.activity_ingestion_integration, "request_provider_sync") as request:
         garmin_sync_service.request_activities_sync(1, first, DAY, MagicMock(), MagicMock())
 
@@ -356,6 +357,32 @@ class TestRecentHealth:
         assert states.get(1, Kind.HEALTH).status == Status.QUEUED
         assert states.get(2, Kind.HEALTH).status == Status.QUEUED
 
+    def test_no_connection_is_held_while_waiting_for_a_pool_slot(self, rate_limits, local, states, local_today):
+        sessions = []
+
+        def new_session():
+            session = MagicMock(holds_connection=False)
+            session.__enter__.return_value = session
+            session.close.side_effect = lambda: setattr(session, "holds_connection", False)
+            sessions.append(session)
+            return session
+
+        def read_today(_user_id, db):
+            db.holds_connection = True
+            return DAY
+
+        local_today.side_effect = read_today
+        held_at_submit = []
+        local.submit.side_effect = lambda *_, **__: held_at_submit.extend(s.holds_connection for s in sessions)
+        with (
+            patch.object(garmin_sync_service.garmin_service, "linked_user_ids", side_effect=[[1], []]),
+            patch.object(garmin_sync_service.core_database, "SessionLocal", side_effect=new_session),
+        ):
+            garmin_sync_service.sync_recent_health(states, rate_limits)
+
+        assert held_at_submit == [False] * len(sessions)
+        assert held_at_submit
+
     def test_a_pool_that_stays_full_ends_the_pass(self, rate_limits, full_pool, states, monkeypatch):
         monkeypatch.setattr(garmin_constants, "SCHEDULED_SLOT_WAIT_SECONDS", 0.01)
         with (
@@ -411,6 +438,20 @@ class TestRecentHealth:
         assert publish.call_args.kwargs["source"] == garmin_constants.SYNC_SOURCE_API
 
 
+def _registered() -> JobHandlerRegistry:
+    registry = JobHandlerRegistry()
+    garmin_subscribers.register_durable_handlers(registry)
+    return registry
+
+
+def _handle(event: Event) -> None:
+    _registered().get(garmin_subscribers.SYNC_REQUESTED_SUBSCRIBER_ID)(event)
+
+
+def _dead_letter(event: Event, error: str | None) -> None:
+    _registered().dead_letter_callback(garmin_subscribers.SYNC_REQUESTED_SUBSCRIBER_ID)(event, error)
+
+
 def _sync_event(retry_count: int = 1, max_attempts: int | None = 3) -> Event:
     return Event(
         event_id="evt-1",
@@ -432,7 +473,7 @@ def test_the_durable_handler_asks_for_a_retry_only_while_attempts_remain(states,
         patch.object(garmin_subscribers.platform_runtime, "get_state"),
         patch.object(garmin_subscribers.garmin_sync_service, "run_sync") as run,
     ):
-        garmin_subscribers.process_sync_requested_for_event(_sync_event(retry_count))
+        _handle(_sync_event(retry_count))
 
     run.assert_called_once_with(payload, states, rate_limits, will_retry=will_retry)
 
@@ -453,7 +494,7 @@ class TestDeadLetter:
         stores.begin(1, Kind.GEAR)
         stores.set_status(1, Kind.GEAR, status)
 
-        garmin_subscribers.on_sync_requested_dead_letter(_sync_event(3), "lease expired")
+        _dead_letter(_sync_event(3), "lease expired")
 
         assert stores.get(1, Kind.GEAR).status == Status.FAILED
         assert stores.begin(1, Kind.GEAR) is True
@@ -462,12 +503,12 @@ class TestDeadLetter:
         stores.begin(1, Kind.GEAR)
         stores.set_status(1, Kind.GEAR, Status.COMPLETED)
 
-        garmin_subscribers.on_sync_requested_dead_letter(_sync_event(3), None)
+        _dead_letter(_sync_event(3), None)
 
         assert stores.get(1, Kind.GEAR).status == Status.COMPLETED
 
     def test_an_expired_state_is_not_resurrected(self, stores):
-        garmin_subscribers.on_sync_requested_dead_letter(_sync_event(3), None)
+        _dead_letter(_sync_event(3), None)
 
         assert stores.get(1, Kind.GEAR) is None
 

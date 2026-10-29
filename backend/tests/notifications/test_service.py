@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import core.database as core_database
 import core.exceptions as core_exceptions
 import modules.notifications.constants as notifications_constants
 import modules.notifications.service as notifications_service
@@ -175,7 +176,7 @@ class TestPurgeReadNotifications:
         )
 
     def test_deletes_read_notifications_older_than_the_stored_days(self, mock_db):
-        batch = notifications_constants.PURGE_BATCH_SIZE
+        batch = core_database.PURGE_BATCH_SIZE
         with (
             self._retention(30) as retention,
             patch(
@@ -184,7 +185,7 @@ class TestPurgeReadNotifications:
             ) as delete,
         ):
             before = datetime.now(UTC)
-            removed = notifications_service.purge_read_notifications(mock_db)
+            removed = notifications_service.delete_read_notifications(mock_db)
         retention.assert_called_once_with(mock_db)
         assert removed == batch + 4
         assert delete.call_count == 2
@@ -197,6 +198,6 @@ class TestPurgeReadNotifications:
             self._retention(0),
             patch("modules.notifications.service.notifications_crud.delete_read_notifications_before") as delete,
         ):
-            assert notifications_service.purge_read_notifications(mock_db) == 0
+            assert notifications_service.delete_read_notifications(mock_db) == 0
         delete.assert_not_called()
         mock_db.commit.assert_not_called()

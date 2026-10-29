@@ -455,7 +455,7 @@ export async function fetchUserWeekActivities(
     num_records: '200',
   })
   const page_ = await apiFetch<Schemas['Page_ActivityRead_']>(
-    `/activities/users/${userId}?${params.toString()}`,
+    `/users/${userId}/activities?${params.toString()}`,
     { signal },
   )
   return (page_.items ?? []).map(mapActivity)
@@ -606,7 +606,7 @@ export async function fetchActivityStats(
 ): Promise<ActivityStats> {
   const params = new URLSearchParams({ period: timeframe, date: todayIsoDate() })
   const stats = await apiFetch<ActivityStats | null>(
-    `/activities/users/${userId}/stats?${params.toString()}`,
+    `/users/${userId}/activities/stats?${params.toString()}`,
     { signal },
   )
   return stats ?? {}
@@ -632,7 +632,7 @@ export async function fetchUserThisMonthActivityCount(
     num_records: '1',
   })
   const page_ = await apiFetch<Schemas['Page_ActivityRead_']>(
-    `/activities/users/${userId}?${params.toString()}`,
+    `/users/${userId}/activities?${params.toString()}`,
     { signal },
   )
   // The envelope's total is the match count, so a one-row page is enough.
@@ -801,14 +801,11 @@ export async function fetchActivityExerciseTitles(
 ): Promise<ActivityExerciseTitle[]> {
   const path = resourcePath(
     context.authenticated,
-    `/activities/exercise-titles/all`,
-    `/public/activities/exercise-titles/all`,
+    `/activities/exercise-titles`,
+    `/public/activities/exercise-titles`,
   )
-  const dtos = await apiFetch<ActivityExerciseTitleDto[] | null>(path, {
-    auth: context.authenticated,
-    signal: context.signal,
-  })
-  return (dtos ?? []).map(mapActivityExerciseTitle)
+  const dtos = await fetchAllChildPages<ActivityExerciseTitleDto>(path, context)
+  return dtos.map(mapActivityExerciseTitle)
 }
 
 /**
@@ -837,10 +834,11 @@ export async function setActivityGear(
  * Permanently deletes an activity owned by the current user.
  *
  * @param id - Activity identifier.
- * @throws {HttpError} When the delete fails (e.g. not found or not owned).
+ * @param version - The activity version the caller read, for `If-Match`.
+ * @throws {HttpError} When the delete fails (e.g. not found, not owned, or `412` when stale).
  */
-export async function deleteActivity(id: number): Promise<void> {
-  await apiFetch(`/activities/${id}`, { method: 'DELETE' })
+export async function deleteActivity(id: number, version: number): Promise<void> {
+  await apiFetch(`/activities/${id}`, { method: 'DELETE', headers: ifMatchHeaders(version) })
 }
 
 /**
@@ -856,21 +854,43 @@ const VISIBILITY_TO_WIRE: Record<Schemas['ActivityVisibility'], number> = {
   private: 2,
 }
 
+/** How often the bulk visibility edit is checked while it runs. */
+const BULK_EDIT_POLL_MS = 2_000
+
+/** How long the bulk visibility edit is followed before giving up. */
+const BULK_EDIT_TIMEOUT_MS = 10 * 60_000
+
 /**
  * Changes the visibility of every existing activity owned by the current user.
- * New activities keep using the profile default configured separately.
+ * New activities keep using the profile default configured separately. The server
+ * queues the edit, because it can touch a whole library, so this follows the queued
+ * job until it finishes.
  *
  * @param visibility - The visibility to apply to all existing activities.
- * @throws {HttpError} When the update fails.
+ * @throws {HttpError} When the request is refused (e.g. an edit is already running).
+ * @throws {Error} When the edit fails on the server or does not finish in time.
  */
 export async function updateUserActivitiesVisibility(
   visibility: Schemas['ActivityVisibility'],
 ): Promise<void> {
-  await apiFetch<void>('/activities', {
+  const deadline = Date.now() + BULK_EDIT_TIMEOUT_MS
+  let job = await apiFetch<Schemas['ActivitiesBulkEditStatus']>('/activities', {
     method: 'PATCH',
     body: JSON.stringify({ visibility: VISIBILITY_TO_WIRE[visibility] }),
-    responseType: 'void',
   })
+  for (;;) {
+    if (job.status === 'completed') {
+      return
+    }
+    if (job.status === 'failed') {
+      throw new Error('Updating the activities visibility failed')
+    }
+    if (Date.now() >= deadline) {
+      throw new Error('Updating the activities visibility did not finish in time')
+    }
+    await new Promise((resolve) => setTimeout(resolve, BULK_EDIT_POLL_MS))
+    job = await apiFetch<Schemas['ActivitiesBulkEditStatus']>('/activities/bulk-edit')
+  }
 }
 
 /**

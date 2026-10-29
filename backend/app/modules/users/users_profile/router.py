@@ -17,12 +17,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response, Security, UploadFile, status
 from fastapi.responses import StreamingResponse
 
+import core.config as core_config
 import core.dependencies as core_dependencies
 import core.etag as core_etag
 import core.file_uploads as core_file_uploads
 import core.rate_limit as core_rate_limit
+import modules.auth.authentication.dependencies as authentication_dependencies
 import modules.auth.dependencies as auth_dependencies
-import modules.auth.identity_service as auth_identity_service
 import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
 import modules.users.users_privacy_settings.schema as users_privacy_settings_schema
@@ -43,10 +44,6 @@ router = APIRouter()
 )
 def read_users_me(
     token_user_id: auth_dependencies.CurrentUserId,
-    identity_service: Annotated[
-        auth_identity_service.IdentityService,
-        Depends(auth_identity_service.get_identity_service),
-    ],
     db: core_dependencies.DbSession,
     response: Response,
 ) -> users_schema.UsersMe:
@@ -57,20 +54,19 @@ def read_users_me(
 
     Args:
         token_user_id: User ID from access token.
-        identity_service: Identity service dependency.
         db: Database session.
         response: The response, which carries the user's ETag.
 
     Returns:
         User object with integration and privacy settings.
     """
-    profile = profile_service.get_profile(token_user_id, identity_service, db)
-    response.headers["ETag"] = core_etag.format_etag(profile.version)
+    profile = profile_service.get_profile(token_user_id, db)
+    core_etag.set_etag(response, profile.version)
     return profile
 
 
 @router.post(
-    "/image",
+    "/photo",
     status_code=status.HTTP_201_CREATED,
     response_model=users_schema.UserPhotoRead,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
@@ -101,8 +97,7 @@ def upload_profile_image(
 
 @router.patch(
     "",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_model=None,
+    response_model=users_schema.UsersMe,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
@@ -113,7 +108,7 @@ def edit_user(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
     if_match: core_dependencies.IfMatch,
-) -> None:
+) -> users_schema.UsersMe:
     """Edit self-service profile fields for the authenticated user.
 
     Uses an explicit allow-list (:class:`users_schema.ProfileUpdate`)
@@ -129,9 +124,13 @@ def edit_user(
         token_user_id: User ID from access token.
         db: Database session.
         if_match: The ``If-Match`` precondition, the ``version`` the client read.
+
+    Returns:
+        The edited profile; its ``version`` is also sent as the ETag.
     """
-    version = profile_service.edit_profile(token_user_id, user_attributtes, db, if_match=if_match)
-    response.headers["ETag"] = core_etag.format_etag(version)
+    profile = profile_service.edit_profile(token_user_id, user_attributtes, db, if_match=if_match)
+    core_etag.set_etag(response, profile.version)
+    return profile
 
 
 @router.post(
@@ -148,10 +147,6 @@ def edit_profile_email(
     token_session_id: Annotated[
         str,
         Depends(auth_dependencies.get_sid_from_access_token),
-    ],
-    identity_service: Annotated[
-        auth_identity_service.IdentityService,
-        Depends(auth_identity_service.get_identity_service),
     ],
     step_up_store: Annotated[
         auth_dependencies.StepUpStore,
@@ -171,17 +166,16 @@ def edit_profile_email(
         email_change: The new address with the step-up credentials.
         token_user_id: User ID from access token.
         token_session_id: Session ID of the caller, preserved when other sessions are revoked.
-        identity_service: Identity service dependency.
         step_up_store: Step-up lockout store.
         db: Database session.
+        db: Database session.
     """
-    profile_service.change_email(token_user_id, email_change, token_session_id, identity_service, step_up_store, db)
+    profile_service.change_email(token_user_id, email_change, token_session_id, step_up_store, db)
 
 
 @router.patch(
     "/privacy",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_model=None,
+    response_model=users_privacy_settings_schema.UsersPrivacySettingsRead,
     dependencies=[Security(auth_dependencies.check_scopes, scopes=["profile"])],
 )
 @core_rate_limit.limiter.limit(core_rate_limit.WRITE)
@@ -192,7 +186,7 @@ def edit_profile_privacy_settings(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
     if_match: core_dependencies.IfMatch,
-) -> None:
+) -> users_privacy_settings_schema.UsersPrivacySettingsRead:
     """Edit privacy settings for authenticated user.
 
     Args:
@@ -202,9 +196,13 @@ def edit_profile_privacy_settings(
         token_user_id: User ID from access token.
         db: Database session.
         if_match: The ``If-Match`` precondition, the ``privacy_settings_version`` the client read.
+
+    Returns:
+        The edited settings; their ``version`` is also sent as the ETag.
     """
-    version = profile_service.edit_privacy_settings(token_user_id, user_privacy_settings, db, if_match=if_match)
-    response.headers["ETag"] = core_etag.format_etag(version)
+    updated = profile_service.edit_privacy_settings(token_user_id, user_privacy_settings, db, if_match=if_match)
+    core_etag.set_etag(response, updated.version)
+    return updated
 
 
 @router.post(
@@ -222,14 +220,11 @@ def edit_profile_password(
         str,
         Depends(auth_dependencies.get_sid_from_access_token),
     ],
-    identity_service: Annotated[
-        auth_identity_service.IdentityService,
-        Depends(auth_identity_service.get_identity_service),
-    ],
     step_up_store: Annotated[
         auth_dependencies.StepUpStore,
         Depends(auth_dependencies.get_step_up_attempts),
     ],
+    db: core_dependencies.DbSession,
 ) -> None:
     """Update user password after step-up verification.
 
@@ -253,21 +248,13 @@ def edit_profile_password(
             token.
         token_session_id: Session ID of the caller, preserved when
             other sessions are revoked.
-        identity_service: Identity service dependency.
         step_up_store: Step-up lockout store.
+        db: Database session.
 
     Raises:
         HTTPException: 401 if step-up verification fails.
     """
-    identity_service.change_own_password(
-        user_id=token_user_id,
-        current_password=user_attributtes.current_password,
-        new_password=user_attributtes.password,
-        mfa_code=user_attributtes.mfa_code,
-        step_up_store=step_up_store,
-        revoke_other_sessions=user_attributtes.revoke_other_sessions,
-        current_session_id=token_session_id,
-    )
+    profile_service.change_password(token_user_id, user_attributtes, token_session_id, step_up_store, db)
 
 
 @router.delete(
@@ -309,10 +296,6 @@ def delete_my_account(
     response: Response,
     step_up: users_schema.StepUpVerification,
     token_user_id: auth_dependencies.CurrentUserId,
-    identity_service: Annotated[
-        auth_identity_service.IdentityService,
-        Depends(auth_identity_service.get_identity_service),
-    ],
     step_up_store: Annotated[
         auth_dependencies.StepUpStore,
         Depends(auth_dependencies.get_step_up_attempts),
@@ -333,7 +316,6 @@ def delete_my_account(
         response: The response, which receives the cookie-deletion headers.
         step_up: Step-up verification payload.
         token_user_id: User ID from access token.
-        identity_service: Identity service dependency.
         step_up_store: Step-up lockout store.
         state: The platform state provider.
         storage: The platform storage provider.
@@ -342,10 +324,8 @@ def delete_my_account(
     Returns:
         The deletion's initial status.
     """
-    deletion = profile_service.delete_account(
-        token_user_id, step_up, identity_service, step_up_store, state, storage, db
-    )
-    identity_service.clear_session_cookies(response)
+    deletion = profile_service.delete_account(token_user_id, step_up, step_up_store, state, storage, db)
+    authentication_dependencies.clear_refresh_token_cookies(response, environment=core_config.settings.ENVIRONMENT)
     return deletion
 
 

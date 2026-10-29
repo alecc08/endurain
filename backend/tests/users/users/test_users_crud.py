@@ -75,7 +75,7 @@ class TestReads:
     def test_search_escapes_like_wildcards(self, mock_db):
         _many(mock_db, [])
 
-        users_crud.search_active_users_by_username("50%_off", 10, mock_db)
+        users_crud.search_active_users_by_username("50%_off", 10, 0, mock_db)
 
         assert "ESCAPE" in _sql(mock_db)
         assert "50\\%\\_off" in _sql(mock_db)
@@ -83,11 +83,12 @@ class TestReads:
     def test_search_only_returns_active_users_up_to_the_limit(self, mock_db):
         _many(mock_db, [])
 
-        users_crud.search_active_users_by_username("ann", 7, mock_db)
+        users_crud.search_active_users_by_username("ann", 7, 14, mock_db)
 
         sql = _sql(mock_db)
         assert "active IS true" in sql
         assert "LIMIT 7" in sql
+        assert "OFFSET 14" in sql
 
     def test_get_users_admin_filters_on_access_type(self, mock_db):
         _many(mock_db, [])
@@ -288,6 +289,49 @@ class TestRecordDeletionAttempt:
 
         assert users_crud.record_deletion_attempt(1, mock_db) is None
         mock_db.flush.assert_not_called()
+
+
+class TestIsDeletionCancelled:
+    def test_a_user_still_queued_for_deletion_is_not_cancelled(self, mock_db):
+        row = MagicMock(spec=users_models.Users)
+        row.deletion_requested_at = "2026-01-01"
+        _one(mock_db, row)
+
+        assert users_crud.is_deletion_cancelled(1, mock_db) is False
+
+    def test_a_user_whose_marker_was_cleared_is_cancelled(self, mock_db):
+        row = MagicMock(spec=users_models.Users)
+        row.deletion_requested_at = None
+        _one(mock_db, row)
+
+        assert users_crud.is_deletion_cancelled(1, mock_db) is True
+
+    def test_a_user_that_is_gone_is_not_cancelled(self, mock_db):
+        _one(mock_db, None)
+
+        assert users_crud.is_deletion_cancelled(1, mock_db) is False
+
+
+class TestGetPhotoKeysByUserIds:
+    def test_returns_the_photo_each_existing_user_names(self):
+        db = create_sqlite_session()
+        for user_id, photo in ((1, "1.png"), (2, None), (3, "3.jpg")):
+            db.add(
+                users_models.Users(
+                    id=user_id,
+                    name=f"User {user_id}",
+                    username=f"user{user_id}",
+                    email=f"user{user_id}@example.com",
+                    preferred_language="us",
+                    access_type="regular",
+                    photo_path=photo,
+                )
+            )
+        db.commit()
+
+        # A user without a photo, and one that does not exist, name nothing.
+        assert users_crud.get_photo_keys_by_user_ids([1, 2, 3, 4], db) == {1: "1.png", 3: "3.jpg"}
+        db.close()
 
 
 class TestListStalledDeletionIds:

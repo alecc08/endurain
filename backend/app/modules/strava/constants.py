@@ -9,6 +9,15 @@ PROVIDER_NAME = "strava"
 #: The name the Strava export layout registers under with bulk import.
 BULK_IMPORT_FORMAT_NAME = "strava"
 
+#: The member of a Strava export that lists its activities.
+BULK_IMPORT_ACTIVITIES_FILE = "activities.csv"
+
+#: The directory under ``FILES_DIR`` each user's Strava export is dropped in, one subdirectory per user.
+BULK_IMPORT_DIR_NAME = "strava_import"
+
+#: The name a shoe with no name in a Strava gear export gets, followed by a number that keeps it unique.
+UNNAMED_SHOE_NICKNAME_PREFIX = "Unnamed Shoe "
+
 #: The job names a Strava link's and unlink's realtime hints carry; the web client follows the same names.
 LINK_JOB = "strava:link"
 UNLINK_JOB = "strava:unlink"
@@ -26,21 +35,8 @@ OAUTH_STATE_MIN_LENGTH = 32
 #: Seconds a token refresh claim lasts if its holder dies before releasing it.
 TOKEN_REFRESH_CLAIM_TTL_SECONDS = 60
 
-#: Lifetime of a queued sync's claim and state: longer than any sync takes, shorter than a stuck claim should block.
-SYNC_TTL_SECONDS = 30 * 60
-
-#: Longest activity range one request may ask for; each activity is several Strava calls, so a longer history
-#: is fetched in several requests.
-MAX_ACTIVITIES_RANGE_DAYS = 366
-
 # Activities an unlink deletes per transaction, so a large account never holds every row lock at once.
 UNLINK_DELETE_BATCH_SIZE = 500
-
-#: Account links the in-process pool may hold, running or queued; each is one Strava round trip.
-MAX_CONCURRENT_LINKS = 4
-
-#: Syncs the in-process pool may hold, running or queued, when durable jobs are off.
-MAX_PENDING_LOCAL_SYNCS = 50
 
 #: Event source recorded on a queued sync.
 SYNC_SOURCE_API = "api:strava_sync"

@@ -15,6 +15,7 @@ from pydantic import (
     field_validator,
 )
 
+import core.pagination as core_pagination
 import modules.server_settings.schema as server_settings_schema
 import modules.users.users.constants as users_constants
 
@@ -383,6 +384,10 @@ class UserPublicRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
+#: One page of public user projections, as a search returns them.
+UserPublicPage = core_pagination.Page[UserPublicRead]
+
+
 class UsersEdit(Users):
     """Users schema for an administrative edit.
 
@@ -411,6 +416,7 @@ class UsersMe(UsersRead):
 
     Attributes:
         privacy_settings_version: Version of the privacy settings, for ``If-Match``.
+        integrations_version: Version of the integrations, for ``If-Match`` when the Strava client is set.
         is_strava_linked: Strava integration status.
         is_garminconnect_linked: Garmin Connect status.
         default_activity_visibility: Default visibility level.
@@ -433,6 +439,10 @@ class UsersMe(UsersRead):
 
     privacy_settings_version: StrictInt | None = Field(
         default=None, description="Version of the privacy settings, sent back in If-Match when they are edited"
+    )
+    integrations_version: StrictInt | None = Field(
+        default=None,
+        description="Version of the integrations, sent back in If-Match when the Strava client is set",
     )
     is_strava_linked: StrictInt | None = Field(default=None, description="Whether Strava is linked")
     is_garminconnect_linked: StrictInt | None = Field(default=None, description="Whether Garmin Connect is linked")
@@ -542,6 +552,18 @@ class UsersEditPassword(BaseModel):
     )
 
 
+class UsersEmailLookup(BaseModel):
+    """Schema for looking a user up by email address.
+
+    Attributes:
+        email: Email address to search for, case-insensitive.
+    """
+
+    email: StrictStr = Field(..., min_length=1, max_length=250, description="Email address to search for")
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class UsersAdminEditPassword(BaseModel):
     """Schema for admin password reset operations.
 
@@ -586,7 +608,7 @@ class StepUpVerification(BaseModel):
 
     For SSO-only accounts (no local password set), the password
     field may be omitted and the password check is skipped — see
-    :func:`modules.auth._internal.services.step_up_service.verify_step_up_credentials`
+    :func:`modules.auth.account_security.step_up_service.verify_step_up_credentials`
     and ``docs/developer-guide/auth-boundary.md`` for the rationale
     and the tracked SSO-only step-up gap.
 

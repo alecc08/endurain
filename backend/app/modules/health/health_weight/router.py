@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response, Security, status
+from fastapi import APIRouter, Query, Request, Response, Security, status
 
 import core.dependencies as core_dependencies
 import core.etag as core_etag
@@ -12,6 +12,7 @@ import modules.auth.dependencies as auth_dependencies
 import modules.health.constants as health_constants
 import modules.health.health_weight.schema as health_weight_schema
 import modules.health.health_weight.service as health_weight_service
+import modules.health.schema as health_schema
 
 # Define the API router
 router = APIRouter()
@@ -25,7 +26,7 @@ router = APIRouter()
 def read_health_weight_all_pagination(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    page: Annotated[core_pagination.PageParams, Depends(core_pagination.list_page_params)],
+    page: core_pagination.ListPage,
     interval: Annotated[
         health_constants.Interval | None,
         Query(description="Filter by goal interval"),
@@ -48,6 +49,35 @@ def read_health_weight_all_pagination(
     return health_weight_service.list_health_weight(
         token_user_id, db, page_number=page.page_number, num_records=page.num_records, interval=interval
     )
+
+
+@router.get(
+    "/chart",
+    response_model=health_schema.HealthChartSeries,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:read"])],
+)
+def read_health_weight_chart(
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
+    interval: Annotated[
+        health_constants.Interval,
+        Query(description="Interval to chart"),
+    ] = health_constants.Interval.LAST_7_DAYS,
+) -> health_schema.HealthChartSeries:
+    """Chart the authenticated user's weight over an interval.
+
+    One aggregated point per day, week or month depending on the interval, so the response stays small
+    however long the history. Access is restricted to users with the 'health:read' scope.
+
+    Args:
+        token_user_id: The ID of the authenticated user extracted from the access token.
+        db: Database session for executing queries.
+        interval: The window to chart.
+
+    Returns:
+        The interval's bucket size and its points, oldest first.
+    """
+    return health_weight_service.get_health_weight_chart(token_user_id, interval, db)
 
 
 @router.post(
@@ -122,7 +152,7 @@ def edit_health_weight(
     updated = health_weight_service.edit_health_weight(
         token_user_id, health_weight_id, health_weight, db, if_match=if_match
     )
-    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    core_etag.set_etag(response, updated.version)
     return updated
 
 
@@ -137,6 +167,7 @@ def delete_health_weight(
     request: Request,
     health_weight_id: core_dependencies.PositiveId,
     token_user_id: auth_dependencies.CurrentUserId,
+    if_match: core_dependencies.IfMatch,
     db: core_dependencies.DbSession,
 ) -> None:
     """Delete a health weight entry for the authenticated user.
@@ -149,12 +180,14 @@ def delete_health_weight(
         health_weight_id (int): The unique identifier of the health weight entry to delete.
         token_user_id (int): The user ID extracted from the access token, used to ensure
             users can only delete their own weight entries.
+        if_match: The ``If-Match`` precondition.
         db (Session): Database session dependency for performing database operations.
 
     Returns:
         None: This function does not return any value upon successful deletion.
 
     Raises:
+        PreconditionFailedError: If the record changed since the client read it.
         NotFoundError: If the entry doesn't exist for the user.
     """
-    health_weight_service.delete_health_weight(token_user_id, health_weight_id, db)
+    health_weight_service.delete_health_weight(token_user_id, health_weight_id, db, if_match=if_match)

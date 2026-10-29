@@ -1,5 +1,5 @@
 from datetime import date as datetime_date
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -69,10 +69,10 @@ class TestReads:
 
 
 class TestCreateHealthSteps:
-    def test_stages_without_committing(self, mock_db):
+    def test_stages_without_committing(self, mock_db, stub_model):
         record = health_steps_schema.HealthStepsCreate(date=datetime_date(2024, 1, 15), steps=9000)
 
-        with patch.object(health_steps_models, "HealthSteps", return_value=_row()) as model:
+        with stub_model(health_steps_crud, _row()) as model:
             health_steps_crud.create_health_steps(1, record, mock_db)
 
         assert model.call_args.kwargs["user_id"] == 1
@@ -80,12 +80,12 @@ class TestCreateHealthSteps:
         mock_db.flush.assert_called_once()
         mock_db.commit.assert_not_called()
 
-    def test_duplicate_date_is_a_conflict(self, mock_db):
+    def test_duplicate_date_is_a_conflict(self, mock_db, stub_model):
         mock_db.flush.side_effect = IntegrityError("duplicate", None, None)
         record = health_steps_schema.HealthStepsCreate(date=datetime_date(2024, 1, 15), steps=9000)
 
         with (
-            patch.object(health_steps_models, "HealthSteps", return_value=_row()),
+            stub_model(health_steps_crud, _row()),
             pytest.raises(core_exceptions.ConflictError, match="Duplicate entry error"),
         ):
             health_steps_crud.create_health_steps(1, record, mock_db)
@@ -116,7 +116,7 @@ class TestDeleteHealthSteps:
         row = _row()
         _returns_one(mock_db, row)
 
-        health_steps_crud.delete_health_steps(1, 1, mock_db)
+        health_steps_crud.delete_health_steps(1, 1, mock_db, if_match="*")
 
         mock_db.delete.assert_called_once_with(row)
         mock_db.flush.assert_called_once()
@@ -126,5 +126,5 @@ class TestDeleteHealthSteps:
         _returns_one(mock_db, None)
 
         with pytest.raises(core_exceptions.NotFoundError):
-            health_steps_crud.delete_health_steps(1, 9, mock_db)
+            health_steps_crud.delete_health_steps(1, 9, mock_db, if_match="*")
         mock_db.delete.assert_not_called()

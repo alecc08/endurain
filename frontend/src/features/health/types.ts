@@ -78,6 +78,28 @@ export type HealthInterval =
 /** The time window the weight history can be filtered to. */
 export type WeightInterval = HealthInterval
 
+/** Span one chart point aggregates: a day, an ISO week (dated its Monday) or a month (dated its first day). */
+export type HealthChartBucket = Schemas['ChartBucket']
+
+/** Health metrics that serve an aggregated chart series beside their paginated list. */
+export type HealthChartMetric = 'sleep' | 'rhr' | 'steps' | 'weight' | 'water' | 'poop'
+
+/** One aggregated chart point, in the metric's stored unit (kg, ml, seconds, bpm, steps or movements per day). */
+export interface HealthChartPoint {
+  /** First day of the bucket as `yyyy-mm-dd`. */
+  date: string
+  /** The bucket's aggregated value. */
+  value: number
+}
+
+/** A metric aggregated over an interval, oldest bucket first. */
+export interface HealthChartSeries {
+  /** The span each point aggregates. */
+  bucket: HealthChartBucket
+  /** The buckets that hold data. */
+  points: HealthChartPoint[]
+}
+
 /**
  * A single weight measurement. All masses are stored in kilograms (the backend
  * canonical unit); the UI converts to the viewer's units at the boundary.
@@ -114,8 +136,8 @@ export interface WeightEntry {
 export interface WeightEntryInput {
   /** Measurement date as a `yyyy-mm-dd` string, or `null`. */
   date: string | null
-  /** Body weight in kilograms, or `null`. */
-  weightKg: number | null
+  /** Body weight in kilograms. */
+  weightKg: number
   /** Body Mass Index, or `null`. */
   bmi: number | null
   /** Body fat as a percentage, or `null`. */
@@ -156,8 +178,8 @@ export interface StepsEntry {
 export interface StepsEntryInput {
   /** Measurement date as a `yyyy-mm-dd` string, or `null`. */
   date: string | null
-  /** Step count for the day, or `null`. */
-  steps: number | null
+  /** Step count for the day. */
+  steps: number
 }
 
 /** One page of the paginated steps history. */
@@ -188,8 +210,8 @@ export interface WaterEntry {
 export interface WaterEntryInput {
   /** Measurement date as a `yyyy-mm-dd` string, or `null`. */
   date: string | null
-  /** Water consumed for the day in millilitres, or `null`. */
-  amountMl: number | null
+  /** Water consumed for the day in millilitres. */
+  amountMl: number
 }
 
 /** One page of the paginated water history. */

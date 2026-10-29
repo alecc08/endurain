@@ -12,6 +12,8 @@ import type {
   FastingSnapshot,
   FastingStats,
   FastingStatus,
+  HealthChartMetric,
+  HealthChartSeries,
   HealthDashboard,
   HealthInterval,
   HealthTargets,
@@ -43,6 +45,7 @@ type HealthStepsDto = Schemas['HealthStepsRead']
 type HealthWaterDto = Schemas['HealthWaterRead']
 type HealthPoopDto = Schemas['HealthPoopRead']
 type HealthSleepDto = Schemas['HealthSleepRead']
+type HealthChartSeriesDto = Schemas['HealthChartSeries']
 
 /** Maps a raw targets DTO to the clean {@link HealthTargets} model. */
 function mapTargets(dto: HealthTargetsDto): HealthTargets {
@@ -174,6 +177,39 @@ async function fetchHealthHistoryPage<Dto, Entry>(
   return { records: response.items.map(mapEntry), total: response.total }
 }
 
+/** Endpoint of each metric's aggregated chart series, relative to `/health`. */
+const CHART_PATHS: Record<HealthChartMetric, string> = {
+  sleep: 'sleep/chart',
+  rhr: 'sleep/chart/resting-heart-rate',
+  steps: 'steps/chart',
+  weight: 'weight/chart',
+  water: 'water/chart',
+  poop: 'poop/chart',
+}
+
+/**
+ * Fetches a metric aggregated over an interval: one point per day, week or month depending on the
+ * interval, so the chart covers the whole range in a single small request.
+ *
+ * @param metric - The metric to chart.
+ * @param interval - The time window to chart.
+ * @param signal - Optional abort signal for cancellation.
+ * @returns The interval's bucket size and its points, oldest first.
+ * @throws {HttpError} When the request fails.
+ */
+export async function fetchHealthChart(
+  metric: HealthChartMetric,
+  interval: HealthInterval,
+  signal?: AbortSignal,
+): Promise<HealthChartSeries> {
+  const search = new URLSearchParams({ interval })
+  const dto = await apiFetch<HealthChartSeriesDto>(
+    `/health/${CHART_PATHS[metric]}?${search.toString()}`,
+    { signal },
+  )
+  return { bucket: dto.bucket, points: dto.points.map(({ date, value }) => ({ date, value })) }
+}
+
 /** Creates a health resource and maps the returned record. */
 async function createHealthResource<Dto, Entry, Payload extends object>(
   resource: string,
@@ -203,9 +239,13 @@ async function updateHealthResource<Dto, Entry, Payload extends object>(
   return mapEntry(dto)
 }
 
-/** Deletes a single health-history record. */
-async function deleteHealthResource(resource: string, id: number): Promise<void> {
-  await apiFetch<void>(`/health/${resource}/${id}`, { method: 'DELETE', responseType: 'void' })
+/** Deletes a single health-history record, conditional on the version the caller read. */
+async function deleteHealthResource(resource: string, id: number, version: number): Promise<void> {
+  await apiFetch<void>(`/health/${resource}/${id}`, {
+    method: 'DELETE',
+    headers: ifMatchHeaders(version),
+    responseType: 'void',
+  })
 }
 
 /** Updates a subset of the health-targets record and maps the response. */
@@ -229,8 +269,8 @@ interface HealthCrudService<Entry, Input> {
   create: (input: Input) => Promise<Entry>
   /** Changes an existing record, conditional on the version the caller read, and maps the response. */
   update: (id: number, input: Input, version: number) => Promise<Entry>
-  /** Deletes a record by id. */
-  remove: (id: number) => Promise<void>
+  /** Deletes a record, conditional on the version the caller read. */
+  remove: (id: number, version: number) => Promise<void>
 }
 
 /**
@@ -254,7 +294,7 @@ function createHealthCrudService<Dto, Entry, Wire extends object, Input>(
     create: (input) => createHealthResource(resource, toWireFields(input), mapEntry),
     update: (id, input, version) =>
       updateHealthResource(resource, id, toWireFields(input), version, mapEntry),
-    remove: (id) => deleteHealthResource(resource, id),
+    remove: (id, version) => deleteHealthResource(resource, id, version),
   }
 }
 
@@ -609,17 +649,20 @@ export async function updateFastingEntry(
  * @param id - The fasting record id.
  * @param fastEndTime - ISO end timestamp of the fast.
  * @param status - The final status to record.
+ * @param version - The row version the session was read at, for `If-Match`.
  * @returns The persisted fasting session.
- * @throws {HttpError} When the request fails.
+ * @throws {HttpError} When the request fails, including 412 when the session changed meanwhile.
  */
 export async function completeFastingEntry(
   id: number,
   fastEndTime: string,
   status: FastingStatus,
+  version: number,
 ): Promise<FastingEntry> {
   const payload: Schemas['HealthFastingComplete'] = { fast_end_time: fastEndTime, status }
   const dto = await apiFetch<HealthFastingReadDto>(`/health/fasting/${id}/complete`, {
     method: 'POST',
+    headers: ifMatchHeaders(version),
     body: JSON.stringify(payload),
   })
   return mapFastingEntry(dto)
@@ -629,10 +672,11 @@ export async function completeFastingEntry(
  * Deletes a fasting session.
  *
  * @param id - The fasting record id.
- * @throws {HttpError} When the request fails.
+ * @param version - The row version the session was read at, for `If-Match`.
+ * @throws {HttpError} When the request fails (`412` when the session changed since it was read).
  */
-export async function deleteFastingEntry(id: number): Promise<void> {
-  await deleteHealthResource('fasting', id)
+export async function deleteFastingEntry(id: number, version: number): Promise<void> {
+  await deleteHealthResource('fasting', id, version)
 }
 
 /** Updates only the user's fasting-duration target, preserving the other targets. */

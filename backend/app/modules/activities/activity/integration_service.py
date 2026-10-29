@@ -12,6 +12,7 @@ from datetime import date, datetime
 from sqlalchemy.orm import Session
 
 import core.pagination as core_pagination
+import modules.activities.activity.bulk_edit_job_service as activity_bulk_edit_job_service
 import modules.activities.activity.child_access_service as activity_child_access_service
 import modules.activities.activity.child_collection_service as activity_child_collection_service
 import modules.activities.activity.contracts as activity_contracts
@@ -60,20 +61,26 @@ def get_activity_by_garminconnect_id(
     return activity_crud.get_activity_by_garminconnect_id_from_user_id(garminconnect_activity_id, user_id, db)
 
 
-def list_user_activities_with_garminconnect_gear(
+def list_garminconnect_gear_activity_refs(
     user_id: int,
     db: Session,
-) -> list[activity_schema.ActivityRead]:
-    """Return a user's activities that carry a Garmin Connect gear id.
+    *,
+    after_id: int = 0,
+    limit: int = core_pagination.DEFAULT_MAINTENANCE_BATCH_SIZE,
+) -> list[activity_contracts.ActivityGarminGearRef]:
+    """Return one bounded page of a user's activities that carry a Garmin Connect gear id.
 
     Args:
         user_id: The owning user id.
         db: Database session.
+        after_id: Return only activities with an id greater than this; pass the last id of the
+            previous page to continue.
+        limit: Maximum number of rows to return.
 
     Returns:
-        The matching activities, or ``None`` when there are none.
+        The activity id and Garmin gear id of each match, in id order; empty when the page is past the end.
     """
-    return activity_crud.get_user_activities_by_user_id_and_garminconnect_gear_set(user_id, db)
+    return activity_crud.get_garminconnect_gear_activity_refs(user_id, db, after_id=after_id, limit=limit)
 
 
 def bulk_set_activities_gear(
@@ -568,3 +575,8 @@ def get_public_activity(activity_id: int, db: Session) -> activity_schema.Activi
         NotFoundError: When the activity does not exist or is not publicly shareable.
     """
     return activity_service.get_public_activity(activity_id, db)
+
+
+def shutdown_bulk_edit_pool() -> None:
+    """Stop the in-process pool bulk activity edits run on, without waiting for them."""
+    activity_bulk_edit_job_service.shutdown_pool()

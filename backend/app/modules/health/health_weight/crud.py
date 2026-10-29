@@ -3,62 +3,21 @@
 from datetime import date as date_type
 
 from sqlalchemy import desc, func, select, update
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-import core.etag as core_etag
-import core.exceptions as core_exceptions
+import modules.health.computation as health_computation
+import modules.health.constants as health_constants
 import modules.health.health_weight.models as health_weight_models
 import modules.health.health_weight.schema as health_weight_schema
-import modules.health.health_weight.serializers as health_weight_serializers
+import modules.health.record_crud as health_record_crud
+import modules.health.schema as health_schema
 
-
-def _get_model_by_id_and_user_id(health_weight_id: int, user_id: int, db: Session) -> health_weight_models.HealthWeight:
-    """Load a user's weight row by id.
-
-    Args:
-        health_weight_id: The record to load.
-        user_id: The record's owner.
-        db: Database session.
-
-    Returns:
-        The ORM row.
-
-    Raises:
-        NotFoundError: If the user has no such record.
-    """
-    stmt = select(health_weight_models.HealthWeight).where(
-        health_weight_models.HealthWeight.id == health_weight_id,
-        health_weight_models.HealthWeight.user_id == user_id,
-    )
-    db_health_weight = db.execute(stmt).scalar_one_or_none()
-
-    if db_health_weight is None:
-        raise core_exceptions.NotFoundError("Health weight not found")
-
-    return db_health_weight
-
-
-def health_weight_exists(health_weight_id: int, user_id: int, db: Session) -> bool:
-    """Report whether a user has a weight record.
-
-    Args:
-        health_weight_id: The record to look for.
-        user_id: The record's owner.
-        db: Database session.
-
-    Returns:
-        True when the user has such a record.
-    """
-    stmt = select(
-        select(health_weight_models.HealthWeight.id)
-        .where(
-            health_weight_models.HealthWeight.id == health_weight_id,
-            health_weight_models.HealthWeight.user_id == user_id,
-        )
-        .exists()
-    )
-    return bool(db.execute(stmt).scalar())
+SPEC = health_record_crud.RecordSpec(
+    model=health_weight_models.HealthWeight,
+    read_schema=health_weight_schema.HealthWeightRead,
+    not_found="Health weight not found",
+    etag_label="weight record",
+)
 
 
 def get_all_health_weight(db: Session) -> list[health_weight_schema.HealthWeightRead]:
@@ -71,7 +30,9 @@ def get_all_health_weight(db: Session) -> list[health_weight_schema.HealthWeight
         The records ordered by date descending.
     """
     stmt = select(health_weight_models.HealthWeight).order_by(desc(health_weight_models.HealthWeight.date))
-    return health_weight_serializers.to_read_schemas(list(db.execute(stmt).scalars().all()))
+    return health_computation.to_read_schemas(
+        health_weight_schema.HealthWeightRead, list(db.execute(stmt).scalars().all())
+    )
 
 
 def get_health_weight_number_by_user_id(user_id: int, db: Session, since: date_type | None = None) -> int:
@@ -85,15 +46,7 @@ def get_health_weight_number_by_user_id(user_id: int, db: Session, since: date_t
     Returns:
         The number of records.
     """
-    stmt = (
-        select(func.count())
-        .select_from(health_weight_models.HealthWeight)
-        .where(health_weight_models.HealthWeight.user_id == user_id)
-    )
-    if since is not None:
-        stmt = stmt.where(health_weight_models.HealthWeight.date >= since)
-
-    return db.execute(stmt).scalar_one()
+    return health_record_crud.count(SPEC, user_id, health_weight_models.HealthWeight.date, since, db)
 
 
 def get_all_health_weight_by_user_id(user_id: int, db: Session) -> list[health_weight_schema.HealthWeightRead]:
@@ -111,7 +64,9 @@ def get_all_health_weight_by_user_id(user_id: int, db: Session) -> list[health_w
         .where(health_weight_models.HealthWeight.user_id == user_id)
         .order_by(desc(health_weight_models.HealthWeight.date))
     )
-    return health_weight_serializers.to_read_schemas(list(db.execute(stmt).scalars().all()))
+    return health_computation.to_read_schemas(
+        health_weight_schema.HealthWeightRead, list(db.execute(stmt).scalars().all())
+    )
 
 
 def get_health_weight_by_user_id(
@@ -133,17 +88,16 @@ def get_health_weight_by_user_id(
     Returns:
         The records ordered by date descending.
     """
-    stmt = select(health_weight_models.HealthWeight).where(health_weight_models.HealthWeight.user_id == user_id)
-
-    if since is not None:
-        stmt = stmt.where(health_weight_models.HealthWeight.date >= since)
-
-    stmt = stmt.order_by(desc(health_weight_models.HealthWeight.date))
-
-    if page_number is not None and num_records is not None:
-        stmt = stmt.offset((page_number - 1) * num_records).limit(num_records)
-
-    return health_weight_serializers.to_read_schemas(list(db.execute(stmt).scalars().all()))
+    return health_record_crud.list_page(
+        SPEC,
+        user_id,
+        health_weight_models.HealthWeight.date,
+        health_weight_models.HealthWeight.date,
+        since,
+        page_number,
+        num_records,
+        db,
+    )
 
 
 def get_health_weight_by_date_and_user_id(
@@ -159,13 +113,7 @@ def get_health_weight_by_date_and_user_id(
     Returns:
         The record, or ``None``.
     """
-    stmt = select(health_weight_models.HealthWeight).where(
-        health_weight_models.HealthWeight.date == func.date(date),
-        health_weight_models.HealthWeight.user_id == user_id,
-    )
-    db_health_weight = db.execute(stmt).scalar_one_or_none()
-
-    return health_weight_serializers.to_read_schema(db_health_weight) if db_health_weight else None
+    return health_record_crud.find_by_date(SPEC, user_id, date, db)
 
 
 def get_latest_weight_by_user_id(user_id: int, db: Session) -> health_weight_schema.HealthWeightRead | None:
@@ -186,7 +134,11 @@ def get_latest_weight_by_user_id(user_id: int, db: Session) -> health_weight_sch
     )
     db_health_weight = db.execute(stmt).scalar_one_or_none()
 
-    return health_weight_serializers.to_read_schema(db_health_weight) if db_health_weight else None
+    return (
+        health_computation.to_read_schema(health_weight_schema.HealthWeightRead, db_health_weight)
+        if db_health_weight
+        else None
+    )
 
 
 def create_health_weight(
@@ -205,21 +157,9 @@ def create_health_weight(
     Raises:
         ConflictError: If the user already has a record for that date.
     """
-    db_health_weight = health_weight_models.HealthWeight(
-        **health_weight.model_dump(exclude_none=False),
-        user_id=user_id,
+    return health_record_crud.create(
+        SPEC, user_id, health_weight, db, conflict=health_record_crud.duplicate_date_message(health_weight.date)
     )
-
-    try:
-        db.add(db_health_weight)
-        db.flush()
-        db.refresh(db_health_weight)
-    except IntegrityError as err:
-        raise core_exceptions.ConflictError(
-            f"Duplicate entry error. Check if there is already a entry created for {health_weight.date}"
-        ) from err
-
-    return health_weight_serializers.to_read_schema(db_health_weight)
 
 
 def edit_health_weight(
@@ -244,18 +184,18 @@ def edit_health_weight(
 
     Raises:
         NotFoundError: If the user has no such record.
+        ConflictError: If the new date already has a record.
         PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
-    db_health_weight = _get_model_by_id_and_user_id(health_weight_id, user_id, db)
-    core_etag.require_if_match(if_match, db_health_weight.version, "weight record")
-
-    for key, value in health_weight.model_dump(exclude_unset=True).items():
-        setattr(db_health_weight, key, value)
-
-    db.flush()
-    db.refresh(db_health_weight)
-
-    return health_weight_serializers.to_read_schema(db_health_weight)
+    return health_record_crud.edit(
+        SPEC,
+        health_weight_id,
+        user_id,
+        health_weight,
+        db,
+        if_match=if_match,
+        conflict=health_record_crud.DATE_TAKEN_MESSAGE,
+    )
 
 
 def recalculate_bmi_for_user(user_id: int, height_cm: float | None, db: Session) -> None:
@@ -285,16 +225,42 @@ def recalculate_bmi_for_user(user_id: int, height_cm: float | None, db: Session)
     db.flush()
 
 
-def delete_health_weight(user_id: int, health_weight_id: int, db: Session) -> None:
+def delete_health_weight(user_id: int, health_weight_id: int, db: Session, *, if_match: str) -> None:
     """Stage the deletion of a user's weight record.
 
     Args:
         user_id: The record's owner.
         health_weight_id: The record to delete.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
-    db.delete(_get_model_by_id_and_user_id(health_weight_id, user_id, db))
-    db.flush()
+    health_record_crud.delete(SPEC, health_weight_id, user_id, db, if_match=if_match)
+
+
+def get_health_weight_chart(
+    user_id: int, since: date_type, bucket: health_constants.ChartBucket, db: Session
+) -> list[health_schema.HealthChartPoint]:
+    """Average a user's weight per chart bucket.
+
+    Args:
+        user_id: The records' owner.
+        since: First day of the charted window.
+        bucket: The span each point aggregates.
+        db: Database session.
+
+    Returns:
+        The buckets that hold a value, oldest first.
+    """
+    model = health_weight_models.HealthWeight
+    day = health_computation.chart_bucket_expression(model.date, bucket, since)
+    stmt = (
+        select(day, func.avg(model.weight))
+        .where(model.user_id == user_id, model.weight.is_not(None), model.date >= since)
+        .group_by(day)
+        .order_by(day)
+    )
+    return [health_schema.HealthChartPoint(date=d, value=float(value)) for d, value in db.execute(stmt).all()]

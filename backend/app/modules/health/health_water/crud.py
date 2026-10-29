@@ -3,62 +3,22 @@
 from datetime import date as date_type
 from decimal import Decimal
 
-from sqlalchemy import desc, func, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-import core.etag as core_etag
-import core.exceptions as core_exceptions
+import modules.health.computation as health_computation
+import modules.health.constants as health_constants
 import modules.health.health_water.models as health_water_models
 import modules.health.health_water.schema as health_water_schema
-import modules.health.health_water.serializers as health_water_serializers
+import modules.health.record_crud as health_record_crud
+import modules.health.schema as health_schema
 
-
-def _get_model_by_id_and_user_id(health_water_id: int, user_id: int, db: Session) -> health_water_models.HealthWater:
-    """Load a user's water row by id.
-
-    Args:
-        health_water_id: The record to load.
-        user_id: The record's owner.
-        db: Database session.
-
-    Returns:
-        The ORM row.
-
-    Raises:
-        NotFoundError: If the user has no such record.
-    """
-    stmt = select(health_water_models.HealthWater).where(
-        health_water_models.HealthWater.id == health_water_id,
-        health_water_models.HealthWater.user_id == user_id,
-    )
-    db_health_water = db.execute(stmt).scalar_one_or_none()
-
-    if db_health_water is None:
-        raise core_exceptions.NotFoundError("Health water not found")
-
-    return db_health_water
-
-
-def health_water_exists(health_water_id: int, user_id: int, db: Session) -> bool:
-    """Report whether a user has a water intake record.
-
-    Args:
-        health_water_id: The record to look for.
-        user_id: The record's owner.
-        db: Database session.
-
-    Returns:
-        True when the user has such a record.
-    """
-    stmt = select(
-        select(health_water_models.HealthWater.id)
-        .where(
-            health_water_models.HealthWater.id == health_water_id, health_water_models.HealthWater.user_id == user_id
-        )
-        .exists()
-    )
-    return bool(db.execute(stmt).scalar())
+SPEC = health_record_crud.RecordSpec(
+    model=health_water_models.HealthWater,
+    read_schema=health_water_schema.HealthWaterRead,
+    not_found="Health water not found",
+    etag_label="water intake record",
+)
 
 
 def get_health_water_number_by_user_id(user_id: int, db: Session, since: date_type | None = None) -> int:
@@ -72,15 +32,7 @@ def get_health_water_number_by_user_id(user_id: int, db: Session, since: date_ty
     Returns:
         The number of records.
     """
-    stmt = (
-        select(func.count())
-        .select_from(health_water_models.HealthWater)
-        .where(health_water_models.HealthWater.user_id == user_id)
-    )
-    if since is not None:
-        stmt = stmt.where(health_water_models.HealthWater.date >= since)
-
-    return db.execute(stmt).scalar_one()
+    return health_record_crud.count(SPEC, user_id, health_water_models.HealthWater.date, since, db)
 
 
 def get_health_water_by_user_id(
@@ -102,17 +54,16 @@ def get_health_water_by_user_id(
     Returns:
         The records ordered by date descending.
     """
-    stmt = select(health_water_models.HealthWater).where(health_water_models.HealthWater.user_id == user_id)
-
-    if since is not None:
-        stmt = stmt.where(health_water_models.HealthWater.date >= since)
-
-    stmt = stmt.order_by(desc(health_water_models.HealthWater.date))
-
-    if page_number is not None and num_records is not None:
-        stmt = stmt.offset((page_number - 1) * num_records).limit(num_records)
-
-    return health_water_serializers.to_read_schemas(list(db.execute(stmt).scalars().all()))
+    return health_record_crud.list_page(
+        SPEC,
+        user_id,
+        health_water_models.HealthWater.date,
+        health_water_models.HealthWater.date,
+        since,
+        page_number,
+        num_records,
+        db,
+    )
 
 
 def get_health_water_by_date_and_user_id(
@@ -128,13 +79,7 @@ def get_health_water_by_date_and_user_id(
     Returns:
         The record, or ``None``.
     """
-    stmt = select(health_water_models.HealthWater).where(
-        health_water_models.HealthWater.date == func.date(date),
-        health_water_models.HealthWater.user_id == user_id,
-    )
-    db_health_water = db.execute(stmt).scalar_one_or_none()
-
-    return health_water_serializers.to_read_schema(db_health_water) if db_health_water else None
+    return health_record_crud.find_by_date(SPEC, user_id, date, db)
 
 
 def create_health_water(
@@ -153,21 +98,9 @@ def create_health_water(
     Raises:
         ConflictError: If the user already has a record for that date.
     """
-    db_health_water = health_water_models.HealthWater(
-        **health_water.model_dump(exclude_none=False),
-        user_id=user_id,
+    return health_record_crud.create(
+        SPEC, user_id, health_water, db, conflict=health_record_crud.duplicate_date_message(health_water.date)
     )
-
-    try:
-        db.add(db_health_water)
-        db.flush()
-        db.refresh(db_health_water)
-    except IntegrityError as err:
-        raise core_exceptions.ConflictError(
-            f"Duplicate entry error. Check if there is already an entry created for {health_water.date}"
-        ) from err
-
-    return health_water_serializers.to_read_schema(db_health_water)
 
 
 def edit_health_water(
@@ -192,18 +125,18 @@ def edit_health_water(
 
     Raises:
         NotFoundError: If the user has no such record.
+        ConflictError: If the new date already has a record.
         PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
-    db_health_water = _get_model_by_id_and_user_id(health_water_id, user_id, db)
-    core_etag.require_if_match(if_match, db_health_water.version, "water intake record")
-
-    for key, value in health_water.model_dump(exclude_unset=True).items():
-        setattr(db_health_water, key, value)
-
-    db.flush()
-    db.refresh(db_health_water)
-
-    return health_water_serializers.to_read_schema(db_health_water)
+    return health_record_crud.edit(
+        SPEC,
+        health_water_id,
+        user_id,
+        health_water,
+        db,
+        if_match=if_match,
+        conflict=health_record_crud.DATE_TAKEN_MESSAGE,
+    )
 
 
 def add_health_water_amount(
@@ -227,7 +160,7 @@ def add_health_water_amount(
     Raises:
         NotFoundError: If the user has no such record.
     """
-    db_health_water = _get_model_by_id_and_user_id(health_water_id, user_id, db)
+    db_health_water = health_record_crud.get_owned(SPEC, health_water_id, user_id, db)
     db.execute(
         update(health_water_models.HealthWater)
         .where(health_water_models.HealthWater.id == health_water_id)
@@ -241,19 +174,45 @@ def add_health_water_amount(
     )
     db.refresh(db_health_water)
 
-    return health_water_serializers.to_read_schema(db_health_water)
+    return health_computation.to_read_schema(health_water_schema.HealthWaterRead, db_health_water)
 
 
-def delete_health_water(user_id: int, health_water_id: int, db: Session) -> None:
+def delete_health_water(user_id: int, health_water_id: int, db: Session, *, if_match: str) -> None:
     """Stage the deletion of a user's water intake record.
 
     Args:
         user_id: The record's owner.
         health_water_id: The record to delete.
         db: Database session.
+        if_match: The ``If-Match`` precondition.
 
     Raises:
         NotFoundError: If the user has no such record.
+        PreconditionFailedError: When ``if_match`` does not name the row's version.
     """
-    db.delete(_get_model_by_id_and_user_id(health_water_id, user_id, db))
-    db.flush()
+    health_record_crud.delete(SPEC, health_water_id, user_id, db, if_match=if_match)
+
+
+def get_health_water_chart(
+    user_id: int, since: date_type, bucket: health_constants.ChartBucket, db: Session
+) -> list[health_schema.HealthChartPoint]:
+    """Average a user's water intake per chart bucket.
+
+    Args:
+        user_id: The records' owner.
+        since: First day of the charted window.
+        bucket: The span each point aggregates.
+        db: Database session.
+
+    Returns:
+        The buckets that hold a value, oldest first.
+    """
+    model = health_water_models.HealthWater
+    day = health_computation.chart_bucket_expression(model.date, bucket, since)
+    stmt = (
+        select(day, func.avg(model.amount_ml))
+        .where(model.user_id == user_id, model.amount_ml.is_not(None), model.date >= since)
+        .group_by(day)
+        .order_by(day)
+    )
+    return [health_schema.HealthChartPoint(date=d, value=float(value)) for d, value in db.execute(stmt).all()]

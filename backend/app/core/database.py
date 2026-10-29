@@ -1,7 +1,7 @@
 """Database engine, session factory, and declarative base."""
 
 import os
-from collections.abc import Generator, Mapping
+from collections.abc import Callable, Generator, Mapping
 from datetime import datetime
 
 import jasil.orm as jasil_orm
@@ -47,6 +47,9 @@ _DEFAULT_MAX_OVERFLOW = 40
 # _LOCK_TIMEOUT_SECONDS instead of parking a request thread (and its pooled connection)
 # for as long as the holder lives.
 _LOCK_TIMEOUT_SECONDS = 30
+
+#: Rows a maintenance purge deletes per transaction, so it never holds a long lock.
+PURGE_BATCH_SIZE = 1000
 
 
 def _int_env(env: Mapping[str, str], name: str, default: int, *, minimum: int) -> int:
@@ -137,6 +140,9 @@ engine = create_engine(
     pool_timeout=30,
     pool_recycle=3600,
     pool_pre_ping=True,
+    # A driver error string embeds the statement's bound parameters (hashes, tokens, emails), and the
+    # error handler logs it, so they are masked at the engine.
+    hide_parameters=True,
     connect_args=_connect_args(os.environ),
 )
 
@@ -217,6 +223,19 @@ def connection_budget_warning(
     )
 
 
+def pool_processes(*, web_workers: int, jobs_enabled: bool) -> int:
+    """Count the processes known to hold a connection pool: the API workers and, with durable jobs, a job worker.
+
+    Args:
+        web_workers: How many API worker processes run.
+        jobs_enabled: Whether durable jobs run on a dedicated worker process.
+
+    Returns:
+        The number of processes, at least one worker being assumed when jobs are enabled.
+    """
+    return web_workers + (1 if jobs_enabled else 0)
+
+
 def check_connection_budget(processes: int) -> None:
     """Warn at startup when this process's pool settings can exhaust PostgreSQL's connections.
 
@@ -251,6 +270,25 @@ def violated_constraint(err: IntegrityError) -> str | None:
         in which case a caller has only the error text to go on.
     """
     return getattr(getattr(err.orig, "diag", None), "constraint_name", None)
+
+
+def delete_in_batches(stage_batch: Callable[[int], int], db: Session) -> int:
+    """Run a purge one bounded batch per transaction until a batch comes back short.
+
+    Args:
+        stage_batch: Stages the deletion of up to the given number of rows and returns how many it staged.
+        db: The session the batches run and commit in.
+
+    Returns:
+        The number of rows deleted.
+    """
+    total = 0
+    while True:
+        deleted = stage_batch(PURGE_BATCH_SIZE)
+        db.commit()
+        total += deleted
+        if deleted < PURGE_BATCH_SIZE:
+            return total
 
 
 def get_db() -> Generator[Session]:

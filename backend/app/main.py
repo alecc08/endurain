@@ -19,7 +19,6 @@ import jasil.runtime as platform_runtime
 import jasil.settings as jasil_settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 import core.async_bridge as core_async_bridge
@@ -28,28 +27,19 @@ import core.database as core_database
 import core.exceptions as core_exceptions
 import core.logger as core_logger
 import core.middleware as core_middleware
+import core.middleware_body_limit as core_middleware_body_limit
 import core.middleware_request_id as core_middleware_request_id
-import core.migrations as core_migrations
 import core.network as core_network
 import core.platform_settings as core_platform_settings
 import core.problem_details as core_problem_details
 import core.rate_limit as core_rate_limit
 import core.scheduler as core_scheduler
 import core.signing as core_signing
+import migrations.startup as migrations_startup
 import module_registry as runtime_module_registry
-import modules.activities.activity_ingestion.integration_service as activity_ingestion_integration
-import modules.auth.identity_providers.link_tokens.utils as idp_link_token_utils
-import modules.auth.oauth_state.utils as oauth_state_utils
-import modules.auth.password_reset_tokens.utils as password_reset_tokens_utils
-import modules.auth.scheduled_jobs as auth_scheduled_jobs
-import modules.auth.sign_up_tokens.utils as sign_up_tokens_utils
-import modules.auth.utils as auth_utils
-import modules.garmin.integration_service as garmin_integration
+import modules.auth.authentication.dependencies as auth_dependencies
 import modules.server_settings.constants as server_settings_constants
 import modules.server_settings.integration_service as server_settings_integration
-import modules.strava.integration_service as strava_integration
-import modules.users.users.integration_service as users_integration
-import modules.users.users_profile.integration_service as users_profile_integration
 from api import router as api_router
 from core.database import SessionLocal
 from core.database import engine as core_db_engine
@@ -91,14 +81,6 @@ async def _safe_run_async[T, **P](
     except Exception as err:
         logger.error("Startup task failed", exc_info=err, extra=core_logger.context(task=label))
         return None
-
-
-def _purge_expired_tokens() -> None:
-    """Sweep expired/invalid auth-related tokens from the DB."""
-    password_reset_tokens_utils.delete_invalid_tokens_from_db()
-    sign_up_tokens_utils.delete_invalid_tokens_from_db()
-    oauth_state_utils.delete_expired_oauth_states_from_db()
-    idp_link_token_utils.delete_idp_link_expired_tokens_from_db()
 
 
 def _read_allowed_tile_domains() -> list[str]:
@@ -202,7 +184,7 @@ async def startup_event(fastapi_app: FastAPI) -> None:
 
     # Phase 1: critical pre-flight tasks. Every migration step runs under one lock, and
     # nothing consumes events or hints until the schema is current.
-    await core_migrations.migrate_schema_and_data()
+    await migrations_startup.migrate_schema_and_data()
 
     # Start the event bus. No-op for the in-process bus (local); starts the
     # Redis Streams consumer thread in distributed mode.
@@ -222,7 +204,6 @@ async def startup_event(fastapi_app: FastAPI) -> None:
     core_scheduler.start_scheduler(
         [
             *core_scheduler.platform_jobs(),
-            *auth_scheduled_jobs.recurring_jobs(),
             *runtime_module_registry.recurring_jobs(),
         ]
     )
@@ -266,18 +247,18 @@ async def startup_event(fastapi_app: FastAPI) -> None:
     # Phase 2: best-effort background syncs and clean-up. Provider activity syncs
     # are queued per user by activity ingestion's startup task below, so startup
     # does not wait on every user's provider round trips.
-    logger.info(
-        "Purging expired tokens (password reset, sign-up, OAuth state, IdP link)",
-        extra=core_logger.context(console=True),
-    )
-    _safe_run("purge_expired_tokens", _purge_expired_tokens)
     _safe_run(
-        "check_connection_budget", lambda: core_database.check_connection_budget(core_config.settings.WEB_WORKERS)
+        "check_connection_budget",
+        lambda: core_database.check_connection_budget(
+            core_database.pool_processes(
+                web_workers=core_config.settings.WEB_WORKERS, jobs_enabled=core_config.settings.JOBS_ENABLED
+            )
+        ),
     )
 
     for task in runtime_module_registry.startup_tasks():
         logger.info(task.description, extra=core_logger.context(console=True))
-        _safe_run(task.name, task.func)
+        _safe_run(task.name, task.run)
 
     logger.info(
         "Initializing allowed tile domains for Content Security Policy", extra=core_logger.context(console=True)
@@ -307,14 +288,8 @@ def shutdown_event(fastapi_app: FastAPI) -> None:
     # the bus still up.
     jasil_lifecycle.shutdown()
 
-    # Stop the bulk-import background pool (no-op when it was never started, i.e.
-    # when durable jobs handle imports instead).
-    activity_ingestion_integration.shutdown_background_ingestion()
-    garmin_integration.shutdown_pools()
-    strava_integration.shutdown_pools()
-    runtime_module_registry.shutdown_deferred_subscribers()
-    users_profile_integration.shutdown_transfer_pool()
-    users_integration.shutdown_deletion_pool()
+    # Stop the subscriber pool and every module's in-process pools (each a no-op when it never started).
+    runtime_module_registry.shutdown_module_pools()
 
     # Stop the SSRF hostname-resolution pool (no-op when no lookup ever ran).
     core_network.shutdown_ssrf_dns_executor()
@@ -330,7 +305,8 @@ def shutdown_event(fastapi_app: FastAPI) -> None:
         core_db_engine.dispose()
     except Exception as err:
         logger.error(
-            f"Error disposing database engine on shutdown: {type(err).__name__}",
+            "Error disposing database engine on shutdown",
+            exc_info=err,
             extra=core_logger.context(console=True),
         )
 
@@ -398,6 +374,9 @@ def create_app() -> FastAPI:
         https_only=is_deployed,
     )
 
+    # Refuse an oversized body before anything reads it. Added before CORS, so the 413 still carries CORS headers.
+    fastapi_app.add_middleware(core_middleware_body_limit.BodySizeLimitMiddleware)
+
     # Add CORS middleware to allow requests from the frontend
     if is_development:
         cors_allow_origins: list[str] = [
@@ -434,8 +413,8 @@ def create_app() -> FastAPI:
         core_rate_limit.rate_limit_exceeded_handler,  # type: ignore[arg-type]
     )
     fastapi_app.add_exception_handler(
-        auth_utils.ClearRefreshTokenCookieHTTPException,
-        auth_utils.clear_refresh_token_cookie_exception_handler,  # type: ignore[arg-type]
+        auth_dependencies.ClearRefreshTokenCookieError,
+        auth_dependencies.clear_refresh_token_cookie_exception_handler,  # type: ignore[arg-type]
     )
     # Single API boundary for the transport-agnostic domain errors raised by the
     # application layers (services, ingestion pipeline, file parsers). Those
@@ -446,7 +425,7 @@ def create_app() -> FastAPI:
     # Keep the generated schema describing the problem documents those handlers
     # emit, rather than FastAPI's defaults.
     core_problem_details.install_problem_schema(fastapi_app)
-    fastapi_app.add_middleware(SlowAPIMiddleware)
+    fastapi_app.add_middleware(core_rate_limit.RateLimitMiddleware)
 
     # RequestIdMiddleware is added last so it executes
     # first in the request chain, ensuring every log

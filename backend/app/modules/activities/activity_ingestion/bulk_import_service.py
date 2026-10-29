@@ -177,6 +177,9 @@ def accept_archive(
     if filename is None or os.path.splitext(filename)[1].lower() != ".zip":
         raise core_exceptions.InvalidInputError("A bulk import takes a .zip archive")
     _ensure_none_running(user_id, db)
+    # The check read, which holds a pooled connection until the transaction ends; the archive can be
+    # 500 MiB, so staging it must not keep that connection.
+    db.commit()
 
     incoming_path = save_upload(
         kind=core_file_uploads.UploadKind.ZIP,
@@ -552,7 +555,7 @@ def _run_batch(job_id: str, storage: platform_providers.StorageProvider) -> None
             try:
                 source = bulk_format.build_source(state.user_id, state.created_at.isoformat(), _member_reader(archive))
             except core_exceptions.DomainError as err:
-                logger.error(
+                logger.warning(
                     "Bulk import archive is not a valid export",
                     extra=core_logger.context(console=True, job_id=job_id, reason=err.detail),
                 )
@@ -599,6 +602,17 @@ def _member_reader(archive: zipfile.ZipFile) -> activity_ingestion_contracts.Arc
     """
 
     def read(member_name: str) -> bytes | None:
+        """Read one archive member.
+
+        Args:
+            member_name: The member's name in the archive.
+
+        Returns:
+            The member's bytes, or ``None`` when it is absent.
+
+        Raises:
+            PayloadTooLargeError: When the member is larger than the read limit.
+        """
         try:
             info = archive.getinfo(member_name)
         except KeyError:

@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response, Security, status
+from fastapi import APIRouter, Query, Request, Response, Security, status
 
 import core.dependencies as core_dependencies
 import core.etag as core_etag
@@ -12,6 +12,7 @@ import modules.auth.dependencies as auth_dependencies
 import modules.health.constants as health_constants
 import modules.health.health_sleep.schema as health_sleep_schema
 import modules.health.health_sleep.service as health_sleep_service
+import modules.health.schema as health_schema
 
 # Define the API router
 router = APIRouter()
@@ -25,7 +26,7 @@ router = APIRouter()
 def read_health_sleep_all_pagination(
     token_user_id: auth_dependencies.CurrentUserId,
     db: core_dependencies.DbSession,
-    page: Annotated[core_pagination.PageParams, Depends(core_pagination.list_page_params)],
+    page: core_pagination.ListPage,
     interval: Annotated[
         health_constants.Interval | None,
         Query(description="Filter by goal interval"),
@@ -48,6 +49,64 @@ def read_health_sleep_all_pagination(
     return health_sleep_service.list_health_sleep(
         token_user_id, db, page_number=page.page_number, num_records=page.num_records, interval=interval
     )
+
+
+@router.get(
+    "/chart",
+    response_model=health_schema.HealthChartSeries,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:read"])],
+)
+def read_health_sleep_chart(
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
+    interval: Annotated[
+        health_constants.Interval,
+        Query(description="Interval to chart"),
+    ] = health_constants.Interval.LAST_7_DAYS,
+) -> health_schema.HealthChartSeries:
+    """Chart the authenticated user's total sleep seconds over an interval.
+
+    One aggregated point per day, week or month depending on the interval, so the response stays small
+    however long the history. Access is restricted to users with the 'health:read' scope.
+
+    Args:
+        token_user_id: The ID of the authenticated user extracted from the access token.
+        db: Database session for executing queries.
+        interval: The window to chart.
+
+    Returns:
+        The interval's bucket size and its points, oldest first.
+    """
+    return health_sleep_service.get_health_sleep_chart(token_user_id, interval, db)
+
+
+@router.get(
+    "/chart/resting-heart-rate",
+    response_model=health_schema.HealthChartSeries,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["health:read"])],
+)
+def read_health_sleep_resting_heart_rate_chart(
+    token_user_id: auth_dependencies.CurrentUserId,
+    db: core_dependencies.DbSession,
+    interval: Annotated[
+        health_constants.Interval,
+        Query(description="Interval to chart"),
+    ] = health_constants.Interval.LAST_7_DAYS,
+) -> health_schema.HealthChartSeries:
+    """Chart the authenticated user's resting heart rate over an interval.
+
+    One aggregated point per day, week or month depending on the interval, so the response stays small
+    however long the history. Access is restricted to users with the 'health:read' scope.
+
+    Args:
+        token_user_id: The ID of the authenticated user extracted from the access token.
+        db: Database session for executing queries.
+        interval: The window to chart.
+
+    Returns:
+        The interval's bucket size and its points, oldest first.
+    """
+    return health_sleep_service.get_health_sleep_resting_heart_rate_chart(token_user_id, interval, db)
 
 
 @router.post(
@@ -124,7 +183,7 @@ def edit_health_sleep(
     updated = health_sleep_service.edit_health_sleep(
         token_user_id, health_sleep_id, health_sleep, db, if_match=if_match
     )
-    response.headers["ETag"] = core_etag.format_etag(updated.version)
+    core_etag.set_etag(response, updated.version)
     return updated
 
 
@@ -139,6 +198,7 @@ def delete_health_sleep(
     request: Request,
     health_sleep_id: core_dependencies.PositiveId,
     token_user_id: auth_dependencies.CurrentUserId,
+    if_match: core_dependencies.IfMatch,
     db: core_dependencies.DbSession,
 ) -> None:
     """Delete a health sleep record for the authenticated user.
@@ -150,13 +210,15 @@ def delete_health_sleep(
         request: The incoming request, read by the rate limiter.
         health_sleep_id (int): The unique identifier of the health sleep record to delete.
         token_user_id (int): The user ID extracted from the access token.
+        if_match: The ``If-Match`` precondition.
         db (Session): Database session dependency for executing the delete operation.
 
     Returns:
         None: This function does not return a value.
 
     Raises:
+        PreconditionFailedError: If the record changed since the client read it.
         NotFoundError: If the user has no such record.
     """
     # Deletes entry from database
-    health_sleep_service.delete_health_sleep(token_user_id, health_sleep_id, db)
+    health_sleep_service.delete_health_sleep(token_user_id, health_sleep_id, db, if_match=if_match)
