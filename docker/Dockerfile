@@ -74,11 +74,6 @@ WORKDIR /app/frontend
 
 COPY --from=frontend-build --chown=${UID}:${GID} /tmp/frontend/dist ./dist
 
-# env.js is created world-writable (666) so the file can be overwritten at
-# runtime even when docker-compose overrides the container user via `user:`
-# to a UID different from the one baked in at build time (ARG UID).
-RUN touch /app/frontend/dist/env.js && chmod 666 /app/frontend/dist/env.js /app/frontend/dist/index.html
-
 # --- Backend ---
 WORKDIR /app/backend
 
