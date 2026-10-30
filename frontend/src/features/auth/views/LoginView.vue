@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { LoaderCircle } from '@lucide/vue'
@@ -21,7 +21,7 @@ import PasswordInput from '@/features/security/components/PasswordInput.vue'
 import { useSafeRedirect } from '@/composables/useSafeRedirect'
 import { useSsoLogin } from '@/features/auth/composables/useSsoLogin'
 import { useToasts } from '@/composables/useToasts'
-import { PROVIDER_CUSTOM_LOGO_MAP } from '@/constants/ssoLogos'
+import { resolveProviderLogo } from '@/features/identityProviders/utils/providerIcon'
 import { HttpError } from '@/services/http'
 import { useAuthStore } from '@/features/auth/stores/auth'
 
@@ -44,6 +44,8 @@ const isLoading = ref(false)
 const isForgotPasswordOpen = ref(false)
 const isSsoMfaPending = ref(false)
 const alert = ref<AlertState | null>(null)
+// A custom icon URL can 404 or be blocked; its button then shows the text alone.
+const failedLogos = reactive(new Set<string>())
 
 const isMfaStep = computed(() => pendingChallenge.value.length > 0 || isSsoMfaPending.value)
 const showLocalLogin = computed(
@@ -142,19 +144,6 @@ async function submitForm(): Promise<void> {
   } finally {
     isLoading.value = false
   }
-}
-
-/**
- * Gets a bundled logo for a known SSO provider icon.
- *
- * @param iconName - Provider icon key.
- * @returns Logo asset URL, or `null` when unknown.
- */
-function getProviderCustomLogo(iconName?: string | null): string | null {
-  if (!iconName) {
-    return null
-  }
-  return PROVIDER_CUSTOM_LOGO_MAP[iconName.toLowerCase()] ?? null
 }
 
 /**
@@ -343,10 +332,11 @@ onMounted(async () => {
           @click="handleSsoLogin(provider.slug)"
         >
           <img
-            v-if="getProviderCustomLogo(provider.icon)"
-            :src="getProviderCustomLogo(provider.icon)!"
+            v-if="resolveProviderLogo(provider.icon) && !failedLogos.has(provider.slug)"
+            :src="resolveProviderLogo(provider.icon)!"
             :alt="t('login.ssoLogoAlt', { provider: provider.name })"
             class="h-5 w-auto"
+            @error="failedLogos.add(provider.slug)"
           />
           <span>{{ t('login.ssoButton', { provider: provider.name }) }}</span>
         </Button>
