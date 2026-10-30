@@ -111,7 +111,7 @@ class IdentityProvider(Base):
         comment="OAuth2/OIDC scopes to request",
     )
     icon: Mapped[str | None] = mapped_column(
-        String(100),
+        String(500),
         nullable=True,
         comment="Icon name (FontAwesome) or custom URL",
     )

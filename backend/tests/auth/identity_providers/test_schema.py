@@ -56,6 +56,23 @@ class TestIdentityProviderBase:
         assert idp.sync_user_info is True
         assert idp.client_id == "test-client-id"
 
+    def test_identity_provider_base_accepts_long_custom_icon_url(self):
+        """Test a custom icon URL up to 500 characters is accepted and longer is rejected."""
+        # Arrange
+        fields = {
+            "name": "Test Provider",
+            "slug": "test-provider",
+            "provider_type": "oidc",
+            "client_id": "test-client-id",
+        }
+        url = "https://cdn.example.com/" + "a" * 476
+
+        # Act & Assert
+        assert len(url) == 500
+        assert IdentityProviderBase(**fields, icon=url).icon == url
+        with pytest.raises(ValidationError):
+            IdentityProviderBase(**fields, icon=url + "a")
+
     def test_identity_provider_base_with_defaults(self):
         """Test IdentityProviderBase with default values.
 

@@ -33,7 +33,7 @@ class IdentityProviderBase(BaseModel):
         userinfo_endpoint (str | None): OIDC userinfo endpoint (max 500 characters).
         jwks_uri (str | None): OIDC JWKS URI (max 500 characters).
         scopes (str): OAuth2/OIDC scopes (max 500 characters). Defaults to "openid profile email".
-        icon (str | None): Icon name or URL (max 100 characters).
+        icon (str | None): Icon name or URL (max 500 characters).
         auto_create_users (bool): Whether to auto-create users on first login. Defaults to True.
         sync_user_info (bool): Whether to sync user info on each login. Defaults to True.
         user_mapping (Dict[str, Any] | None): Claims mapping configuration.
@@ -60,7 +60,7 @@ class IdentityProviderBase(BaseModel):
         max_length=500,
         description="OAuth2/OIDC scopes",
     )
-    icon: StrictStr | None = Field(default=None, max_length=100, description="Icon name or URL")
+    icon: StrictStr | None = Field(default=None, max_length=500, description="Icon name or URL")
     auto_create_users: StrictBool = Field(default=True, description="Auto-create users on first login")
     sync_user_info: StrictBool = Field(default=True, description="Sync user info on each login")
     user_mapping: dict[str, Any] | None = Field(default=None, description="Claims mapping configuration")
