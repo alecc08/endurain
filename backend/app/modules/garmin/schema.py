@@ -1,6 +1,6 @@
 """Garmin Connect request and response shapes."""
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 import modules.garmin.constants as garmin_constants
 
@@ -21,6 +21,14 @@ class MFARequest(BaseModel):
     mfa_code: str = Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9]+$")
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("mfa_code", mode="before")
+    @classmethod
+    def _strip_separators(cls, value: object) -> object:
+        """Drop the whitespace and dashes a code is pasted or autofilled with, such as ``123 456``."""
+        if isinstance(value, str):
+            return "".join(value.split()).replace("-", "")
+        return value
 
 
 class GarminLinkStatus(BaseModel):

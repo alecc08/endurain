@@ -11,7 +11,7 @@ LINK_JOB = "garmin-link"
 
 # A login waits this long for the user's MFA code. The stores' lifetimes must exceed it so a live
 # attempt never expires under the poller.
-MFA_WAIT_SECONDS = 60
+MFA_WAIT_SECONDS = 180
 
 # Lifetime of a link attempt's claim and state: the MFA wait plus a login that is slow to answer.
 LINK_TTL_SECONDS = MFA_WAIT_SECONDS + 240
