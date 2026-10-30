@@ -4,6 +4,7 @@ import type { SecuritySessionDto } from '@/features/security/types'
 
 import { apiFetch } from '@/services/http'
 import {
+  cancelEmailChange,
   changeEmail,
   changePassword,
   deleteAccount,
@@ -18,6 +19,7 @@ import {
   mapMfaStatus,
   mapSecuritySession,
   regenerateBackupCodes,
+  resendEmailChange,
   revokeOtherSessions,
   revokeSession,
   setupMfa,
@@ -291,10 +293,14 @@ describe('changeEmail', () => {
     vi.mocked(apiFetch).mockReset()
   })
 
-  it('PUTs the new address together with the step-up credentials', async () => {
-    vi.mocked(apiFetch).mockResolvedValue(undefined)
+  it('POSTs the new address together with the step-up credentials', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ pending_email: 'new@example.com' })
 
-    await changeEmail('new@example.com', { currentPassword: 'pw', mfaCode: '123456' }, true)
+    const pending = await changeEmail(
+      'new@example.com',
+      { currentPassword: 'pw', mfaCode: '123456' },
+      true,
+    )
 
     expect(apiFetch).toHaveBeenCalledWith('/profile/email/change', {
       method: 'POST',
@@ -304,6 +310,42 @@ describe('changeEmail', () => {
         mfa_code: '123456',
         revoke_other_sessions: true,
       }),
+    })
+    expect(pending).toBe(true)
+  })
+
+  it('reports an address the server applied at once as not pending', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ email: 'new@example.com', pending_email: null })
+
+    await expect(
+      changeEmail('new@example.com', { currentPassword: 'pw', mfaCode: null }, false),
+    ).resolves.toBe(false)
+  })
+})
+
+describe('pending email change', () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset()
+  })
+
+  it('POSTs the resend endpoint', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(undefined)
+
+    await resendEmailChange()
+
+    expect(apiFetch).toHaveBeenCalledWith('/profile/email/change/resend', {
+      method: 'POST',
+      responseType: 'void',
+    })
+  })
+
+  it('DELETEs the pending change', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(undefined)
+
+    await cancelEmailChange()
+
+    expect(apiFetch).toHaveBeenCalledWith('/profile/email/change', {
+      method: 'DELETE',
       responseType: 'void',
     })
   })

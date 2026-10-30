@@ -182,6 +182,23 @@ def create_sso_user(
     return users_service.create_sso_user(user, server_settings, db, email_verified=email_verified)
 
 
+def is_deactivated(user_id: int, db: Session) -> bool:
+    """Tell whether an administrator or a deletion request deactivated a user.
+
+    Args:
+        user_id: The user to check.
+        db: Database session.
+
+    Returns:
+        True for a deactivated account, False for an active one and for a sign-up awaiting verification
+        or approval.
+
+    Raises:
+        NotFoundError: If the user does not exist.
+    """
+    return users_service.is_deactivated(user_id, db)
+
+
 def stage_email_verification(
     user_id: int,
     server_settings: server_settings_schema.ServerSettingsRead,
@@ -258,6 +275,35 @@ def stage_email_change(user_id: int, email: str, db: Session) -> bool:
         ConflictError: If the email is already taken.
     """
     return users_service.stage_email_change(user_id, email, db)
+
+
+def require_email_available(user_id: int, email: str, db: Session) -> None:
+    """Refuse an email address that another account uses.
+
+    Args:
+        user_id: The user who wants the address.
+        email: The address, in any case.
+        db: Database session.
+
+    Raises:
+        ConflictError: If another account uses the address.
+    """
+    users_service.require_email_available(user_id, email, db)
+
+
+def stage_confirmed_email_change(user_id: int, email: str, db: Session) -> None:
+    """Stage a confirmed email address for a user and mark it verified.
+
+    Args:
+        user_id: The user whose email changes.
+        email: The confirmed email address.
+        db: Database session.
+
+    Raises:
+        NotFoundError: If the user does not exist.
+        ConflictError: If another account uses the email.
+    """
+    users_service.stage_confirmed_email_change(user_id, email, db)
 
 
 def upload_user_photo(

@@ -337,6 +337,11 @@ class TestSignupEndpoint:
 class TestVerifyEmailEndpoint:
     """Tests for POST /sign-up/sign-up/confirm."""
 
+    @pytest.fixture(autouse=True)
+    def not_deactivated(self):
+        with patch("modules.auth.sign_up_tokens.service.users_integration.is_deactivated", return_value=False):
+            yield
+
     @patch("modules.auth.sign_up_tokens.service.notifications_integration.create_admin_sign_up_approval_notifications")
     @patch("modules.auth.sign_up_tokens.service.request_sign_up_admin_approval_emails")
     @patch("modules.auth.sign_up_tokens.service.users_integration.get_user")
@@ -362,7 +367,7 @@ class TestVerifyEmailEndpoint:
             signup_require_email_verification=True,
             signup_require_admin_approval=False,
         )
-        mock_use_token.return_value = 10
+        mock_use_token.return_value = MagicMock(user_id=10, previous_email=None)
         mock_verify_email.return_value = None
         mock_get_user.return_value = MagicMock(id=10, active=False)
         mock_send_admin_email.return_value = None
@@ -430,7 +435,7 @@ class TestVerifyEmailEndpoint:
             signup_require_email_verification=False,
             signup_require_admin_approval=True,
         )
-        mock_use_token.return_value = 10
+        mock_use_token.return_value = MagicMock(user_id=10, previous_email=None)
         mock_get_user.return_value = MagicMock(id=10, active=True)
 
         response = signup_client.post(
@@ -461,7 +466,7 @@ class TestVerifyEmailEndpoint:
         mock_settings.return_value = MagicMock(
             signup_require_email_verification=False,
         )
-        mock_use_token.return_value = 10
+        mock_use_token.return_value = MagicMock(user_id=10, previous_email=None)
         mock_get_user.return_value = MagicMock(id=10, active=False)
 
         response = signup_client.post(
@@ -516,7 +521,7 @@ class TestVerifyEmailEndpoint:
             signup_require_email_verification=True,
             signup_require_admin_approval=True,
         )
-        mock_use_token.return_value = 11
+        mock_use_token.return_value = MagicMock(user_id=11, previous_email=None)
         mock_verify_email.return_value = None
         mock_get_user.return_value = MagicMock(id=11, active=False)
         mock_send_admin_email.return_value = None
@@ -557,7 +562,7 @@ class TestVerifyEmailEndpoint:
             signup_require_email_verification=True,
             signup_require_admin_approval=False,
         )
-        mock_use_token.return_value = 20
+        mock_use_token.return_value = MagicMock(user_id=20, previous_email=None)
         mock_verify_email.return_value = None
         mock_get_user.return_value = MagicMock(id=20, active=False)
         mock_email_service.return_value = False
@@ -595,7 +600,7 @@ class TestVerifyEmailEndpoint:
             signup_require_email_verification=True,
             signup_require_admin_approval=False,
         )
-        mock_use_token.return_value = 99
+        mock_use_token.return_value = MagicMock(user_id=99, previous_email=None)
         mock_verify_email.return_value = None
         mock_get_user.return_value = None
         mock_email_service.return_value = True
@@ -631,9 +636,9 @@ class TestVerifyEmailEndpoint:
         """
         mock_settings.return_value = MagicMock(
             signup_require_email_verification=True,
-            signup_require_admin_approval=False,
+            signup_require_admin_approval=True,
         )
-        mock_use_token.return_value = 30
+        mock_use_token.return_value = MagicMock(user_id=30, previous_email=None)
         mock_verify_email.return_value = None
         mock_get_user.return_value = MagicMock(id=30, active=False)
         mock_send_admin_email.return_value = None
@@ -675,9 +680,9 @@ class TestVerifyEmailEndpoint:
         """
         mock_settings.return_value = MagicMock(
             signup_require_email_verification=True,
-            signup_require_admin_approval=False,
+            signup_require_admin_approval=True,
         )
-        mock_use_token.return_value = 31
+        mock_use_token.return_value = MagicMock(user_id=31, previous_email=None)
         mock_verify_email.return_value = None
         mock_get_user.return_value = MagicMock(id=31, active=False)
         mock_send_admin_email.return_value = None
