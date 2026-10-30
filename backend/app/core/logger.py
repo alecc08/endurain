@@ -62,6 +62,7 @@ from typing import Any
 # ``logger`` is the lower-level module: it must not depend on ``config`` at
 # import time. The two functions below that genuinely need ``settings``
 # import it locally, after both modules have finished initializing.
+import core.environment as core_environment
 import core.middleware_request_id as core_middleware_request_id
 
 # The single configured application logger. Every logger handed out by
@@ -339,7 +340,7 @@ class JsonFormatter(logging.Formatter):
 
 class _DevFormatter(logging.Formatter):
     """
-    Human-readable formatter for development log files.
+    Human-readable formatter for the development log file and console mirror.
 
     Appends any caller-supplied ``extra`` fields as a
     space-separated ``key=value`` string after the message
@@ -348,8 +349,14 @@ class _DevFormatter(logging.Formatter):
 
     _BASE = "%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] - %(message)s"
 
-    def __init__(self) -> None:
-        super().__init__(self._BASE)
+    def __init__(self, fmt: str = _BASE) -> None:
+        """
+        Build the formatter.
+
+        Args:
+            fmt: The format of the line the context is appended to.
+        """
+        super().__init__(fmt)
 
     def format(self, record: logging.LogRecord) -> str:
         """
@@ -410,7 +417,7 @@ def _build_handlers(log_level: int) -> list[logging.Handler]:
 
     # Treat both "production" and "demo" as deployed
     # environments where stdout JSON is preferred.
-    is_deployed = core_config.settings.ENVIRONMENT in ("production", "demo")
+    is_deployed = core_environment.is_deployed_environment(core_config.settings.ENVIRONMENT)
     if is_deployed:
         handlers: list[logging.Handler] = [_configure(logging.StreamHandler(sys.stdout), JsonFormatter())]
         # Also write to file when LOGS_DIR is configured so that Docker
@@ -424,7 +431,7 @@ def _build_handlers(log_level: int) -> list[logging.Handler]:
         return handlers
 
     log_path = f"{core_config.settings.LOGS_DIR}/app.log"
-    console_mirror = _configure(logging.StreamHandler(sys.stdout), logging.Formatter(_CONSOLE_FORMAT))
+    console_mirror = _configure(logging.StreamHandler(sys.stdout), _DevFormatter(_CONSOLE_FORMAT))
     console_mirror.addFilter(ConsoleMirrorFilter())
     return [
         _configure(_file_handler(log_path), _DevFormatter()),

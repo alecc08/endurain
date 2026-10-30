@@ -29,9 +29,10 @@ class TestHandler:
         prepare.return_value = ("person@example.test", "subject", "<p>body</p>", "body")
         get_platform.return_value.mail = MagicMock()
 
-        password_reset_subscribers.send_password_reset_email_for_event(_event())
+        event = _event()
+        password_reset_subscribers.send_password_reset_email_for_event(event)
 
-        prepare.assert_called_once_with(4, "https://example.test", db)
+        prepare.assert_called_once_with(4, event.event_id, "https://example.test", db)
         session_local.return_value.__exit__.assert_called_once()
         send_email.assert_called_once_with(
             get_platform.return_value.mail,
@@ -60,7 +61,7 @@ class TestHandler:
 
 
 class TestPublisher:
-    @patch("modules.auth.password_reset_tokens.event_publishers.platform_publisher.publish")
+    @patch("modules.auth.password_reset_tokens.event_publishers.platform_publisher.publish_on_commit")
     def test_payload_carries_user_id_only(self, mock_publish):
         db = MagicMock()
 
@@ -68,3 +69,14 @@ class TestPublisher:
 
         assert mock_publish.call_args.args[1] == {"user_id": 4}
         assert mock_publish.call_args.kwargs["db"] is db
+
+    @patch("modules.auth.password_reset_tokens.event_publishers.platform_publisher.publish")
+    @patch("modules.auth.password_reset_tokens.event_publishers.platform_publisher.publish_on_commit")
+    def test_stages_in_the_callers_transaction_without_committing(self, mock_staged, mock_bare):
+        db = MagicMock()
+
+        password_reset_publishers.publish_password_reset_requested(4, db)
+
+        mock_bare.assert_not_called()
+        mock_staged.assert_called_once()
+        db.commit.assert_not_called()

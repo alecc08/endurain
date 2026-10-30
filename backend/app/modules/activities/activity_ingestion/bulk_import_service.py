@@ -20,11 +20,15 @@ no budget on the in-process pool.
 Provider exports register a :class:`BulkImportFormat`; this module names none.
 """
 
+import contextlib
 import os
 import tempfile
+import threading
 import time
 import uuid
 import zipfile
+from collections.abc import Iterator
+from typing import Any
 
 import jasil.providers as platform_providers
 from sqlalchemy.exc import IntegrityError
@@ -52,6 +56,14 @@ logger = core_logger.get_logger(__name__)
 
 GENERIC_FORMAT_NAME = "generic"
 
+#: Domain errors that mean the server, not the user's file, failed.
+_OPERATOR_ERRORS = (
+    core_exceptions.ProcessingError,
+    core_exceptions.ServiceUnavailableError,
+    core_exceptions.DependencyFailedError,
+    core_exceptions.UpstreamError,
+)
+
 _ARCHIVE_KEY_PREFIX = "bulk-"
 
 # One batch: stop at whichever comes first. The time budget is a fraction of the
@@ -60,6 +72,47 @@ _BATCH_MAX_FILES = 200
 _PROGRESS_EVERY_FILES = 10
 _MIN_BATCH_SECONDS = 30
 _LEASE_FRACTION = 3
+
+# While a folder is packed and staged, the job is touched this often. The stale-job reaper fails a
+# folder import that has been quiet for longer than a few of these, so it must stay well below that.
+_HEARTBEAT_SECONDS = 60.0
+
+
+@contextlib.contextmanager
+def _heartbeat(job_id: str) -> Iterator[None]:
+    """Keep a job's ``updated_at`` fresh on a background thread while the body runs.
+
+    A folder import has no batch checkpoints while it is packed, so this is what tells the stale-job
+    reaper the node is alive. A touch that fails is logged and retried at the next beat.
+
+    Args:
+        job_id: The job to keep alive.
+
+    Yields:
+        Nothing; the beat stops when the block exits.
+    """
+    stop = threading.Event()
+
+    def beat() -> None:
+        while not stop.wait(_HEARTBEAT_SECONDS):
+            try:
+                with core_database.SessionLocal() as db:
+                    activity_ingestion_crud.touch_job(job_id, db)
+                    db.commit()
+            except Exception as err:
+                logger.warning(
+                    "Could not touch a bulk import that is being packed",
+                    exc_info=err,
+                    extra=core_logger.context(job_id=job_id),
+                )
+
+    thread = threading.Thread(target=beat, name=f"bulk-import-heartbeat-{job_id}", daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join()
 
 
 def _is_supported_member(member_name: str) -> bool:
@@ -341,32 +394,37 @@ def feed_archive_from_directory(
     """
     packed: list[str] = []
     try:
-        bulk_format = resolve_format(source)
-        key = _archive_key(job_id)
-        with tempfile.TemporaryDirectory(prefix="bulk-import-pack-") as work_dir:
-            archive_path = os.path.join(work_dir, "import.zip")
-            files_total = _pack_directory(directory, archive_path, bulk_format, packed)
-            core_file_uploads.list_zip_members(archive_path)
-            with open(archive_path, "rb") as handle:
-                storage.save_stream(
-                    activity_ingestion_upload_entry_service.UPLOAD_STAGING_STORAGE_AREA,
-                    activity_ingestion_upload_entry_service.upload_staging_storage_key(key),
-                    handle,
+        with _heartbeat(job_id):
+            bulk_format = resolve_format(source)
+            key = _archive_key(job_id)
+            with tempfile.TemporaryDirectory(prefix="bulk-import-pack-") as work_dir:
+                archive_path = os.path.join(work_dir, "import.zip")
+                files_total = _pack_directory(directory, archive_path, bulk_format, packed)
+                core_file_uploads.list_zip_members(archive_path)
+                with open(archive_path, "rb") as handle:
+                    storage.save_stream(
+                        activity_ingestion_upload_entry_service.UPLOAD_STAGING_STORAGE_AREA,
+                        activity_ingestion_upload_entry_service.upload_staging_storage_key(key),
+                        handle,
+                    )
+            with core_database.SessionLocal() as db:
+                if not activity_ingestion_crud.attach_bulk_archive(job_id, key, files_total, db):
+                    # The reaper closed the job while the folder was packed: nothing will read the archive, and
+                    # the user's files stay where they put them.
+                    activity_ingestion_upload_entry_service.discard_staged_upload(key, storage)
+                    logger.warning(
+                        "Bulk import folder was packed after its job was closed; the files were left in place",
+                        extra=core_logger.context(user_id=user_id, job_id=job_id),
+                    )
+                    return
+                activity_ingestion_dispatch_service.commit_or_publish(
+                    db,
+                    publish=lambda commit: activity_ingestion_event_publishers.publish_bulk_import_continue(
+                        job_id, user_id, db, commit=commit
+                    ),
                 )
-        with core_database.SessionLocal() as db:
-            activity_ingestion_crud.attach_bulk_archive(job_id, key, files_total, db)
-            activity_ingestion_dispatch_service.commit_or_publish(
-                db,
-                publish=lambda commit: activity_ingestion_event_publishers.publish_bulk_import_continue(
-                    job_id, user_id, db, commit=commit
-                ),
-            )
     except Exception as err:
-        logger.error(
-            "Could not stage the bulk import folder",
-            exc_info=err,
-            extra=core_logger.context(console=True, user_id=user_id, job_id=job_id),
-        )
+        _log_bulk_failure("Could not stage the bulk import folder", err, user_id=user_id, job_id=job_id)
         activity_ingestion_service.fail_ingestion_job(
             job_id,
             activity_ingestion_constants.IngestionJobErrorCode.PROCESSING_FAILED,
@@ -624,6 +682,23 @@ def _member_reader(archive: zipfile.ZipFile) -> activity_ingestion_contracts.Arc
     return read
 
 
+def _log_bulk_failure(message: str, err: Exception, **fields: Any) -> None:
+    """Log why a bulk import step failed, at the level its cause calls for.
+
+    A file the pipeline or the archive checks refuse is the user's input and is a warning without a
+    traceback; a processing, storage or dependency failure, or a bug, needs an operator and is an error.
+
+    Args:
+        message: The log message.
+        err: The failure.
+        **fields: Context fields for the record.
+    """
+    if isinstance(err, core_exceptions.DomainError) and not isinstance(err, _OPERATOR_ERRORS):
+        logger.warning(message, extra=core_logger.context(console=True, detail=err.detail, **fields))
+        return
+    logger.error(message, exc_info=err, extra=core_logger.context(console=True, **fields))
+
+
 def _import_member(
     archive: zipfile.ZipFile,
     member_name: str,
@@ -658,10 +733,8 @@ def _import_member(
                     user_id, path, db, source=source, storage=storage
                 )
         except Exception as err:
-            logger.error(
-                "Bulk import: a file could not be imported",
-                exc_info=err,
-                extra=core_logger.context(console=True, user_id=user_id, job_id=job_id, file=base_name),
+            _log_bulk_failure(
+                "Bulk import: a file could not be imported", err, user_id=user_id, job_id=job_id, file=base_name
             )
             _keep_failed_member(archive, member_name, user_id, job_id, storage)
             return False
