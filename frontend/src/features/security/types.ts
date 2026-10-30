@@ -172,6 +172,7 @@ export interface LinkedProvider {
   name: string | null
   slug: string | null
   icon: string | null
+  iconUploaded: boolean
   providerType: string | null
   subject: string
   linkedAt: string

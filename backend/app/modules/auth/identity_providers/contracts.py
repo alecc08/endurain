@@ -25,6 +25,7 @@ class IdentityProviderState(BaseModel):
     jwks_uri: str | None
     scopes: str | None
     icon: str | None
+    icon_uploaded: bool
     auto_create_users: bool
     sync_user_info: bool
     user_mapping: dict[str, Any] | None

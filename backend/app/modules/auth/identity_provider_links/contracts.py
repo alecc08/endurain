@@ -13,6 +13,7 @@ class IdentityProviderDetails(Protocol):
     name: str
     slug: str
     icon: str | None
+    icon_uploaded: bool
     provider_type: str
 
 

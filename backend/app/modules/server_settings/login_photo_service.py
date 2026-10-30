@@ -15,32 +15,6 @@ import modules.server_settings.service as server_settings_service
 logger = core_logger.get_logger(__name__)
 
 
-#: Magic-number prefixes of the image formats the upload validator accepts, with their media type.
-_IMAGE_SIGNATURES: tuple[tuple[bytes, str], ...] = (
-    (b"\x89PNG\r\n\x1a\n", "image/png"),
-    (b"\xff\xd8\xff", "image/jpeg"),
-    (b"GIF87a", "image/gif"),
-    (b"GIF89a", "image/gif"),
-)
-
-
-def _sniff_image_type(data: bytes) -> str | None:
-    """Return the media type of image bytes from their magic number.
-
-    Args:
-        data: The image bytes.
-
-    Returns:
-        The media type, or None when the format is not recognised.
-    """
-    for signature, media_type in _IMAGE_SIGNATURES:
-        if data.startswith(signature):
-            return media_type
-    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "image/webp"
-    return None
-
-
 def upload_login_photo(
     file: UploadFile, storage: platform_providers.StorageProvider, db: Session
 ) -> server_settings_schema.LoginPhotoRead:
@@ -67,7 +41,7 @@ def upload_login_photo(
     data = core_file_uploads.read_validated_upload_sync(file, kind=core_file_uploads.UploadKind.IMAGE)
     if len(data) > server_settings_constants.LOGIN_PHOTO_MAX_BYTES:
         raise core_exceptions.PayloadTooLargeError("Login photo is too large")
-    media_type = _sniff_image_type(data)
+    media_type = core_file_uploads.sniff_image_type(data)
     if media_type is None:
         raise core_exceptions.UnsupportedMediaTypeError("Login photo must be a PNG, JPEG, GIF or WebP image")
     storage.save(
@@ -144,4 +118,4 @@ def read_login_photo(storage: platform_providers.StorageProvider) -> tuple[bytes
     if data is None:
         return None
     # Bytes whose type cannot be detected are served as PNG.
-    return data, _sniff_image_type(data) or "image/png"
+    return data, core_file_uploads.sniff_image_type(data) or "image/png"

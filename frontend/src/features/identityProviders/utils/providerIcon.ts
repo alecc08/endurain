@@ -1,4 +1,5 @@
 import { PROVIDER_CUSTOM_LOGO_MAP } from '@/constants/ssoLogos'
+import { getApiBaseUrl } from '@/services/runtime'
 
 /** Provider icon keys that ship with a bundled logo asset. */
 export const BUILTIN_PROVIDER_ICONS = [
@@ -11,8 +12,22 @@ export const BUILTIN_PROVIDER_ICONS = [
 
 export type BuiltinProviderIcon = (typeof BUILTIN_PROVIDER_ICONS)[number]
 
-/** The sentinel icon option meaning "supply a custom icon URL". */
-export const CUSTOM_ICON = 'custom'
+/** The sentinel icon option meaning "upload an image to Endurain". */
+export const UPLOADED_ICON = 'uploaded'
+
+/** Image types the backend accepts for an uploaded icon. */
+export const ICON_ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+
+/** Largest uploaded icon the backend accepts, in bytes. */
+export const ICON_MAX_BYTES = 1024 * 1024
+
+/** Where a provider's icon is stored, so an uploaded icon can be addressed. */
+export interface ProviderIconSource {
+  /** The provider slug the uploaded icon is served under. */
+  slug: string | null | undefined
+  /** Whether an uploaded image is shown instead of the stored icon. */
+  iconUploaded: boolean
+}
 
 /**
  * Narrows an icon value to one of the built-in keys.
@@ -27,18 +42,20 @@ export function isBuiltinProviderIcon(
 }
 
 /**
- * Resolves a displayable logo source for a provider icon: the bundled asset for
- * a built-in key, the raw URL for a custom icon, or `null` when none is set.
+ * Resolves a displayable logo source for a provider icon: the uploaded image
+ * when one is stored, the bundled asset for a built-in key, or `null` when none
+ * is set.
  *
  * @param icon - The provider's stored icon value (key or URL).
+ * @param source - The provider slug and whether an uploaded image replaces `icon`.
  * @returns A logo `src`, or `null` to fall back to a generic icon.
  */
-export function resolveProviderLogo(icon: string | null | undefined): string | null {
-  if (!icon) {
-    return null
+export function resolveProviderLogo(
+  icon: string | null | undefined,
+  source?: ProviderIconSource,
+): string | null {
+  if (source?.iconUploaded && source.slug) {
+    return `${getApiBaseUrl()}/public/idp/${encodeURIComponent(source.slug)}/icon`
   }
-  if (isBuiltinProviderIcon(icon)) {
-    return PROVIDER_CUSTOM_LOGO_MAP[icon] ?? null
-  }
-  return icon
+  return isBuiltinProviderIcon(icon) ? (PROVIDER_CUSTOM_LOGO_MAP[icon] ?? null) : null
 }

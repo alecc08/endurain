@@ -1,11 +1,13 @@
 """Admin routes for identity-provider configuration."""
 
-from fastapi import APIRouter, Request, Response, Security, status
+from fastapi import APIRouter, Request, Response, Security, UploadFile, status
 
 import core.dependencies as core_dependencies
 import core.etag as core_etag
+import core.file_uploads as core_file_uploads
 import core.rate_limit as core_rate_limit
 import modules.auth.dependencies as auth_dependencies
+import modules.auth.identity_providers.icon_service as idp_icon_service
 import modules.auth.identity_providers.provider_service as idp_provider_service
 import modules.auth.identity_providers.schema as idp_schema
 
@@ -175,6 +177,7 @@ def delete_identity_provider(
     request: Request,
     if_match: core_dependencies.IfMatch,
     db: core_dependencies.DbSession,
+    storage: core_dependencies.Storage,
 ) -> None:
     """Delete an identity provider by ID.
 
@@ -183,10 +186,77 @@ def delete_identity_provider(
         request: Incoming request.
         if_match: The ``If-Match`` precondition.
         db: SQLAlchemy database session dependency.
+        storage: The platform storage provider.
 
     Raises:
         HTTPException: 404 if the provider is not found, 409 if users
             are still linked to the provider, 412 if the provider changed
             since the client read it.
     """
-    idp_provider_service.delete_identity_provider(idp_id, db, if_match=if_match)
+    idp_provider_service.delete_identity_provider(idp_id, storage, db, if_match=if_match)
+
+
+@router.post(
+    "/{idp_id}/icon",
+    response_model=idp_schema.IdentityProviderIconRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["identity_providers:write"])],
+)
+@core_rate_limit.limiter.limit(core_rate_limit.UPLOAD)
+def upload_identity_provider_icon(
+    idp_id: core_dependencies.PositiveId,
+    request: Request,
+    file: UploadFile,
+    storage: core_dependencies.Storage,
+    db: core_dependencies.DbSession,
+) -> idp_schema.IdentityProviderIconRead:
+    """Upload the icon an identity provider shows on the login page.
+
+    Requires admin authentication with identity_providers:write scope. The icon replaces any custom icon URL
+    until it is removed.
+
+    Args:
+        idp_id: The identity provider the icon belongs to.
+        request: Incoming request.
+        file: The image to upload (PNG, JPEG, GIF or WebP).
+        storage: The platform storage provider.
+        db: SQLAlchemy database session dependency.
+
+    Returns:
+        The provider version that identifies the stored icon.
+
+    Raises:
+        NotFoundError: 404 if the provider is not found.
+        PayloadTooLargeError: 413 if the image is larger than the icon cap.
+    """
+    data = core_file_uploads.read_validated_upload_sync(file, kind=core_file_uploads.UploadKind.IMAGE)
+    return idp_schema.IdentityProviderIconRead(version=idp_icon_service.upload_icon(idp_id, data, storage, db))
+
+
+@router.delete(
+    "/{idp_id}/icon",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+    dependencies=[Security(auth_dependencies.check_scopes, scopes=["identity_providers:write"])],
+)
+@core_rate_limit.limiter.limit(core_rate_limit.WRITE)
+def delete_identity_provider_icon(
+    idp_id: core_dependencies.PositiveId,
+    request: Request,
+    storage: core_dependencies.Storage,
+    db: core_dependencies.DbSession,
+) -> None:
+    """Remove the uploaded icon of an identity provider.
+
+    Requires admin authentication with identity_providers:write scope.
+
+    Args:
+        idp_id: The identity provider the icon belongs to.
+        request: Incoming request.
+        storage: The platform storage provider.
+        db: SQLAlchemy database session dependency.
+
+    Raises:
+        NotFoundError: 404 if the provider is not found.
+    """
+    idp_icon_service.delete_icon(idp_id, storage, db)

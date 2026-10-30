@@ -88,6 +88,7 @@ def enrich_user_identity_providers(
             idp_name=idp.name,
             idp_slug=idp.slug,
             idp_icon=idp.icon,
+            idp_icon_uploaded=idp.icon_uploaded,
             idp_provider_type=idp.provider_type,
         )
 

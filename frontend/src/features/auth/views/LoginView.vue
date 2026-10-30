@@ -21,6 +21,8 @@ import PasswordInput from '@/features/security/components/PasswordInput.vue'
 import { useSafeRedirect } from '@/composables/useSafeRedirect'
 import { useSsoLogin } from '@/features/auth/composables/useSsoLogin'
 import { useToasts } from '@/composables/useToasts'
+import type { IdentityProviderPublic } from '@/types'
+
 import { resolveProviderLogo } from '@/features/identityProviders/utils/providerIcon'
 import { HttpError } from '@/services/http'
 import { useAuthStore } from '@/features/auth/stores/auth'
@@ -144,6 +146,19 @@ async function submitForm(): Promise<void> {
   } finally {
     isLoading.value = false
   }
+}
+
+/**
+ * Resolves the logo shown on a provider's sign-in button.
+ *
+ * @param provider - The public provider.
+ * @returns The logo `src`, or `null` when the provider has none.
+ */
+function providerLogo(provider: IdentityProviderPublic): string | null {
+  return resolveProviderLogo(provider.icon, {
+    slug: provider.slug,
+    iconUploaded: provider.icon_uploaded ?? false,
+  })
 }
 
 /**
@@ -332,8 +347,8 @@ onMounted(async () => {
           @click="handleSsoLogin(provider.slug)"
         >
           <img
-            v-if="resolveProviderLogo(provider.icon) && !failedLogos.has(provider.slug)"
-            :src="resolveProviderLogo(provider.icon)!"
+            v-if="providerLogo(provider) && !failedLogos.has(provider.slug)"
+            :src="providerLogo(provider)!"
             :alt="t('login.ssoLogoAlt', { provider: provider.name })"
             class="h-5 w-auto"
             @error="failedLogos.add(provider.slug)"

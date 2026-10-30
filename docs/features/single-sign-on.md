@@ -142,6 +142,14 @@ Save the generated **Client ID** and **Client Secret**.
 | **Client ID** | OAuth client identifier | From Step 1 |
 | **Client Secret** | OAuth client secret | From Step 1 |
 | **Scopes** | Space-separated OAuth scopes | `openid profile email` |
+| **Icon** | Logo on the login button: a built-in logo or an uploaded image | `Keycloak`, `Upload an image` |
+
+#### Choosing an icon
+
+- **Built-in logos** exist for Authelia, Authentik, Casdoor, Keycloak and Pocket ID.
+- **Upload an image** stores a PNG, JPEG, GIF or WebP file of up to 1 MB in Endurain and serves it from your own server. SVG files are not accepted.
+- The icon cannot point at an image on another host: the browser's Content-Security-Policy would block it, and every visitor's browser would contact that host.
+- The uploaded image is public: the login page shows it to everyone who visits it.
 
 ### 3. Verify the Configuration
 

@@ -22,6 +22,7 @@ function makeIdpDto(overrides: Partial<UserIdentityProviderDto> = {}): UserIdent
     idp_name: 'Authelia',
     idp_slug: 'authelia',
     idp_icon: null,
+    idp_icon_uploaded: false,
     idp_provider_type: 'oidc',
     idp_subject: 'auth|abc123',
     idp_access_token_expires_at: null,

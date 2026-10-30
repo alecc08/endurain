@@ -1,5 +1,6 @@
 """Administration of identity-provider configuration."""
 
+import jasil.providers as platform_providers
 from sqlalchemy.orm import Session
 
 import core.etag as core_etag
@@ -7,6 +8,7 @@ import core.exceptions as core_exceptions
 import core.logger as core_logger
 import modules.auth.identity_provider_links.integration_service as identity_provider_links_integration
 import modules.auth.identity_providers.crud as idp_crud
+import modules.auth.identity_providers.icon_service as idp_icon_service
 import modules.auth.identity_providers.schema as identity_provider_schema
 import modules.auth.identity_providers.serializers as identity_provider_serializers
 import modules.auth.identity_providers.utils as identity_provider_utils
@@ -23,7 +25,7 @@ def get_enabled_identity_providers(db: Session) -> list[identity_provider_schema
     """Return public fields for enabled identity providers."""
     return [
         identity_provider_schema.IdentityProviderPublicRead(
-            id=state.id, name=state.name, slug=state.slug, icon=state.icon
+            id=state.id, name=state.name, slug=state.slug, icon=state.icon, icon_uploaded=state.icon_uploaded
         )
         for state in idp_crud.get_enabled_identity_providers(db)
     ]
@@ -91,11 +93,14 @@ def update_identity_provider(
     return identity_provider_serializers.to_read_schema(state)
 
 
-def delete_identity_provider(idp_id: int, db: Session, *, if_match: str) -> None:
-    """Delete an unlinked provider and commit the change.
+def delete_identity_provider(
+    idp_id: int, storage: platform_providers.StorageProvider, db: Session, *, if_match: str
+) -> None:
+    """Delete an unlinked provider, commit the change and remove its uploaded icon.
 
     Args:
         idp_id: The provider to delete.
+        storage: The platform storage provider.
         db: Database session.
         if_match: The ``If-Match`` precondition.
 
@@ -104,7 +109,8 @@ def delete_identity_provider(idp_id: int, db: Session, *, if_match: str) -> None
         ConflictError: If users are still linked to the provider.
         PreconditionFailedError: If the provider changed since the client read it.
     """
-    if idp_crud.get_identity_provider(idp_id, db) is None:
+    current = idp_crud.get_identity_provider(idp_id, db)
+    if current is None:
         raise core_exceptions.NotFoundError("Identity provider not found")
     if identity_provider_links_integration.check_user_identity_providers_by_idp_id(idp_id, db):
         raise core_exceptions.ConflictError("Cannot delete identity provider with linked users")
@@ -117,4 +123,6 @@ def delete_identity_provider(idp_id: int, db: Session, *, if_match: str) -> None
         if not idp_crud.delete_identity_provider(idp_id, db, if_match=if_match):
             raise core_exceptions.NotFoundError("Identity provider not found")
         db.commit()
+    if current.icon_uploaded:
+        idp_icon_service.delete_blob(idp_id, storage)
     logger.info("Deleted identity provider", extra=core_logger.context(idp_id=idp_id))

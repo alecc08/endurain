@@ -38,7 +38,7 @@ class TestIdentityProviderBase:
             userinfo_endpoint="https://auth.example.com/userinfo",
             jwks_uri="https://auth.example.com/jwks",
             scopes="openid profile email",
-            icon="test-icon",
+            icon="keycloak",
             auto_create_users=True,
             sync_user_info=True,
             user_mapping={"username": ["preferred_username"], "email": ["email"]},
@@ -56,22 +56,25 @@ class TestIdentityProviderBase:
         assert idp.sync_user_info is True
         assert idp.client_id == "test-client-id"
 
-    def test_identity_provider_base_accepts_long_custom_icon_url(self):
-        """Test a custom icon URL up to 500 characters is accepted and longer is rejected."""
-        # Arrange
-        fields = {
-            "name": "Test Provider",
-            "slug": "test-provider",
-            "provider_type": "oidc",
-            "client_id": "test-client-id",
-        }
-        url = "https://cdn.example.com/" + "a" * 476
+    @pytest.mark.parametrize("icon", ["authelia", "authentik", "casdoor", "keycloak", "pocketid", None])
+    def test_identity_provider_base_accepts_a_built_in_icon_or_none(self, icon):
+        """Test only a built-in icon key, or no icon, is accepted."""
+        # Arrange & Act
+        idp = IdentityProviderBase(
+            name="Test Provider", slug="test-provider", provider_type="oidc", client_id="client", icon=icon
+        )
 
-        # Act & Assert
-        assert len(url) == 500
-        assert IdentityProviderBase(**fields, icon=url).icon == url
+        # Assert
+        assert idp.icon == icon
+
+    @pytest.mark.parametrize("icon", ["https://cdn.example.com/logo.png", "test-icon", "Keycloak", ""])
+    def test_identity_provider_base_rejects_any_other_icon(self, icon):
+        """Test a URL or an unknown key is rejected: any other logo is uploaded."""
+        # Arrange, Act & Assert
         with pytest.raises(ValidationError):
-            IdentityProviderBase(**fields, icon=url + "a")
+            IdentityProviderBase(
+                name="Test Provider", slug="test-provider", provider_type="oidc", client_id="client", icon=icon
+            )
 
     def test_identity_provider_base_with_defaults(self):
         """Test IdentityProviderBase with default values.

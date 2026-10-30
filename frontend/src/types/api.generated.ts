@@ -2379,6 +2379,7 @@ export interface paths {
          *         request: Incoming request.
          *         if_match: The ``If-Match`` precondition.
          *         db: SQLAlchemy database session dependency.
+         *         storage: The platform storage provider.
          *
          *     Raises:
          *         HTTPException: 404 if the provider is not found, 409 if users
@@ -2386,6 +2387,58 @@ export interface paths {
          *             since the client read it.
          */
         delete: operations["delete_identity_provider_api_v1_identity_providers__idp_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity-providers/{idp_id}/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Identity Provider Icon
+         * @description Upload the icon an identity provider shows on the login page.
+         *
+         *     Requires admin authentication with identity_providers:write scope. The icon replaces any custom icon URL
+         *     until it is removed.
+         *
+         *     Args:
+         *         idp_id: The identity provider the icon belongs to.
+         *         request: Incoming request.
+         *         file: The image to upload (PNG, JPEG, GIF or WebP).
+         *         storage: The platform storage provider.
+         *         db: SQLAlchemy database session dependency.
+         *
+         *     Returns:
+         *         The provider version that identifies the stored icon.
+         *
+         *     Raises:
+         *         NotFoundError: 404 if the provider is not found.
+         *         PayloadTooLargeError: 413 if the image is larger than the icon cap.
+         */
+        post: operations["upload_identity_provider_icon_api_v1_identity_providers__idp_id__icon_post"];
+        /**
+         * Delete Identity Provider Icon
+         * @description Remove the uploaded icon of an identity provider.
+         *
+         *     Requires admin authentication with identity_providers:write scope.
+         *
+         *     Args:
+         *         idp_id: The identity provider the icon belongs to.
+         *         request: Incoming request.
+         *         storage: The platform storage provider.
+         *         db: SQLAlchemy database session dependency.
+         *
+         *     Raises:
+         *         NotFoundError: 404 if the provider is not found.
+         */
+        delete: operations["delete_identity_provider_icon_api_v1_identity_providers__idp_id__icon_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4111,6 +4164,43 @@ export interface paths {
          *         The access token and, per client type, the CSRF token or the refresh token.
          */
         post: operations["exchange_tokens_for_session_api_v1_public_idp_session__session_id__tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/idp/{idp_slug}/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Identity Provider Icon
+         * @description Serve the uploaded icon of an enabled identity provider (unauthenticated).
+         *
+         *     The login screen renders before anyone is signed in, so the icon is public by design; it is one
+         *     admin-chosen image, not user data. The response carries an ETag derived from the provider version and must
+         *     be revalidated, so a replaced icon shows at once while a client that holds it gets a 304 without storage
+         *     being read.
+         *
+         *     Args:
+         *         idp_slug: The provider slug.
+         *         request: The HTTP request, for its ``If-None-Match`` header.
+         *         storage: The platform storage provider.
+         *         db: Database session.
+         *
+         *     Returns:
+         *         The image bytes, or a 304 when the client's copy is current.
+         *
+         *     Raises:
+         *         NotFoundError: 404 when the provider is unknown, disabled or has no uploaded icon.
+         */
+        get: operations["read_identity_provider_icon_api_v1_public_idp__idp_slug__icon_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6283,6 +6373,11 @@ export interface components {
             scope: string;
             /** Username */
             username: string;
+        };
+        /** Body_upload_identity_provider_icon_api_v1_identity_providers__idp_id__icon_post */
+        Body_upload_identity_provider_icon_api_v1_identity_providers__idp_id__icon_post: {
+            /** File */
+            file: string;
         };
         /** Body_upload_login_photo_api_v1_server_settings_login_photo_post */
         Body_upload_login_photo_api_v1_server_settings_login_photo_post: {
@@ -8792,6 +8887,17 @@ export interface components {
             userinfo_endpoint?: string | null;
         };
         /**
+         * IdentityProviderIconRead
+         * @description The state of a provider's uploaded icon after an upload.
+         *
+         *     Attributes:
+         *         version (int): The provider version that identifies the stored icon.
+         */
+        IdentityProviderIconRead: {
+            /** Version */
+            version: number;
+        };
+        /**
          * IdentityProviderLinkRead
          * @description Response schema with enriched identity provider details.
          *
@@ -8802,6 +8908,7 @@ export interface components {
          *         idp_name: Identity provider name (enriched).
          *         idp_slug: Identity provider slug (enriched).
          *         idp_icon: Identity provider icon (enriched).
+         *         idp_icon_uploaded: Whether an uploaded icon is shown instead of the icon (enriched).
          *         idp_provider_type: Provider type (enriched).
          */
         IdentityProviderLinkRead: {
@@ -8820,6 +8927,12 @@ export interface components {
              * @description Identity provider icon
              */
             idp_icon?: string | null;
+            /**
+             * Idp Icon Uploaded
+             * @description Whether an uploaded icon is shown instead of the icon
+             * @default false
+             */
+            idp_icon_uploaded: boolean;
             /**
              * Idp Id
              * @description Identity Provider ID
@@ -8893,6 +9006,7 @@ export interface components {
          *         name (str): Display name of the identity provider.
          *         slug (str): URL-friendly unique identifier for the provider.
          *         icon (str | None): URL or path to the provider's icon image.
+         *         icon_uploaded (bool): Whether an uploaded icon is shown instead of ``icon``.
          *
          *     Config:
          *         model_config (dict): Pydantic model configuration to allow population from ORM attributes.
@@ -8900,6 +9014,11 @@ export interface components {
         IdentityProviderPublicRead: {
             /** Icon */
             icon?: string | null;
+            /**
+             * Icon Uploaded
+             * @default false
+             */
+            icon_uploaded: boolean;
             /** Id */
             id: number;
             /** Name */
@@ -8916,6 +9035,7 @@ export interface components {
          *
          *     Attributes:
          *         id (int): Unique identifier of the identity provider.
+         *         icon_uploaded (bool): Whether an uploaded icon is shown instead of ``icon``.
          *         created_at (datetime): Timestamp when the identity provider was created.
          *         updated_at (datetime): Timestamp when the identity provider was last updated.
          *         version (int): Optimistic-concurrency counter, also sent as the ETag.
@@ -8960,6 +9080,12 @@ export interface components {
              * @description Icon name or URL
              */
             icon?: string | null;
+            /**
+             * Icon Uploaded
+             * @description Whether an uploaded icon is shown instead of icon
+             * @default false
+             */
+            icon_uploaded: boolean;
             /** Id */
             id: number;
             /**
@@ -17483,6 +17609,88 @@ export interface operations {
             };
         };
     };
+    upload_identity_provider_icon_api_v1_identity_providers__idp_id__icon_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                idp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_identity_provider_icon_api_v1_identity_providers__idp_id__icon_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProviderIconRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    delete_identity_provider_icon_api_v1_identity_providers__idp_id__icon_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                idp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     read_notifications_user_pagination_api_v1_notifications_get: {
         parameters: {
             query?: {
@@ -19749,6 +19957,54 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TokenExchangeRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    read_identity_provider_icon_api_v1_public_idp__idp_slug__icon_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                idp_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "image/*": unknown;
+                };
+            };
+            /** @description Not modified */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

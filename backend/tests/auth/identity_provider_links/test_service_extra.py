@@ -67,6 +67,7 @@ class TestEnrichUserIdentityProviders:
         mock_idp1.name = "Strava"
         mock_idp1.slug = "strava"
         mock_idp1.icon = "https://example.com/strava.svg"
+        mock_idp1.icon_uploaded = False
         mock_idp1.provider_type = "oauth2"
 
         mock_idp2 = MagicMock()
@@ -74,6 +75,7 @@ class TestEnrichUserIdentityProviders:
         mock_idp2.name = "Garmin"
         mock_idp2.slug = "garmin"
         mock_idp2.icon = "https://example.com/garmin.svg"
+        mock_idp2.icon_uploaded = False
         mock_idp2.provider_type = "oauth2"
 
         with patch("modules.auth.identity_providers.crud.get_identity_providers_by_ids") as mock_get_idps:
@@ -125,6 +127,7 @@ class TestEnrichUserIdentityProviders:
         mock_idp1.name = "Strava"
         mock_idp1.slug = "strava"
         mock_idp1.icon = "icon"
+        mock_idp1.icon_uploaded = False
         mock_idp1.provider_type = "oauth2"
 
         with (

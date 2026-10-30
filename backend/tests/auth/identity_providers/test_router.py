@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import core.database as core_database
+import core.dependencies as core_dependencies
 import core.exceptions as core_exceptions
 import modules.auth.dependencies as auth_dependencies
 import modules.auth.identity_providers.router as idp_router
@@ -20,6 +21,7 @@ def _client() -> TestClient:
     app.include_router(idp_router.router, prefix="/auth/identity_providers")
     app.dependency_overrides[auth_dependencies.check_scopes] = lambda: None
     app.dependency_overrides[core_database.get_db] = lambda: MagicMock()
+    app.dependency_overrides[core_dependencies.get_storage] = lambda: MagicMock()
     return TestClient(app)
 
 
@@ -160,3 +162,44 @@ def test_delete_returns_precondition_failed_for_a_stale_etag(service):
     response = _client().delete("/auth/identity_providers/1", headers={"Authorization": "Bearer x", "If-Match": '"1"'})
 
     assert response.status_code == 412
+
+
+def test_upload_icon_validates_the_image_then_hands_the_bytes_to_the_service(monkeypatch):
+    icon_service = MagicMock()
+    icon_service.upload_icon.return_value = 5
+    monkeypatch.setattr(idp_router, "idp_icon_service", icon_service)
+    monkeypatch.setattr(idp_router.core_file_uploads, "read_validated_upload_sync", lambda *_a, **_k: b"png-bytes")
+
+    response = _client().post(
+        "/auth/identity_providers/1/icon",
+        files={"file": ("icon.png", b"ignored", "image/png")},
+        headers={"Authorization": "Bearer x"},
+    )
+
+    assert response.status_code == 201
+    assert response.json() == {"version": 5}
+    assert icon_service.upload_icon.call_args.args[:2] == (1, b"png-bytes")
+
+
+def test_upload_icon_rejects_nonpositive_id(monkeypatch):
+    icon_service = MagicMock()
+    monkeypatch.setattr(idp_router, "idp_icon_service", icon_service)
+
+    response = _client().post(
+        "/auth/identity_providers/0/icon",
+        files={"file": ("icon.png", b"x", "image/png")},
+        headers={"Authorization": "Bearer x"},
+    )
+
+    assert response.status_code == 422
+    icon_service.upload_icon.assert_not_called()
+
+
+def test_delete_icon_delegates_to_the_service(monkeypatch):
+    icon_service = MagicMock()
+    monkeypatch.setattr(idp_router, "idp_icon_service", icon_service)
+
+    response = _client().delete("/auth/identity_providers/1/icon", headers={"Authorization": "Bearer x"})
+
+    assert response.status_code == 204
+    assert icon_service.delete_icon.call_args.args[0] == 1

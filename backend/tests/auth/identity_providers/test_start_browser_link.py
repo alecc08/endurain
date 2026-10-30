@@ -31,6 +31,7 @@ def _idp(enabled: bool = True) -> identity_provider_contracts.IdentityProviderSt
         jwks_uri=None,
         scopes=None,
         icon=None,
+        icon_uploaded=False,
         auto_create_users=False,
         sync_user_info=False,
         user_mapping=None,

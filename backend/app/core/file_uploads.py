@@ -659,6 +659,32 @@ def read_validated_upload_sync(file: UploadFile, *, kind: UploadKind) -> bytes:
     return _read_capped_sync(file, _max_bytes_for(kind))
 
 
+#: Magic-number prefixes of the image formats the upload validator accepts, with their media type.
+_IMAGE_SIGNATURES: tuple[tuple[bytes, str], ...] = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+)
+
+
+def sniff_image_type(data: bytes) -> str | None:
+    """Return the media type of image bytes from their magic number.
+
+    Args:
+        data: The image bytes.
+
+    Returns:
+        The media type, or None when the format is not recognised.
+    """
+    for signature, media_type in _IMAGE_SIGNATURES:
+        if data.startswith(signature):
+            return media_type
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Filesystem cleanup helpers
 # ---------------------------------------------------------------------------

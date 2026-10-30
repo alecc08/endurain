@@ -8,9 +8,11 @@ import { useAuthStore } from '@/features/auth/stores/auth'
 import {
   createIdentityProvider,
   deleteIdentityProvider,
+  deleteIdentityProviderIcon,
   fetchIdentityProviders,
   fetchIdentityProviderTemplates,
   updateIdentityProvider,
+  uploadIdentityProviderIcon,
 } from '@/features/identityProviders/services/identityProviders'
 
 /**
@@ -104,6 +106,37 @@ export function useDeleteIdentityProviderMutation() {
   return useMutation<void, Error, { id: number; version: number }>({
     mutationKey: queryKeys.identityProviders.all(),
     mutationFn: ({ id, version }) => deleteIdentityProvider(id, version),
+    onSettled: () => invalidateIdentityProviders(client),
+  })
+}
+
+/**
+ * Upload-icon mutation. Invalidates the admin and public caches on settle, so
+ * the login screen picks up the new image.
+ *
+ * @returns The TanStack Query mutation for uploading a provider icon.
+ */
+export function useUploadIdentityProviderIconMutation() {
+  const client = useQueryClient()
+
+  return useMutation<void, Error, { id: number; file: File }>({
+    mutationKey: queryKeys.identityProviders.all(),
+    mutationFn: ({ id, file }) => uploadIdentityProviderIcon(id, file),
+    onSettled: () => invalidateIdentityProviders(client),
+  })
+}
+
+/**
+ * Remove-icon mutation. Invalidates the admin and public caches on settle.
+ *
+ * @returns The TanStack Query mutation for removing a provider's uploaded icon.
+ */
+export function useDeleteIdentityProviderIconMutation() {
+  const client = useQueryClient()
+
+  return useMutation<void, Error, number>({
+    mutationKey: queryKeys.identityProviders.all(),
+    mutationFn: (id) => deleteIdentityProviderIcon(id),
     onSettled: () => invalidateIdentityProviders(client),
   })
 }

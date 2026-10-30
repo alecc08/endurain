@@ -27,6 +27,7 @@ export type IdentityProviderTemplateDto = Schemas['IdentityProviderTemplateRead'
  * @property clientId - OAuth client id (decrypted for admins), or `null`.
  * @property scopes - Space-separated OAuth scopes.
  * @property icon - Built-in icon key or a custom icon URL, or `null`.
+ * @property iconUploaded - Whether an uploaded image is shown instead of `icon`.
  * @property autoCreateUsers - Whether first-time logins auto-create an account.
  * @property syncUserInfo - Whether profile info is synced on each login.
  * @property authorizationEndpoint - Discovered OAuth authorization endpoint, or `null`.
@@ -45,6 +46,7 @@ export interface IdentityProvider {
   clientId: string | null
   scopes: string
   icon: string | null
+  iconUploaded: boolean
   autoCreateUsers: boolean
   syncUserInfo: boolean
   authorizationEndpoint: string | null

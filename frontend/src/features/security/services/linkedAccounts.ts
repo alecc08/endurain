@@ -22,6 +22,7 @@ export function mapLinkedProvider(dto: LinkedProviderDto): LinkedProvider {
     name: dto.idp_name ?? null,
     slug: dto.idp_slug ?? null,
     icon: dto.idp_icon ?? null,
+    iconUploaded: dto.idp_icon_uploaded ?? false,
     providerType: dto.idp_provider_type ?? null,
     subject: dto.idp_subject,
     linkedAt: dto.linked_at,

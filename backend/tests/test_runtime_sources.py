@@ -63,6 +63,7 @@ class TestStoragePlainAreas:
                 "profile_export_staging",
                 "profile_import_staging",
                 "server_images",
+                "identity_provider_icons",
                 "user_images",
             }
         )

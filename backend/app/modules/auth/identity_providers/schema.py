@@ -33,7 +33,7 @@ class IdentityProviderBase(BaseModel):
         userinfo_endpoint (str | None): OIDC userinfo endpoint (max 500 characters).
         jwks_uri (str | None): OIDC JWKS URI (max 500 characters).
         scopes (str): OAuth2/OIDC scopes (max 500 characters). Defaults to "openid profile email".
-        icon (str | None): Icon name or URL (max 500 characters).
+        icon (str | None): Built-in icon key; any other logo is uploaded instead.
         auto_create_users (bool): Whether to auto-create users on first login. Defaults to True.
         sync_user_info (bool): Whether to sync user info on each login. Defaults to True.
         user_mapping (Dict[str, Any] | None): Claims mapping configuration.
@@ -42,6 +42,7 @@ class IdentityProviderBase(BaseModel):
     Validators:
         - slug: Ensures the slug contains only lowercase letters, numbers, and hyphens.
         - provider_type: Ensures the provider type is one of the allowed values.
+        - icon: Ensures the icon is a built-in icon key.
     """
 
     name: StrictStr = Field(..., max_length=100, min_length=1, description="Display name of the IdP")
@@ -60,7 +61,7 @@ class IdentityProviderBase(BaseModel):
         max_length=500,
         description="OAuth2/OIDC scopes",
     )
-    icon: StrictStr | None = Field(default=None, max_length=500, description="Icon name or URL")
+    icon: StrictStr | None = Field(default=None, description="Built-in icon key")
     auto_create_users: StrictBool = Field(default=True, description="Auto-create users on first login")
     sync_user_info: StrictBool = Field(default=True, description="Sync user info on each login")
     user_mapping: dict[str, Any] | None = Field(default=None, description="Claims mapping configuration")
@@ -82,6 +83,24 @@ class IdentityProviderBase(BaseModel):
         """
         if not re.match(r"^[a-z0-9-]+$", v):
             raise ValueError("Slug must contain only lowercase letters, numbers, and hyphens")
+        return v
+
+    @field_validator("icon")
+    @classmethod
+    def validate_icon(cls, v: str | None) -> str | None:
+        """Validates that the icon is one of the built-in icon keys.
+
+        Args:
+            v (str | None): The icon key to validate.
+
+        Returns:
+            str | None: The validated icon key.
+
+        Raises:
+            ValueError: If the icon is not a built-in icon key.
+        """
+        if v is not None and v not in idp_constants.BUILTIN_ICONS:
+            raise ValueError(f"Icon must be one of: {', '.join(sorted(idp_constants.BUILTIN_ICONS))}")
         return v
 
     @field_validator("provider_type")
@@ -142,6 +161,7 @@ class IdentityProviderRead(IdentityProviderBase):
 
     Attributes:
         id (int): Unique identifier of the identity provider.
+        icon_uploaded (bool): Whether an uploaded icon is shown instead of ``icon``.
         created_at (datetime): Timestamp when the identity provider was created.
         updated_at (datetime): Timestamp when the identity provider was last updated.
         version (int): Optimistic-concurrency counter, also sent as the ETag.
@@ -158,6 +178,7 @@ class IdentityProviderRead(IdentityProviderBase):
     """
 
     id: StrictInt
+    icon_uploaded: StrictBool = Field(default=False, description="Whether an uploaded icon is shown instead of icon")
     created_at: datetime
     updated_at: datetime
     version: StrictInt = Field(
@@ -176,6 +197,18 @@ class IdentityProviderRead(IdentityProviderBase):
         return value
 
 
+class IdentityProviderIconRead(BaseModel):
+    """The state of a provider's uploaded icon after an upload.
+
+    Attributes:
+        version (int): The provider version that identifies the stored icon.
+    """
+
+    version: StrictInt
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class IdentityProviderPublicRead(BaseModel):
     """Represents the public-facing information of an identity provider.
 
@@ -184,6 +217,7 @@ class IdentityProviderPublicRead(BaseModel):
         name (str): Display name of the identity provider.
         slug (str): URL-friendly unique identifier for the provider.
         icon (str | None): URL or path to the provider's icon image.
+        icon_uploaded (bool): Whether an uploaded icon is shown instead of ``icon``.
 
     Config:
         model_config (dict): Pydantic model configuration to allow population from ORM attributes.
@@ -193,6 +227,7 @@ class IdentityProviderPublicRead(BaseModel):
     name: StrictStr
     slug: StrictStr
     icon: StrictStr | None = None
+    icon_uploaded: StrictBool = False
 
     model_config = ConfigDict(from_attributes=True, extra="forbid", validate_assignment=True)
 

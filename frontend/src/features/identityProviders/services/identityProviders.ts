@@ -31,6 +31,7 @@ export function mapIdentityProvider(dto: IdentityProviderDto): IdentityProvider 
     clientId: dto.client_id ?? null,
     scopes: dto.scopes,
     icon: dto.icon ?? null,
+    iconUploaded: dto.icon_uploaded ?? false,
     autoCreateUsers: dto.auto_create_users,
     syncUserInfo: dto.sync_user_info,
     authorizationEndpoint: dto.authorization_endpoint ?? null,
@@ -198,6 +199,40 @@ export async function deleteIdentityProvider(id: number, version: number): Promi
   await apiFetch(`/identity-providers/${id}`, {
     method: 'DELETE',
     headers: ifMatchHeaders(version),
+    responseType: 'void',
+  })
+}
+
+/**
+ * Uploads the image a provider shows on the login screen (admin scope
+ * `identity_providers:write`). The file is sent as multipart form data under the
+ * `file` field; the backend validates it and stores it under a server-generated
+ * key, so the caller's filename is never used. The upload replaces any custom
+ * icon URL until it is removed.
+ *
+ * @param id - The provider id.
+ * @param file - The PNG, JPEG, GIF or WebP image.
+ * @throws {HttpError} When the upload fails (e.g. wrong file type or too large).
+ */
+export async function uploadIdentityProviderIcon(id: number, file: File): Promise<void> {
+  const formData = new FormData()
+  formData.append('file', file)
+  await apiFetch(`/identity-providers/${id}/icon`, {
+    method: 'POST',
+    body: formData,
+    responseType: 'void',
+  })
+}
+
+/**
+ * Removes a provider's uploaded icon (admin scope `identity_providers:write`).
+ *
+ * @param id - The provider id.
+ * @throws {HttpError} When the deletion fails.
+ */
+export async function deleteIdentityProviderIcon(id: number): Promise<void> {
+  await apiFetch(`/identity-providers/${id}/icon`, {
+    method: 'DELETE',
     responseType: 'void',
   })
 }

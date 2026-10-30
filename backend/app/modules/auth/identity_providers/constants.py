@@ -2,6 +2,15 @@
 
 from enum import StrEnum
 
+#: Icon keys that ship with a bundled logo; the only values the ``icon`` field accepts. Any other logo is uploaded.
+BUILTIN_ICONS = frozenset({"authelia", "authentik", "casdoor", "keycloak", "pocketid"})
+
+#: Storage area of the uploaded provider icons, keyed by identity-provider id.
+ICON_STORAGE_AREA = "identity_provider_icons"
+
+#: Largest accepted icon upload, in bytes. A provider logo is a small image shown to every visitor of the login page.
+ICON_MAX_BYTES = 1024 * 1024
+
 #: How long one refresh of an identity-provider token may hold its claim: longer than the provider calls it
 #: makes, so a live refresh keeps it, and short enough that a lost worker blocks the next one only briefly.
 TOKEN_REFRESH_CLAIM_TTL_SECONDS = 60

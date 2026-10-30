@@ -7,16 +7,19 @@ are :class:`~modules.auth.identity_providers.authorization_service.Authorization
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 
 import core.config as core_config
 import core.dependencies as core_dependencies
+import core.etag as core_etag
+import core.exceptions as core_exceptions
 import core.network as core_network
 import core.rate_limit as core_rate_limit
 import modules.auth.credentials.integration_service as credentials_integration
 import modules.auth.dependencies as auth_dependencies
 import modules.auth.identity_providers.dependencies as idp_dependencies
+import modules.auth.identity_providers.icon_service as idp_icon_service
 import modules.auth.identity_providers.provider_service as idp_provider_service
 import modules.auth.identity_providers.schema as idp_schema
 
@@ -172,3 +175,47 @@ def handle_callback(
     response = RedirectResponse(url=redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
     idp_dependencies.clear_browser_binding_cookie(response)
     return response
+
+
+@router.get(
+    "/{idp_slug}/icon",
+    responses={200: {"content": {"image/*": {}}}, 304: {"description": "Not modified"}},
+)
+@core_rate_limit.limiter.limit(core_rate_limit.PUBLIC_READ)
+def read_identity_provider_icon(
+    idp_slug: auth_dependencies.IdentityProviderSlug,
+    request: Request,
+    storage: core_dependencies.Storage,
+    db: core_dependencies.DbSession,
+) -> Response:
+    """Serve the uploaded icon of an identity provider (unauthenticated).
+
+    The login screen renders before anyone is signed in, so the icon is public by design; it is one
+    admin-chosen image, not user data. The response carries an ETag derived from the provider version and must
+    be revalidated, so a replaced icon shows at once while a client that holds it gets a 304 without storage
+    being read.
+
+    Args:
+        idp_slug: The provider slug.
+        request: The HTTP request, for its ``If-None-Match`` header.
+        storage: The platform storage provider.
+        db: Database session.
+
+    Returns:
+        The image bytes, or a 304 when the client's copy is current.
+
+    Raises:
+        NotFoundError: 404 when the provider is unknown or has no uploaded icon.
+    """
+    found = idp_icon_service.get_public_icon(idp_slug, db)
+    if found is None:
+        raise core_exceptions.NotFoundError("Identity provider icon not found")
+    idp_id, version = found
+    headers = {"Cache-Control": "public, no-cache", "ETag": core_etag.format_etag(version)}
+    if core_etag.matches_if_none_match(request.headers.get("if-none-match"), version):
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+    icon = idp_icon_service.read_icon(idp_id, storage)
+    if icon is None:
+        raise core_exceptions.NotFoundError("Identity provider icon not found")
+    data, media_type = icon
+    return Response(content=data, media_type=media_type, headers=headers)

@@ -9,6 +9,7 @@ const providers = ref([
   { id: 1, name: 'Tinyauth', slug: 'tinyauth', icon: 'https://cdn.example.com/logo.svg' },
   { id: 2, name: 'Keycloak', slug: 'keycloak', icon: 'keycloak' },
   { id: 3, name: 'Plain', slug: 'plain', icon: null },
+  { id: 4, name: 'Uploaded', slug: 'uploaded', icon: null, icon_uploaded: true },
 ])
 
 vi.mock('@/features/config/composables/usePublicServerSettings', () => ({
@@ -57,7 +58,7 @@ vi.mock('vue-router', () => ({
 }))
 
 describe('LoginView SSO buttons', () => {
-  it('shows the custom icon URL, a bundled logo for a built-in key and none otherwise', () => {
+  it('shows a bundled logo or an uploaded icon, and never loads an icon URL', () => {
     const wrapper = mount(LoginView, {
       global: {
         plugins: [i18n],
@@ -65,11 +66,11 @@ describe('LoginView SSO buttons', () => {
       },
     })
 
-    const sources = wrapper
-      .findAll('button[type="button"]')
-      .filter((button) => button.attributes('aria-label')?.includes('Tinyauth') ?? false)
-      .flatMap((button) => button.findAll('img').map((img) => img.attributes('src')))
-    expect(sources).toEqual(['https://cdn.example.com/logo.svg'])
+    // A URL left over from before icons were limited to built-in keys is not requested: the CSP would block it.
+    const tinyauth = wrapper
+      .findAll('button')
+      .find((button) => button.attributes('aria-label')?.includes('Tinyauth'))
+    expect(tinyauth?.find('img').exists()).toBe(false)
 
     const keycloak = wrapper
       .findAll('button')
@@ -80,5 +81,12 @@ describe('LoginView SSO buttons', () => {
       .findAll('button')
       .find((button) => button.attributes('aria-label')?.includes('Plain'))
     expect(plain?.find('img').exists()).toBe(false)
+
+    const uploaded = wrapper
+      .findAll('button')
+      .find((button) => button.attributes('aria-label')?.includes('Uploaded'))
+    expect(uploaded?.find('img').attributes('src')?.endsWith('/public/idp/uploaded/icon')).toBe(
+      true,
+    )
   })
 })

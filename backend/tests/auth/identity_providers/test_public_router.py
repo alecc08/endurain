@@ -121,3 +121,42 @@ class TestHandleCallback:
         response = client.get(f"{PREFIX}/callback/pocket-id", follow_redirects=False)
 
         assert response.status_code == 422
+
+
+class TestReadIcon:
+    @pytest.fixture
+    def icon_service(self, monkeypatch):
+        icon_service = MagicMock()
+        monkeypatch.setattr(public_router, "idp_icon_service", icon_service)
+        return icon_service
+
+    def test_serves_the_stored_image_with_its_entity_tag(self, client, icon_service):
+        icon_service.get_public_icon.return_value = (7, 4)
+        icon_service.read_icon.return_value = (b"\x89PNG", "image/png")
+
+        response = client.get(f"{PREFIX}/tinyauth/icon")
+
+        assert response.status_code == 200
+        assert response.content == b"\x89PNG"
+        assert response.headers["content-type"] == "image/png"
+        assert response.headers["etag"] == '"4"'
+        assert "no-cache" in response.headers["cache-control"]
+
+    def test_a_matching_etag_is_a_304_without_reading_storage(self, client, icon_service):
+        icon_service.get_public_icon.return_value = (7, 4)
+
+        response = client.get(f"{PREFIX}/tinyauth/icon", headers={"If-None-Match": '"4"'})
+
+        assert response.status_code == 304
+        icon_service.read_icon.assert_not_called()
+
+    def test_no_icon_to_serve_is_404(self, client, icon_service):
+        icon_service.get_public_icon.return_value = None
+
+        assert client.get(f"{PREFIX}/tinyauth/icon").status_code == 404
+
+    def test_a_missing_blob_is_404(self, client, icon_service):
+        icon_service.get_public_icon.return_value = (7, 4)
+        icon_service.read_icon.return_value = None
+
+        assert client.get(f"{PREFIX}/tinyauth/icon").status_code == 404

@@ -21,6 +21,6 @@ def test_a_delete_that_races_past_the_version_check_is_a_precondition_failure(mo
         patch.object(provider_service.idp_crud, "identity_provider_exists", return_value=True),
         pytest.raises(core_exceptions.PreconditionFailedError),
     ):
-        provider_service.delete_identity_provider(3, mock_db, if_match='"1"')
+        provider_service.delete_identity_provider(3, MagicMock(), mock_db, if_match='"1"')
 
     mock_db.commit.assert_not_called()

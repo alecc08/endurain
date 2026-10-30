@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -29,6 +29,7 @@ class IdentityProvider(Base):
         scopes (str | None): OAuth2/OIDC scopes to request
             (default: "openid profile email").
         icon (str | None): Icon name (FontAwesome) or custom URL for the provider.
+        icon_uploaded (bool): An uploaded icon is stored and takes precedence over ``icon``.
         auto_create_users (bool): Automatically create users on first login.
         sync_user_info (bool): Sync user info on each login.
         user_mapping (dict[str, Any] | None): JSON mapping of IdP claims to user
@@ -114,6 +115,13 @@ class IdentityProvider(Base):
         String(500),
         nullable=True,
         comment="Icon name (FontAwesome) or custom URL",
+    )
+    icon_uploaded: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+        comment="Whether an uploaded icon is stored and shown instead of icon",
     )
     auto_create_users: Mapped[bool] = mapped_column(
         Boolean,

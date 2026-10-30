@@ -252,7 +252,12 @@ onMounted(() => {
           class="flex items-center justify-between gap-3 px-4 py-3"
         >
           <div class="flex min-w-0 items-center gap-3">
-            <ProviderLogo :icon="item.icon" :name="item.name ?? item.slug ?? ''" />
+            <ProviderLogo
+              :icon="item.icon"
+              :name="item.name ?? item.slug ?? ''"
+              :slug="item.slug"
+              :icon-uploaded="item.iconUploaded"
+            />
             <div class="min-w-0">
               <p class="text-body">{{ item.name ?? item.slug ?? `#${item.idpId}` }}</p>
               <p class="text-hint">{{ item.subject }}</p>

@@ -9,11 +9,17 @@ const props = defineProps<{
   icon: string | null
   /** Provider name, used as the image alt text. */
   name: string
+  /** Provider slug, which addresses an uploaded icon. */
+  slug?: string | null
+  /** Whether an uploaded image is shown instead of `icon`. */
+  iconUploaded?: boolean
 }>()
 
 // A custom icon URL can 404; fall back to a generic key icon when it fails.
 const failed = ref(false)
-const src = computed(() => resolveProviderLogo(props.icon))
+const src = computed(() =>
+  resolveProviderLogo(props.icon, { slug: props.slug, iconUploaded: props.iconUploaded ?? false }),
+)
 </script>
 
 <template>

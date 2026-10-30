@@ -45,6 +45,7 @@ import modules.activities.activity_workout_steps.integration_service as activity
 import modules.activities.contributor_registry as activities_contributor_registry
 import modules.auth.authentication.subscriber_registry as authentication_subscriber_registry
 import modules.auth.identity_provider_link_tokens.scheduled_jobs as identity_provider_link_tokens_scheduled_jobs
+import modules.auth.identity_providers.constants as identity_providers_constants
 import modules.auth.identity_providers.subscriber_registry as identity_providers_subscriber_registry
 import modules.auth.oauth_state.scheduled_jobs as oauth_state_scheduled_jobs
 import modules.auth.onboarding.scheduled_jobs as onboarding_scheduled_jobs
@@ -575,6 +576,7 @@ def storage_plain_areas() -> frozenset[str]:
             activity_media_constants.MEDIA_STORAGE_AREA,
             activity_thumbnail_constants.THUMBNAIL_STORAGE_AREA,
             server_settings_constants.LOGIN_PHOTO_STORAGE_AREA,
+            identity_providers_constants.ICON_STORAGE_AREA,
             users_constants.USER_IMAGE_STORAGE_AREA,
             users_profile_constants.EXPORT_STAGING_AREA,
             users_profile_constants.IMPORT_STAGING_AREA,

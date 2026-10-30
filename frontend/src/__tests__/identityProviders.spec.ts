@@ -10,12 +10,14 @@ import { apiFetch } from '@/services/http'
 import {
   createIdentityProvider,
   deleteIdentityProvider,
+  deleteIdentityProviderIcon,
   fetchIdentityProviders,
   fetchIdentityProviderTemplates,
   mapIdentityProvider,
   mapIdentityProviderTemplate,
   toProviderInput,
   updateIdentityProvider,
+  uploadIdentityProviderIcon,
 } from '@/features/identityProviders/services/identityProviders'
 import {
   isBuiltinProviderIcon,
@@ -42,6 +44,7 @@ function makeProviderDto(overrides: Partial<IdentityProviderDto> = {}): Identity
     jwks_uri: 'https://idp.test/certs',
     scopes: 'openid profile email',
     icon: 'keycloak',
+    icon_uploaded: false,
     auto_create_users: true,
     sync_user_info: true,
     client_id: 'endurain',
@@ -101,6 +104,7 @@ describe('mapIdentityProvider', () => {
       clientId: 'endurain',
       scopes: 'openid profile email',
       icon: 'keycloak',
+      iconUploaded: false,
       autoCreateUsers: true,
       syncUserInfo: true,
       authorizationEndpoint: 'https://idp.test/auth',
@@ -231,6 +235,29 @@ describe('identity providers service requests', () => {
       responseType: 'void',
     })
   })
+
+  it('uploadIdentityProviderIcon posts the file as multipart form data', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(undefined)
+    const file = new File(['png'], 'logo.png', { type: 'image/png' })
+
+    await uploadIdentityProviderIcon(3, file)
+
+    const [path, init] = vi.mocked(apiFetch).mock.calls[0] ?? ['', {}]
+    expect(path).toBe('/identity-providers/3/icon')
+    expect(init).toMatchObject({ method: 'POST', responseType: 'void' })
+    expect((init as { body: FormData }).body.get('file')).toBe(file)
+  })
+
+  it('deleteIdentityProviderIcon issues a DELETE', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(undefined)
+
+    await deleteIdentityProviderIcon(3)
+
+    expect(apiFetch).toHaveBeenCalledWith('/identity-providers/3/icon', {
+      method: 'DELETE',
+      responseType: 'void',
+    })
+  })
 })
 
 describe('resolveProviderLogo', () => {
@@ -240,13 +267,25 @@ describe('resolveProviderLogo', () => {
     expect(typeof logo).toBe('string')
   })
 
-  it('returns the raw URL for a custom icon', () => {
-    expect(resolveProviderLogo('https://example.com/logo.png')).toBe('https://example.com/logo.png')
+  it('returns null for an icon that is not a built-in key', () => {
+    expect(resolveProviderLogo('https://example.com/logo.png')).toBeNull()
   })
 
   it('returns null when no icon is set', () => {
     expect(resolveProviderLogo(null)).toBeNull()
     expect(resolveProviderLogo('')).toBeNull()
+  })
+
+  it('addresses an uploaded icon by the provider slug, ahead of the stored icon', () => {
+    const logo = resolveProviderLogo('keycloak', { slug: 'my idp', iconUploaded: true })
+
+    expect(logo?.endsWith('/public/idp/my%20idp/icon')).toBe(true)
+  })
+
+  it('ignores the slug when no icon is uploaded', () => {
+    expect(resolveProviderLogo('keycloak', { slug: 'x', iconUploaded: false })).toBe(
+      resolveProviderLogo('keycloak'),
+    )
   })
 })
 

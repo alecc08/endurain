@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import modules.auth.identity_providers.crud as idp_crud
 import modules.auth.identity_providers.schema as idp_schema
@@ -23,6 +24,7 @@ def _row(**overrides):
         "jwks_uri": None,
         "scopes": "openid profile email",
         "icon": None,
+        "icon_uploaded": False,
         "auto_create_users": True,
         "sync_user_info": True,
         "user_mapping": None,
@@ -128,3 +130,24 @@ def test_delete_provider_checks_the_version_before_deleting(mock_db):
         idp_crud.delete_identity_provider(1, mock_db, if_match='"1"')
 
     mock_db.delete.assert_not_called()
+
+
+def test_set_icon_uploaded_flags_the_row_and_returns_its_version(mock_db):
+    row = _row(icon_uploaded=False, version=3)
+    mock_db.execute.return_value.scalar_one_or_none.return_value = row
+
+    with patch.object(idp_crud, "flag_modified") as flag_modified:
+        version = idp_crud.set_icon_uploaded(1, True, mock_db)
+
+    assert version == 3
+    assert row.icon_uploaded is True
+    # Re-flagging forces the UPDATE that bumps the version, which is the icon's entity tag.
+    flag_modified.assert_called_once_with(row, "icon_uploaded")
+    mock_db.flush.assert_called_once()
+    mock_db.commit.assert_not_called()
+
+
+def test_set_icon_uploaded_on_a_missing_row_is_none(mock_db):
+    mock_db.execute.return_value.scalar_one_or_none.return_value = None
+
+    assert idp_crud.set_icon_uploaded(1, True, mock_db) is None

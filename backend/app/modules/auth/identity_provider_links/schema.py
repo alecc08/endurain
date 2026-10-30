@@ -6,6 +6,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StrictInt,
     StrictStr,
 )
@@ -84,6 +85,7 @@ class IdentityProviderLinkRead(UsersIdentityProviderRead):
         idp_name: Identity provider name (enriched).
         idp_slug: Identity provider slug (enriched).
         idp_icon: Identity provider icon (enriched).
+        idp_icon_uploaded: Whether an uploaded icon is shown instead of the icon (enriched).
         idp_provider_type: Provider type (enriched).
     """
 
@@ -98,6 +100,10 @@ class IdentityProviderLinkRead(UsersIdentityProviderRead):
     idp_icon: StrictStr | None = Field(
         default=None,
         description="Identity provider icon",
+    )
+    idp_icon_uploaded: StrictBool = Field(
+        default=False,
+        description="Whether an uploaded icon is shown instead of the icon",
     )
     idp_provider_type: StrictStr | None = Field(
         default=None,

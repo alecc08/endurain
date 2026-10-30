@@ -140,6 +140,8 @@ _TIERED_ENDPOINTS = [
     pytest.param(identity_providers_router.create_identity_provider, core_rate_limit.WRITE, id="idp-create"),
     pytest.param(identity_providers_router.update_identity_provider, core_rate_limit.WRITE, id="idp-update"),
     pytest.param(identity_providers_router.delete_identity_provider, core_rate_limit.WRITE, id="idp-delete"),
+    pytest.param(identity_providers_router.upload_identity_provider_icon, core_rate_limit.UPLOAD, id="idp-upload-icon"),
+    pytest.param(identity_providers_router.delete_identity_provider_icon, core_rate_limit.WRITE, id="idp-delete-icon"),
     pytest.param(
         auth_idp_profile_router.generate_link_token,
         core_rate_limit.SENSITIVE,
@@ -345,6 +347,7 @@ _TIERED_ENDPOINTS = [
         server_settings_public_router.list_tile_maps_templates, core_rate_limit.PUBLIC_READ, id="public-tile-templates"
     ),
     pytest.param(server_settings_public_router.read_login_photo, core_rate_limit.PUBLIC_READ, id="public-login-photo"),
+    pytest.param(idp_public_router.read_identity_provider_icon, core_rate_limit.PUBLIC_READ, id="public-idp-icon"),
 ]
 
 

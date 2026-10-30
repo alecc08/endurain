@@ -2,6 +2,7 @@
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 import core.cryptography as core_cryptography
 import core.etag as core_etag
@@ -89,6 +90,7 @@ def create_identity_provider(
         jwks_uri=data.jwks_uri,
         scopes=data.scopes,
         icon=data.icon,
+        icon_uploaded=False,
         auto_create_users=data.auto_create_users,
         sync_user_info=data.sync_user_info,
         user_mapping=data.user_mapping,
@@ -177,3 +179,29 @@ def delete_identity_provider(idp_id: int, db: Session, *, if_match: str) -> bool
     db.delete(row)
     db.flush()
     return True
+
+
+def set_icon_uploaded(idp_id: int, is_set: bool, db: Session) -> int | None:
+    """Stage whether a provider has an uploaded icon.
+
+    Args:
+        idp_id: The provider to flag.
+        is_set: True when an icon is stored.
+        db: Database session.
+
+    Returns:
+        The provider version the change was staged as, which identifies the icon, or ``None`` when the row is missing.
+    """
+    row = db.execute(
+        select(identity_provider_models.IdentityProvider)
+        .where(identity_provider_models.IdentityProvider.id == idp_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    row.icon_uploaded = is_set
+    # A replaced icon leaves the flag as it was; flagging it forces the UPDATE that bumps the version,
+    # which is the icon's entity tag.
+    flag_modified(row, "icon_uploaded")
+    db.flush()
+    return row.version

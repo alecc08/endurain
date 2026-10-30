@@ -106,6 +106,7 @@ class TestEnrichUserIdentityProviders:
         mock_idp.name = "TestIdP"
         mock_idp.slug = "test-idp"
         mock_idp.icon = "https://example.com/icon.svg"
+        mock_idp.icon_uploaded = False
         mock_idp.provider_type = "oidc"
 
         with patch(
@@ -184,6 +185,7 @@ class TestEnrichUserIdentityProviders:
             idp.name = f"IdP {i}"
             idp.slug = f"idp-{i}"
             idp.icon = None
+            idp.icon_uploaded = False
             idp.provider_type = "oidc"
             mock_idps.append(idp)
 
