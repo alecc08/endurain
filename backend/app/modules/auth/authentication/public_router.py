@@ -71,10 +71,12 @@ def login_for_access_token(
 
     Protection Mechanisms:
     - Rate limiting: 10 requests per minute per IP (SENSITIVE tier, prevents DoS attacks)
-    - Progressive lockout: Per-username tracking prevents targeted brute-force:
+    - Progressive lockout: Per-username and client-address tracking prevents targeted brute-force without
+      letting one client lock the account for everyone:
       * 5 failures: 5 minute lockout
       * 10 failures: 30 minute lockout
       * 20 failures: 24 hour lockout
+      * A much higher account-wide threshold across all addresses stops a distributed brute force
 
     This endpoint authenticates a user using provided credentials, checks if the user is active,
     and determines if MFA is required. If MFA is enabled for the user, it stores the pending login

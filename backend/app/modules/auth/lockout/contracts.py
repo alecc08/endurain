@@ -8,6 +8,8 @@ import core.exceptions as core_exceptions
 type LockoutTier = tuple[int, int, str]
 
 LOGIN_LOCKOUT_TIERS: tuple[LockoutTier, ...] = ((5, 300, "5 min"), (10, 1800, "30 min"), (20, 86400, "24 hours"))
+# Failures from every address against one account; far above LOGIN_LOCKOUT_TIERS so one client cannot reach it quickly.
+ACCOUNT_LOGIN_LOCKOUT_TIERS: tuple[LockoutTier, ...] = ((50, 900, "15 min"),)
 MFA_LOCKOUT_TIERS: tuple[LockoutTier, ...] = ((5, 300, "5 min"), (10, 1800, "30 min"), (15, 7200, "2 hours"))
 STEP_UP_LOCKOUT_TIERS: tuple[LockoutTier, ...] = (
     (5, 300, "5 min"),

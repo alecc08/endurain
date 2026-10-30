@@ -45,19 +45,19 @@ class FakeFailedLoginStore:
         self._locked = False
         self._lockout_time = None
 
-    def is_locked_out(self, username: str) -> bool:
+    def is_locked_out(self, username: str, ip_address: str) -> bool:
         """Return locked state."""
         return self._locked
 
-    def get_lockout_time(self, username: str):
+    def get_lockout_time(self, username: str, ip_address: str):
         """Return lockout time."""
         return self._lockout_time
 
-    def record_failed_attempt(self, username: str) -> int:
+    def record_failed_attempt(self, username: str, ip_address: str) -> int:
         """Record a failed attempt."""
         return 1
 
-    def reset_attempts(self, username: str) -> None:
+    def reset_attempts(self, username: str, ip_address: str) -> None:
         """Reset attempts."""
         pass
 

@@ -596,10 +596,12 @@ def login_for_access_token(
 
     Protection Mechanisms:
     - Rate limiting: 10 requests per minute per IP (SENSITIVE tier, prevents DoS attacks)
-    - Progressive lockout: Per-username tracking prevents targeted brute-force:
+    - Progressive lockout: Per-username and client-address tracking prevents targeted brute-force without
+      letting one client lock the account for everyone:
       * 5 failures: 5 minute lockout
       * 10 failures: 30 minute lockout
       * 20 failures: 24 hour lockout
+      * A much higher account-wide threshold across all addresses stops a distributed brute force
 
     This endpoint authenticates a user using provided credentials, checks if the user is active,
     and determines if MFA is required. If MFA is enabled for the user, it stores the pending login
@@ -644,8 +646,8 @@ def login_for_access_token(
 
     # Check if username is locked out from too many failed login attempts
     try:
-        if failed_attempts.is_locked_out(username):
-            lockout_until = failed_attempts.get_lockout_time(username)
+        if failed_attempts.is_locked_out(username, ip_address):
+            lockout_until = failed_attempts.get_lockout_time(username, ip_address)
             if lockout_until:
                 seconds_remaining = int((lockout_until - datetime.now(UTC)).total_seconds())
                 logger.warning(
@@ -682,7 +684,7 @@ def login_for_access_token(
         # Record failed attempt on authentication errors (401 Unauthorized)
         if err.status_code == 401:
             try:
-                login_failures = failed_attempts.record_failed_attempt(username)
+                login_failures = failed_attempts.record_failed_attempt(username, ip_address)
             except lockout_contracts.AuthSecurityStoreUnavailableError as store_err:
                 _raise_auth_security_store_unavailable(store_err)
             lockout_integration.report_lockout_applied(
@@ -724,7 +726,7 @@ def login_for_access_token(
     # Password authentication successful and no MFA required
     # Reset failed login attempts counter
     try:
-        failed_attempts.reset_attempts(username)
+        failed_attempts.reset_attempts(username, ip_address)
     except lockout_contracts.AuthSecurityStoreUnavailableError as err:
         _raise_auth_security_store_unavailable(err)
 
@@ -830,7 +832,7 @@ def verify_mfa_and_login(
     # MFA verification successful - reset both MFA and login failed attempts counters
     try:
         pending_mfa_store.reset_attempts(user.username)
-        failed_attempts.reset_attempts(user.username)
+        failed_attempts.reset_attempts(user.username, ip_address)
     except lockout_contracts.AuthSecurityStoreUnavailableError as err:
         _raise_auth_security_store_unavailable(err)
 
