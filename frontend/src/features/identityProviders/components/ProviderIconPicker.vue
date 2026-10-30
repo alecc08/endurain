@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Ban, ImageUp } from '@lucide/vue'
 
@@ -46,23 +46,27 @@ const fileInput = ref<HTMLInputElement | null>(null)
 
 const isUpload = computed(() => props.modelValue === UPLOADED_ICON)
 
-// The preview shows the picked image until it is saved, then the stored one.
+// The preview shows the picked image until it is saved, then the stored one. It is read as a data URL:
+// the page's Content-Security-Policy allows `data:` images but not `blob:` ones.
 const pickedSrc = ref<string | null>(null)
 watch(
   () => props.file,
   (file) => {
-    if (pickedSrc.value) {
-      URL.revokeObjectURL(pickedSrc.value)
+    pickedSrc.value = null
+    if (!file) {
+      return
     }
-    pickedSrc.value = file ? URL.createObjectURL(file) : null
+    const reader = new FileReader()
+    reader.onload = () => {
+      // A newer pick replaces this one before it finishes reading.
+      if (props.file === file && typeof reader.result === 'string') {
+        pickedSrc.value = reader.result
+      }
+    }
+    reader.readAsDataURL(file)
   },
   { immediate: true },
 )
-onBeforeUnmount(() => {
-  if (pickedSrc.value) {
-    URL.revokeObjectURL(pickedSrc.value)
-  }
-})
 const previewSrc = computed(() => pickedSrc.value ?? props.storedSrc)
 
 // Prompt for a missing image only once the upload option has been chosen.

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import i18n from '@/i18n'
@@ -50,6 +50,15 @@ describe('ProviderIconPicker', () => {
       '/api/v1/public/idp/x/icon',
     )
     expect(wrapper.text()).toContain('Replace image')
+  })
+
+  it('previews a picked image as a data URL, which the CSP allows', async () => {
+    const file = new File(['png'], 'logo.png', { type: 'image/png' })
+    const wrapper = mountPicker({ modelValue: UPLOADED_ICON, file })
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('img[alt="Icon preview"]').attributes('src')).toMatch(/^data:image\/png/)
+    })
   })
 
   it('asks for an image when none is stored or picked', () => {

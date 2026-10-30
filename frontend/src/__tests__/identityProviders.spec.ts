@@ -282,6 +282,12 @@ describe('resolveProviderLogo', () => {
     expect(logo?.endsWith('/public/idp/my%20idp/icon')).toBe(true)
   })
 
+  it('adds the provider version to an uploaded icon so a replaced image is refetched', () => {
+    const logo = resolveProviderLogo(null, { slug: 'x', iconUploaded: true, version: 4 })
+
+    expect(logo?.endsWith('/public/idp/x/icon?v=4')).toBe(true)
+  })
+
   it('ignores the slug when no icon is uploaded', () => {
     expect(resolveProviderLogo('keycloak', { slug: 'x', iconUploaded: false })).toBe(
       resolveProviderLogo('keycloak'),

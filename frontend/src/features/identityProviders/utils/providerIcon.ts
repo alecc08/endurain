@@ -27,6 +27,8 @@ export interface ProviderIconSource {
   slug: string | null | undefined
   /** Whether an uploaded image is shown instead of the stored icon. */
   iconUploaded: boolean
+  /** The provider version, which changes when the image is replaced so the browser refetches it. */
+  version?: number
 }
 
 /**
@@ -55,7 +57,8 @@ export function resolveProviderLogo(
   source?: ProviderIconSource,
 ): string | null {
   if (source?.iconUploaded && source.slug) {
-    return `${getApiBaseUrl()}/public/idp/${encodeURIComponent(source.slug)}/icon`
+    const url = `${getApiBaseUrl()}/public/idp/${encodeURIComponent(source.slug)}/icon`
+    return source.version === undefined ? url : `${url}?v=${source.version}`
   }
   return isBuiltinProviderIcon(icon) ? (PROVIDER_CUSTOM_LOGO_MAP[icon] ?? null) : null
 }

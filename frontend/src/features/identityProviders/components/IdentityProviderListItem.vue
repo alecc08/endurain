@@ -42,6 +42,7 @@ function providerTypeLabel(type: string): string {
       :name="provider.name"
       :slug="provider.slug"
       :icon-uploaded="provider.iconUploaded"
+      :version="provider.version"
     />
 
     <div class="min-w-0 flex-1">

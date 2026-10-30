@@ -240,7 +240,11 @@ const iconFileError = ref<string | null>(null)
 // Where the provider's stored uploaded image is served, for the picker's preview.
 const storedIconSrc = computed(() =>
   props.provider?.iconUploaded
-    ? resolveProviderLogo(null, { slug: props.provider.slug, iconUploaded: true })
+    ? resolveProviderLogo(null, {
+        slug: props.provider.slug,
+        iconUploaded: true,
+        version: props.provider.version,
+      })
     : null,
 )
 const iconFileMissing = computed(
