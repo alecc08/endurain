@@ -149,6 +149,14 @@ class TestListFilters:
         sql = _sql(mock_db)
         assert "active" in sql and "email_verified" in sql and "pending_admin_approval" in sql
 
+    def test_hiding_inactive_users_keeps_those_pending_approval(self, mock_db):
+        mock_db.execute.return_value.scalar_one.return_value = 0
+
+        users_crud.get_users_number(mock_db, show_inactive=False)
+
+        sql = _sql(mock_db)
+        assert "users.active IS true OR users.pending_admin_approval IS true" in sql
+
     def test_list_filters_by_username_contains(self, mock_db):
         _many(mock_db, [])
 

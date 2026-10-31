@@ -109,12 +109,20 @@ describe('presentNotification', () => {
     expect(result.bodyKey).toBe('notifications.types.idpLinked.bodyGeneric')
   })
 
-  it('routes an admin sign-up approval to settings users', () => {
-    const result = presentNotification(make(101, { user_name: 'Ada', user_username: 'ada' }))
+  it('routes an admin sign-up approval to the pending user', () => {
+    const result = presentNotification(
+      make(101, { user_id: 7, user_name: 'Ada', user_username: 'ada' }),
+    )
 
     expect(result.icon).toBe(ShieldAlert)
     expect(result.bodyParams).toEqual({ name: 'Ada', username: 'ada' })
-    expect(result.to).toEqual({ name: 'settings', query: { tab: 'users' } })
+    expect(result.to).toEqual({ name: 'settings-user-detail', params: { id: '7' } })
+  })
+
+  it('routes an admin sign-up approval without a user id to the users list', () => {
+    const result = presentNotification(make(101, { user_name: 'Ada', user_username: 'ada' }))
+
+    expect(result.to).toEqual({ name: 'settings-users' })
   })
 
   it('falls back to a neutral bell for unknown types', () => {

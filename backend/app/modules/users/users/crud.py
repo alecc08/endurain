@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import unquote
 
-from sqlalchemy import exists, func, select, text
+from sqlalchemy import exists, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -56,7 +56,8 @@ def _filtered(
 
     Args:
         stmt: The statement to filter.
-        show_inactive: If False, excludes inactive users.
+        show_inactive: If False, excludes inactive users, except sign-ups awaiting approval (they
+            are inactive until approved).
         show_email_unverified: If False, excludes users with unverified emails.
         show_pending_approval: If False, excludes users pending admin approval.
         username: If set, keeps only users whose username contains it.
@@ -65,7 +66,7 @@ def _filtered(
         The filtered statement.
     """
     if show_inactive is False:
-        stmt = stmt.where(users_models.Users.active.is_(True))
+        stmt = stmt.where(or_(users_models.Users.active.is_(True), users_models.Users.pending_admin_approval.is_(True)))
     if show_email_unverified is False:
         stmt = stmt.where(users_models.Users.email_verified.is_(True))
     if show_pending_approval is False:

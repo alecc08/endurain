@@ -22,7 +22,11 @@ import { useRecordsPerPage } from '@/features/config/composables/useRecordsPerPa
 import { useListPagination } from '@/composables/useListPagination'
 import { useToasts } from '@/composables/useToasts'
 import { isStaleWrite } from '@/services/ifMatch'
-import { useDeleteUserMutation, useUsersQuery } from '@/features/users/composables/useUsers'
+import {
+  useApproveUserMutation,
+  useDeleteUserMutation,
+  useUsersQuery,
+} from '@/features/users/composables/useUsers'
 
 const { t } = useI18n()
 const toasts = useToasts()
@@ -208,6 +212,44 @@ function confirmDelete(): void {
     },
   )
 }
+
+// Pending sign-up moderation: approve clears the pending flag; reject deletes the
+// account after confirmation.
+const approveMutation = useApproveUserMutation()
+const isRejectOpen = ref(false)
+const userToReject = ref<ManagedUser | null>(null)
+
+function approve(user: ManagedUser): void {
+  approveMutation.mutate(user.id, {
+    onSuccess: () => toasts.success(t('settings.users.approval.approveSuccess')),
+    onError: () => toasts.error(t('settings.users.approval.approveError')),
+  })
+}
+
+function openReject(user: ManagedUser): void {
+  userToReject.value = user
+  isRejectOpen.value = true
+}
+
+function confirmReject(): void {
+  const user = userToReject.value
+  if (!user) {
+    return
+  }
+  deleteMutation.mutate(
+    { id: user.id, version: user.version },
+    {
+      onSuccess: () => {
+        isRejectOpen.value = false
+        toasts.success(t('settings.users.approval.rejectSuccess'))
+      },
+      onError: (error) =>
+        toasts.error(
+          isStaleWrite(error) ? t('app.staleError') : t('settings.users.approval.rejectError'),
+        ),
+    },
+  )
+}
 </script>
 
 <template>
@@ -320,6 +362,8 @@ function confirmDelete(): void {
             @password="openPassword"
             @edit="openEdit"
             @delete="openDelete"
+            @approve="approve"
+            @reject="openReject"
           />
         </li>
       </ul>
@@ -341,6 +385,18 @@ function confirmDelete(): void {
       :close-label="t('settings.users.delete.close')"
       :pending="deleteMutation.isPending.value"
       @confirm="confirmDelete"
+    />
+    <ConfirmDialog
+      v-model:open="isRejectOpen"
+      :title="t('settings.users.approval.rejectTitle')"
+      :description="
+        t('settings.users.approval.rejectBody', { username: userToReject?.username ?? '' })
+      "
+      :confirm-label="t('settings.users.approval.rejectConfirm')"
+      :cancel-label="t('settings.users.approval.rejectCancel')"
+      :close-label="t('settings.users.approval.rejectClose')"
+      :pending="deleteMutation.isPending.value"
+      @confirm="confirmReject"
     />
     <UserPasswordDialog
       v-model:open="isPasswordOpen"

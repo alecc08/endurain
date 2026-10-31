@@ -179,6 +179,7 @@ export function presentNotification(
       }
     }
     case NOTIFICATION_TYPE.ADMIN_NEW_SIGN_UP_APPROVAL_REQUEST: {
+      const userId = readNumber(options, 'user_id')
       return {
         icon: ShieldAlert,
         titleKey: `${base}.adminSignUpApproval.title`,
@@ -187,7 +188,10 @@ export function presentNotification(
           name: readString(options, 'user_name'),
           username: readString(options, 'user_username'),
         },
-        to: { name: 'settings', query: { tab: 'users' } },
+        to:
+          userId === null
+            ? { name: 'settings-users' }
+            : { name: 'settings-user-detail', params: { id: String(userId) } },
       }
     }
     default:
