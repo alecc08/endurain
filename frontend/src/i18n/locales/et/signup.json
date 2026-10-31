@@ -6,6 +6,7 @@
   "email": "E-post",
   "password": "Parool",
   "confirmPassword": "Kinnita parool",
+  "passwordByEmailHint": "Saadame sulle e-kirja kinnituslingiga. Parooli valid seal.",
   "showOptionalFields": "Näita valikulisi välju",
   "hideOptionalFields": "Peida valikulised väljad",
   "preferredLanguage": "Eelistatud keel",

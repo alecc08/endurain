@@ -182,16 +182,13 @@ def create_signup_user(
     user: users_schema.UsersSignup,
     server_settings: server_settings_schema.ServerSettingsRead,
     db: Session,
-    persist_credential: bool = True,
 ) -> users_schema.UsersRead:
-    """Create a user through sign-up or SSO, with their default data, and commit.
+    """Create a user through sign-up, with their default data, and commit.
 
     Args:
         user: User sign-up data.
         server_settings: Server config for sign-up requirements.
         db: Database session.
-        persist_credential: When True, validate the supplied password and store its hash.
-            SSO-created accounts pass False so they stay SSO-only.
 
     Returns:
         The created user.
@@ -199,7 +196,7 @@ def create_signup_user(
     Raises:
         ConflictError: If the username or email is already taken.
     """
-    return users_service.create_signup_user(user, server_settings, db, persist_credential)
+    return users_service.create_signup_user(user, server_settings, db)
 
 
 def create_sso_user(

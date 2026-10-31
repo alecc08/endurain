@@ -61,7 +61,7 @@ def test_decisions_reach_the_service():
         users_integration.edit_profile(1, "profile", db, if_match="*")
         users_integration.stage_email_verification(1, "settings", db)
         users_integration.stage_confirmed_email_change(1, "new@example.com", db)
-        users_integration.create_signup_user("signup", "settings", db, False)
+        users_integration.create_signup_user("signup", "settings", db)
 
     require_user.assert_called_once_with(1, db)
     require_active.assert_called_once_with("user")
@@ -70,7 +70,7 @@ def test_decisions_reach_the_service():
     profile.assert_called_once_with(1, "profile", db, if_match="*")
     verify.assert_called_once_with(1, "settings", db)
     confirmed.assert_called_once_with(1, "new@example.com", db)
-    signup.assert_called_once_with("signup", "settings", db, False)
+    signup.assert_called_once_with("signup", "settings", db)
 
 
 def test_any_user_exists_reaches_the_crud():

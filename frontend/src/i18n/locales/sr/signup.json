@@ -6,6 +6,7 @@
   "email": "Email",
   "password": "Lozinka",
   "confirmPassword": "Potvrdi lozinku",
+  "passwordByEmailHint": "Poslaćemo vam e-poruku sa vezom za potvrdu. Lozinku ćete izabrati tamo.",
   "showOptionalFields": "Prikaži opciona polja",
   "hideOptionalFields": "Sakrij opciona polja",
   "preferredLanguage": "Željeni jezik",

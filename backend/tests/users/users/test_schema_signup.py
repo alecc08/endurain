@@ -15,3 +15,14 @@ def test_signup_rejects_unknown_key():
         users_schema.UsersSignup(**_BODY, access_type=2)
 
     assert exc.value.errors()[0]["type"] == "extra_forbidden"
+
+
+def test_signup_password_is_optional():
+    body = {key: value for key, value in _BODY.items() if key != "password"}
+
+    assert users_schema.UsersSignup(**body).password is None
+
+
+def test_signup_password_still_has_a_minimum_length():
+    with pytest.raises(ValidationError):
+        users_schema.UsersSignup(**{**_BODY, "password": "short"})

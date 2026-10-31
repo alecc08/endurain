@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Adresinizi doğrularken lütfen bekleyin.",
+  "choosePasswordTitle": "Parolanızı seçin",
+  "choosePasswordBody": "Hesabınız için bir parola belirlediğinizde e-postanız doğrulanır.",
+  "submitPassword": "Parolayı belirle",
+  "submittingPassword": "Parola kaydediliyor",
   "successTitle": "E-posta doğrulandı",
   "successBody": "E-posta adresiniz onaylandı.",
   "adminApprovalBody": "Hesabınız artık yönetici onayını bekliyor.",

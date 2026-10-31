@@ -6,6 +6,7 @@
   "email": "E-Mail",
   "password": "Passwort",
   "confirmPassword": "Passwort bestätigen",
+  "passwordByEmailHint": "Wir senden dir eine E-Mail mit einem Bestätigungslink. Dort wählst du dein Passwort.",
   "showOptionalFields": "Optionale Felder anzeigen",
   "hideOptionalFields": "Optionale Felder verbergen",
   "preferredLanguage": "Bevorzugte Sprache",

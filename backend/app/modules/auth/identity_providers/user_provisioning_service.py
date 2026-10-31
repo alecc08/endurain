@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 import core.exceptions as core_exceptions
 import core.logger as core_logger
-import modules.auth.credentials.integration_service as credentials_integration
 import modules.auth.identity_provider_links.integration_service as identity_provider_links_integration
 import modules.auth.identity_providers.claim_mapping as claim_mapping
 import modules.auth.identity_providers.contracts as identity_provider_contracts
@@ -42,7 +41,6 @@ def find_or_create_user(
     idp: identity_provider_contracts.IdentityProviderState,
     subject: str,
     userinfo: dict[str, Any],
-    password_hasher: credentials_integration.PasswordHasher,
     db: Session,
 ) -> users_schema.UsersRead:
     """Finds an existing user linked to the given identity provider and subject, or creates a new user if allowed.
@@ -59,7 +57,6 @@ def find_or_create_user(
         idp (identity_provider_contracts.IdentityProviderState): The identity provider instance.
         subject (str): The unique subject identifier from the IdP.
         userinfo (Dict[str, Any]): User information/claims from the IdP.
-        password_hasher (credentials_integration.PasswordHasher): The password hasher instance.
         db (Session): Database session.
 
     Returns:
@@ -155,9 +152,7 @@ def find_or_create_user(
         )
         raise core_exceptions.PermissionDeniedError("User account creation is disabled for this identity provider")
 
-    user = create_user_from_idp(
-        idp, subject, mapped_data, password_hasher, db, email_verified=claim_mapping.is_email_verified(userinfo)
-    )
+    user = create_user_from_idp(idp, subject, mapped_data, db, email_verified=claim_mapping.is_email_verified(userinfo))
 
     return user
 
@@ -166,7 +161,6 @@ def create_user_from_idp(
     idp: identity_provider_contracts.IdentityProviderState,
     subject: str,
     mapped_data: dict[str, Any],
-    password_hasher: credentials_integration.PasswordHasher,
     db: Session,
     *,
     email_verified: bool,
@@ -175,16 +169,14 @@ def create_user_from_idp(
 
     This method generates a unique username, creates a user with mapped data from the IdP
     using the existing CRUD layer, and links the user to the IdP subject. SSO accounts get
-    no local password credential — ``create_signup_user`` is called with
-    ``persist_credential=False`` so no row is written to ``users_local_credentials`` and
-    ``has_local_password`` correctly reports ``False``. The user's email is verified only when the
-    IdP asserted it as verified.
+    no local password credential: the sign-up carries no password, so no row is written to
+    ``users_local_credentials`` and ``has_local_password`` reports ``False``. The user's email is verified only
+    when the IdP asserted it as verified.
 
     Args:
         idp (identity_provider_contracts.IdentityProviderState): The identity provider instance.
         subject (str): The unique subject identifier from the IdP.
         mapped_data (Dict[str, Any]): User data mapped from the IdP (e.g., username, email, name).
-        password_hasher (credentials_integration.PasswordHasher): The password hasher instance.
         db (Session): The database session.
         email_verified (bool): Whether the IdP asserted the email as verified.
 
@@ -202,12 +194,6 @@ def create_user_from_idp(
             login_error="sso_email_missing",
         )
 
-    # Generate a random password solely to satisfy the required
-    # UsersSignup.password field. It is never validated, hashed, or
-    # stored because the user is created with persist_credential=False
-    # (SSO accounts have no local credential row).
-    random_password = password_hasher.generate_password(length=16)
-
     # Ensure username is unique
     base_username = mapped_data.get("username", f"user_{subject[:8]}")
     username = base_username
@@ -222,7 +208,6 @@ def create_user_from_idp(
         city=mapped_data.get("city"),
         birthdate=mapped_data.get("birthdate"),
         name=mapped_data.get("name", username),
-        password=random_password,
         preferred_language=users_schema.Language.ENGLISH,
         gender=users_schema.Gender.UNSPECIFIED,
         units=server_settings_schema.Units.METRIC,

@@ -6,6 +6,7 @@
   "email": "E-pošta",
   "password": "Geslo",
   "confirmPassword": "Potrdi geslo",
+  "passwordByEmailHint": "Poslali vam bomo e-pošto s potrditveno povezavo. Geslo boste izbrali tam.",
   "showOptionalFields": "Pokaži neobvezna polja",
   "hideOptionalFields": "Skrij neobvezna polja",
   "preferredLanguage": "Želeni jezik",

@@ -6,6 +6,7 @@
   "email": "E-pasts",
   "password": "Parole",
   "confirmPassword": "Apstiprināt paroli",
+  "passwordByEmailHint": "Mēs nosūtīsim jums e-pastu ar apstiprinājuma saiti. Paroli izvēlēsieties tur.",
   "showOptionalFields": "Rādīt neobligātos laukus",
   "hideOptionalFields": "Slēpt neobligātos laukus",
   "preferredLanguage": "Vēlamā valoda",

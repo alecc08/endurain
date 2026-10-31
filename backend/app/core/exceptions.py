@@ -157,6 +157,17 @@ class MfaRequiredError(PermissionDeniedError):
     default_detail = "MFA verification required"
 
 
+class PasswordRequiredError(InvalidInputError):
+    """A sign-up confirmation arrived without the password the account is still missing.
+
+    Clients branch on the ``password-required`` problem type to ask the user for a password and send the same
+    request again; the token stays usable because nothing was committed.
+    """
+
+    code = "password-required"
+    default_detail = "A password is required to confirm this sign-up"
+
+
 class IdpReauthRequiredError(UnauthenticatedError):
     """The account has no local password and the request carried no proof of a fresh identity-provider sign-in.
 

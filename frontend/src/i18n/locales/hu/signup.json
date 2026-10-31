@@ -6,6 +6,7 @@
   "email": "E-mail",
   "password": "Jelszó",
   "confirmPassword": "Jelszó megerősítése",
+  "passwordByEmailHint": "E-mailben küldünk egy megerősítő hivatkozást. A jelszavadat ott választhatod meg.",
   "showOptionalFields": "Választható mezők megjelenítése",
   "hideOptionalFields": "Választható mezők elrejtése",
   "preferredLanguage": "Preferált nyelv",

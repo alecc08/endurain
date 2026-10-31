@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Poczekaj chwilę, potwierdzamy Twój adres.",
+  "choosePasswordTitle": "Wybierz hasło",
+  "choosePasswordBody": "Twój adres e-mail zostanie potwierdzony po ustawieniu hasła do konta.",
+  "submitPassword": "Ustaw hasło",
+  "submittingPassword": "Zapisywanie hasła",
   "successTitle": "E-mail zweryfikowany",
   "successBody": "Twój adres e-mail został potwierdzony.",
   "adminApprovalBody": "Twoje konto oczekuje teraz na zatwierdzenie przez administratora.",

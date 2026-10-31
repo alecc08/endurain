@@ -6,6 +6,7 @@
   "email": "電子郵件",
   "password": "密碼",
   "confirmPassword": "確認密碼",
+  "passwordByEmailHint": "我們會寄送一封包含確認連結的電子郵件，你將在那裡選擇密碼。",
   "showOptionalFields": "顯示選填欄位",
   "hideOptionalFields": "隱藏選填欄位",
   "preferredLanguage": "偏好語言",

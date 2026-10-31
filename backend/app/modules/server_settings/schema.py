@@ -432,14 +432,17 @@ class ServerSettingsAdminRead(
 class ServerSettingsReadPublic(ServerSettingsBase):
     """Public-facing schema for unauthenticated server settings access.
 
-    Provides only public-safe server settings, excluding sensitive
-    configuration like signup requirements. Used for the public API
+    Provides only public-safe server settings. Used for the public API
     endpoint that doesn't require authentication.
 
     Inherits all safe fields from ServerSettingsBase but explicitly
-    excludes admin-level configuration fields.
+    excludes admin-level configuration fields. The email-verification
+    requirement is public because the sign-up form depends on it and the
+    sign-up response already discloses it; admin approval stays admin-only.
 
     Attributes:
+        signup_require_email_verification: Whether a new sign-up must verify its email
+            address, which is also when the password is chosen.
         login_photo_set: Whether a custom login photo is configured.
         allowed_redirect_schemes: Custom URI schemes (ALLOWED_REDIRECT_SCHEMES) that
             SSO redirects may target, so the frontend validates the same allow-list
@@ -447,6 +450,10 @@ class ServerSettingsReadPublic(ServerSettingsBase):
     """
 
     login_photo_set: StrictBool = Field(..., description="Is login photo set (true - yes, false - no)")
+    signup_require_email_verification: StrictBool = Field(
+        ...,
+        description="Require email verification for new sign-ups (true - yes, false - no)",
+    )
     allowed_redirect_schemes: list[str] = Field(
         ...,
         description="Custom URI schemes SSO redirects may target",

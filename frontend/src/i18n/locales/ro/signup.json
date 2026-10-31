@@ -6,6 +6,7 @@
   "email": "E-mail",
   "password": "Parolă",
   "confirmPassword": "Confirmă parola",
+  "passwordByEmailHint": "Vă vom trimite un e-mail cu un link de confirmare. Acolo vă veți alege parola.",
   "showOptionalFields": "Arată câmpurile opționale",
   "hideOptionalFields": "Ascunde câmpurile opționale",
   "preferredLanguage": "Limbă preferată",

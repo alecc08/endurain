@@ -495,10 +495,11 @@ class UsersSignup(UsersBase):
     """Users schema for signup operations.
 
     Attributes:
-        password: User's password (min 8 chars).
+        password: User's password (min 8 chars). Absent when the password is chosen at email
+            verification, and for accounts created through an identity provider.
     """
 
-    password: UserPassword
+    password: UserPassword | None = None
 
     model_config = ConfigDict(use_enum_values=True, validate_default=True, extra="forbid")
 

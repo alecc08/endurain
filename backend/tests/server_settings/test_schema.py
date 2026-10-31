@@ -500,3 +500,10 @@ class TestRetentionField:
 
     def test_the_public_settings_do_not_carry_it(self):
         assert "read_notification_retention_days" not in server_settings_schema.ServerSettingsReadPublic.model_fields
+
+
+class TestPublicSignUpFlag:
+    def test_the_public_settings_carry_the_email_verification_flag_but_not_admin_approval(self):
+        public = server_settings_schema.ServerSettingsReadPublic.model_fields
+        assert "signup_require_email_verification" in public
+        assert "signup_require_admin_approval" not in public

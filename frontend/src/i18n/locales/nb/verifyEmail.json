@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Vent litt mens vi bekrefter adressen din.",
+  "choosePasswordTitle": "Velg passordet ditt",
+  "choosePasswordBody": "E-postadressen din bekreftes når du har angitt et passord for kontoen din.",
+  "submitPassword": "Angi passord",
+  "submittingPassword": "Lagrer passord",
   "successTitle": "E-post bekreftet",
   "successBody": "E-postadressen din er bekreftet.",
   "adminApprovalBody": "Kontoen din venter nå på godkjenning fra en administrator.",

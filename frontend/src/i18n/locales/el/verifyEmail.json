@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Περιμένετε όσο επιβεβαιώνουμε τη διεύθυνσή σας.",
+  "choosePasswordTitle": "Επιλέξτε κωδικό πρόσβασης",
+  "choosePasswordBody": "Το email σας επιβεβαιώνεται μόλις ορίσετε κωδικό πρόσβασης για τον λογαριασμό σας.",
+  "submitPassword": "Ορισμός κωδικού",
+  "submittingPassword": "Αποθήκευση κωδικού",
   "successTitle": "Το email επαληθεύτηκε",
   "successBody": "Η διεύθυνση email σας επιβεβαιώθηκε.",
   "adminApprovalBody": "Ο λογαριασμός σας αναμένει τώρα έγκριση από διαχειριστή.",

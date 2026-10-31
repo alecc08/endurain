@@ -428,7 +428,6 @@ def _stage_signup_user(
     db: Session,
     *,
     email_verified: bool,
-    persist_credential: bool = True,
 ) -> users_schema.UsersRead:
     """Stage a user through sign-up or SSO, with their default data.
 
@@ -442,8 +441,6 @@ def _stage_signup_user(
         server_settings: Server config for sign-up requirements.
         db: Database session.
         email_verified: Whether the address is already proven.
-        persist_credential: When True, validate the supplied password and store its hash.
-            SSO-created accounts pass False so they get no local credential and stay SSO-only.
 
     Returns:
         The created user.
@@ -468,7 +465,7 @@ def _stage_signup_user(
     )
 
     hashed_password: str | None = None
-    if persist_credential:
+    if user.password is not None:
         hashed_password = credentials_integration.validate_and_hash_password_for_user(
             server_settings, users_schema.UserAccessType.REGULAR.value, user.password, db
         )
@@ -485,16 +482,14 @@ def create_signup_user(
     user: users_schema.UsersSignup,
     server_settings: server_settings_schema.ServerSettingsRead,
     db: Session,
-    persist_credential: bool = True,
 ) -> users_schema.UsersRead:
-    """Create a user through sign-up or SSO and commit the staged defaults.
+    """Create a user through sign-up and commit the staged defaults.
 
-    The address is not proven yet: the verification link proves it.
+    The address is not proven yet: the verification link proves it. A local credential is stored only when
+    the sign-up carries a password.
     """
     try:
-        created = _stage_signup_user(
-            user, server_settings, db, email_verified=False, persist_credential=persist_credential
-        )
+        created = _stage_signup_user(user, server_settings, db, email_verified=False)
     except core_exceptions.ConflictError as err:
         db.rollback()
         # Abstract message to reduce information leakage.
@@ -514,7 +509,7 @@ def create_sso_user(
     """Stage an SSO-only user with the defaults used by regular sign-up.
 
     Args:
-        user: User sign-up data mapped from the provider.
+        user: User sign-up data mapped from the provider; it carries no password, so no local credential is stored.
         server_settings: Server config for sign-up requirements.
         db: Database session.
         email_verified: Whether the provider asserted the address as verified.
@@ -526,7 +521,7 @@ def create_sso_user(
         ConflictError: If the username or email is already taken.
     """
     try:
-        created = _stage_signup_user(user, server_settings, db, email_verified=email_verified, persist_credential=False)
+        created = _stage_signup_user(user, server_settings, db, email_verified=email_verified)
     except core_exceptions.ConflictError as err:
         raise core_exceptions.ConflictError("Unable to create user.") from err
     logger.info("SSO user staged", extra=core_logger.context(user_id=created.id))

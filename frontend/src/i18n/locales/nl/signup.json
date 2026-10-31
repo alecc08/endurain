@@ -6,6 +6,7 @@
   "email": "E-mail",
   "password": "Wachtwoord",
   "confirmPassword": "Wachtwoord bevestigen",
+  "passwordByEmailHint": "We sturen je een e-mail met een bevestigingslink. Daar kies je je wachtwoord.",
   "showOptionalFields": "Optionele velden tonen",
   "hideOptionalFields": "Optionele velden verbergen",
   "preferredLanguage": "Voorkeurstaal",

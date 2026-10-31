@@ -6,6 +6,7 @@
   "email": "Sähköposti",
   "password": "Salasana",
   "confirmPassword": "Vahvista salasana",
+  "passwordByEmailHint": "Lähetämme sinulle vahvistuslinkin sähköpostitse. Valitset salasanasi siellä.",
   "showOptionalFields": "Näytä valinnaiset kentät",
   "hideOptionalFields": "Piilota valinnaiset kentät",
   "preferredLanguage": "Ensisijainen kieli",

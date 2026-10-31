@@ -6,6 +6,7 @@
   "email": "E-mail",
   "password": "Heslo",
   "confirmPassword": "Potvrďte heslo",
+  "passwordByEmailHint": "Pošleme vám e-mail s potvrdzovacím odkazom. Heslo si zvolíte tam.",
   "showOptionalFields": "Zobraziť volitené polia",
   "hideOptionalFields": "Skryť volitené polia",
   "preferredLanguage": "Preferovaný jazyk",

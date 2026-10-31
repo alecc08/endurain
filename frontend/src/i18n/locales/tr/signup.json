@@ -6,6 +6,7 @@
   "email": "E-posta",
   "password": "Parola",
   "confirmPassword": "Parolayı onayla",
+  "passwordByEmailHint": "Size bir onay bağlantısı içeren bir e-posta göndereceğiz. Parolanızı orada seçeceksiniz.",
   "showOptionalFields": "İsteğe bağlı alanları göster",
   "hideOptionalFields": "İsteğe bağlı alanları gizle",
   "preferredLanguage": "Tercih edilen dil",

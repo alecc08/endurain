@@ -6,6 +6,7 @@
   "email": "El. paštas",
   "password": "Slaptažodis",
   "confirmPassword": "Patvirtinti slaptažodį",
+  "passwordByEmailHint": "Atsiųsime jums el. laišką su patvirtinimo nuoroda. Slaptažodį pasirinksite ten.",
   "showOptionalFields": "Rodyti pasirenkamus laukus",
   "hideOptionalFields": "Slėpti pasirenkamus laukus",
   "preferredLanguage": "Pageidaujama kalba",

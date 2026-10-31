@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Einen Moment, während wir deine Adresse bestätigen.",
+  "choosePasswordTitle": "Wähle dein Passwort",
+  "choosePasswordBody": "Deine E-Mail-Adresse wird bestätigt, sobald du ein Passwort für dein Konto festlegst.",
+  "submitPassword": "Passwort festlegen",
+  "submittingPassword": "Passwort wird gespeichert",
   "successTitle": "E-Mail verifiziert",
   "successBody": "Deine E-Mail-Adresse wurde bestätigt.",
   "adminApprovalBody": "Dein Konto wartet jetzt auf Administratorgenehmigung.",

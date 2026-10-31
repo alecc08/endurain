@@ -26,6 +26,7 @@ class TestReadPublicServerSettings:
             currency=server_settings_schema.Currency.EURO,
             num_records_per_page=25,
             signup_enabled=False,
+            signup_require_email_verification=True,
             sso_enabled=False,
             local_login_enabled=True,
             sso_auto_redirect=False,
@@ -51,7 +52,7 @@ class TestReadPublicServerSettings:
         assert data["public_shareable_links"] is False
         # Ensure sensitive fields are not exposed
         assert "signup_require_admin_approval" not in data
-        assert "signup_require_email_verification" not in data
+        assert data["signup_require_email_verification"] is True
         assert data["allowed_redirect_schemes"] == ["endurain"]
 
     @patch("modules.server_settings.public_router.server_settings_service.get_server_settings_for_public")

@@ -9,6 +9,7 @@ import { DEFAULT_MAP_CONFIG } from '../defaults'
 export const DEFAULT_PUBLIC_SERVER_SETTINGS: PublicServerSettings = {
   login_photo_set: false,
   signup_enabled: false,
+  signup_require_email_verification: false,
   sso_enabled: false,
   local_login_enabled: true,
   sso_auto_redirect: false,

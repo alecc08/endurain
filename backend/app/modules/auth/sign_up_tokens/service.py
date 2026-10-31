@@ -14,6 +14,10 @@ import core.i18n as core_i18n
 import core.logger as core_logger
 import modules.auth.access_tokens.integration_service as access_tokens_integration
 import modules.auth.computation as token_hashing
+import modules.auth.credentials.contracts as credentials_contracts
+import modules.auth.credentials.integration_service as credentials_integration
+import modules.auth.mfa.integration_service as mfa_integration
+import modules.auth.sessions.integration_service as sessions_integration
 import modules.auth.sign_up_tokens.contracts as sign_up_contracts
 import modules.auth.sign_up_tokens.crud as sign_up_crud
 import modules.auth.sign_up_tokens.email_messages as sign_up_email_messages
@@ -410,6 +414,10 @@ def signup(
     is told by email instead, at most once per cooldown. A taken username with a new address is refused, because usernames
     are already visible to every signed-in user.
 
+    When the server requires email verification the password is chosen while the address is verified, so a sign-up
+    request must not carry one: whoever knows an address could otherwise set the password of the account its owner
+    later activates. Without verification the request carries the password.
+
     Args:
         user: The sign-up details.
         state: The platform state provider, for the notice cooldown.
@@ -421,12 +429,17 @@ def signup(
     Raises:
         PermissionDeniedError: If registration is disabled.
         ConflictError: If the username is taken.
-        InvalidInputError: If the password fails the configured policy.
+        InvalidInputError: If a password is sent while email verification is required, is missing while it is
+            not, or fails the configured policy.
     """
     server_settings = server_settings_integration.get_server_settings(db)
     if not server_settings.signup_enabled:
         logger.warning("Sign-up refused because registration is disabled")
         raise core_exceptions.PermissionDeniedError("User sign-up is not enabled on this server")
+    if server_settings.signup_require_email_verification and user.password is not None:
+        raise core_exceptions.InvalidInputError("A password is chosen when the email address is verified")
+    if not server_settings.signup_require_email_verification and user.password is None:
+        raise core_exceptions.InvalidInputError("A password is required")
 
     try:
         created_user = users_integration.create_signup_user(user, server_settings, db)
@@ -445,8 +458,19 @@ def signup(
     return _signup_response(server_settings)
 
 
-def verify_email(token: str, db: Session) -> sign_up_schema.SignUpRead:
+def _commit_sign_up(user_id: int, db: Session) -> None:
+    """Commit a confirmed sign-up, then drop the account's pending MFA state, as its password was just set."""
+    db.commit()
+    mfa_integration.clear_pending_mfa_for_user(user_id)
+    logger.info("Email verification completed", extra=core_logger.context(user_id=user_id))
+
+
+def verify_email(token: str, password: str | None, db: Session) -> sign_up_schema.SignUpRead:
     """Consume a verification token and apply the server's email-verification policy.
+
+    Confirming a sign-up also sets the account's password, replacing any credential the account already has, and
+    ends its sessions, as a password reset does. A sign-up confirmation without a password is refused before
+    anything is committed, so the token stays usable for the retry that carries one.
 
     A token that replaces the account's address (an email-change token) first switches the account to the
     confirmed address and stages the notice to the previous one; a conflict or any later failure rolls the
@@ -455,6 +479,21 @@ def verify_email(token: str, db: Session) -> sign_up_schema.SignUpRead:
     The address is marked verified in every case. Only a sign-up (an inactive account that no administrator
     deactivated) is activated, and only a sign-up goes on to the administrators' approval when the server
     requires it; an active or deactivated account keeps its state.
+
+    Args:
+        token: The raw verification token.
+        password: The password chosen for a sign-up; None for any other token.
+        db: Database session.
+
+    Returns:
+        What happens next for the account.
+
+    Raises:
+        InvalidInputError: If the token is invalid or expired, or a password accompanies a token that is not a
+            sign-up confirmation.
+        PasswordRequiredError: If a sign-up confirmation carries no password.
+        PasswordPolicyError: If the password fails the configured policy.
+        PreconditionFailedError: If a sign-up is confirmed while email verification is not enabled.
     """
     server_settings = server_settings_integration.get_server_settings(db)
     claim = verify_sign_up_token(token, db)
@@ -472,6 +511,25 @@ def verify_email(token: str, db: Session) -> sign_up_schema.SignUpRead:
     if is_sign_up and not server_settings.signup_require_email_verification:
         raise core_exceptions.PreconditionFailedError("Email verification is not enabled")
 
+    # A sign-up confirmation chooses the password. An account an administrator activated before it was
+    # confirmed has none yet either, and without one it could neither sign in nor reset its password.
+    sets_password = claim.previous_email is None and (
+        is_sign_up or (user.active and not credentials_integration.has_local_password(user_id, db))
+    )
+    if sets_password and password is None:
+        raise core_exceptions.PasswordRequiredError()
+    if password is not None and not sets_password:
+        raise core_exceptions.InvalidInputError("Only a sign-up confirmation chooses a password")
+    if password is not None:
+        try:
+            hashed_password = credentials_integration.validate_and_hash_password_for_user(
+                server_settings, users_schema.normalize_access_type(user.access_type), password, db
+            )
+        except core_exceptions.InvalidInputError as err:
+            raise credentials_contracts.PasswordPolicyError(err.detail) from err
+        credentials_integration.set_local_password_hash(user_id, hashed_password, db)
+        sessions_integration.delete_sessions_by_user(user_id, db)
+
     users_integration.stage_email_verification(user_id, server_settings, db)
     if not is_sign_up:
         db.commit()
@@ -479,20 +537,18 @@ def verify_email(token: str, db: Session) -> sign_up_schema.SignUpRead:
         return sign_up_schema.SignUpRead(message="Email verified successfully.")
 
     if not server_settings.signup_require_admin_approval:
-        db.commit()
-        logger.info("Email verification completed", extra=core_logger.context(user_id=user_id))
+        _commit_sign_up(user_id, db)
         return sign_up_schema.SignUpRead(message="Email verified successfully. You can now log in.")
 
     if server_settings_integration.is_mail_configured(db):
         request_sign_up_admin_approval_emails(user.id, db)
         notifications = notifications_integration.create_admin_sign_up_approval_notifications(user, db)
-        db.commit()
+        _commit_sign_up(user_id, db)
         for notification, ws_message in notifications:
             notifications_integration.push_notification(notification.user_id, notification, ws_message)
     else:
-        db.commit()
+        _commit_sign_up(user_id, db)
 
-    logger.info("Email verification completed", extra=core_logger.context(user_id=user_id))
     return sign_up_schema.SignUpRead(
         message="Email verified successfully. Your account is now pending admin approval.",
         admin_approval_required=True,

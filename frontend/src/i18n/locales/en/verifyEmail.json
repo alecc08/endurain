@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Hang tight while we confirm your address.",
+  "choosePasswordTitle": "Choose your password",
+  "choosePasswordBody": "Your email is confirmed once you set a password for your account.",
+  "submitPassword": "Set password",
+  "submittingPassword": "Saving password",
   "successTitle": "Email verified",
   "successBody": "Your email address has been confirmed.",
   "adminApprovalBody": "Your account is now waiting for administrator approval.",

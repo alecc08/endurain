@@ -6,6 +6,7 @@
   "email": "Email",
   "password": "Password",
   "confirmPassword": "确认密码",
+  "passwordByEmailHint": "我们会向你发送一封包含确认链接的电子邮件，你将在那里选择密码。",
   "showOptionalFields": "Show optional fields",
   "hideOptionalFields": "Hide optional fields",
   "preferredLanguage": "Preferred language",

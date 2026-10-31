@@ -1,5 +1,9 @@
 {
   "verifyingBody": "請稍候，我們正在確認您的電子郵件地址。",
+  "choosePasswordTitle": "選擇你的密碼",
+  "choosePasswordBody": "為帳號設定密碼後，你的電子郵件即完成驗證。",
+  "submitPassword": "設定密碼",
+  "submittingPassword": "正在儲存密碼",
   "successTitle": "電子郵件已驗證",
   "successBody": "您的電子郵件地址已確認。",
   "adminApprovalBody": "您的帳號正在等待管理員核准。",

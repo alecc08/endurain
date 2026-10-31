@@ -6,6 +6,7 @@
   "email": "Имейл",
   "password": "Парола",
   "confirmPassword": "Потвърди паролата",
+  "passwordByEmailHint": "Ще ви изпратим имейл с връзка за потвърждение. Паролата си ще изберете там.",
   "showOptionalFields": "Покажи незадължителните полета",
   "hideOptionalFields": "Скрий незадължителните полета",
   "preferredLanguage": "Предпочитан език",

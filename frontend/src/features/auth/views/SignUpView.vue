@@ -59,10 +59,14 @@ const { t, locale } = useI18n()
 const languageCodes = computed(() =>
   sortLanguageCodes((code) => t(`signup.languages.${code}`), locale.value),
 )
-const { serverSettings, loginImageUrl, load } = usePublicServerSettings()
+const { serverSettings, loginImageUrl, isSettingsLoading, load } = usePublicServerSettings()
 const toasts = useToasts()
 
 const showOptionalFields = ref(false)
+
+// Standalone ref (not read from `values`) so the password validator and the
+// submit gate can depend on it without a circular reference.
+const passwordRequired = computed(() => !serverSettings.value.signup_require_email_verification)
 
 // Sign-up creates a regular account, so the regular policy applies.
 const { hint: passwordHint, validate: validatePassword } = usePasswordPolicy('regular')
@@ -104,7 +108,8 @@ async function submitForm(formValues: SignUpFormValues): Promise<void> {
     name: formValues.name.trim(),
     username: formValues.username.trim().toLowerCase(),
     email: formValues.email.trim().toLowerCase(),
-    password: formValues.password,
+    // With email verification the password is chosen from the emailed link.
+    ...(passwordRequired.value ? { password: formValues.password } : {}),
     preferred_language: formValues.preferredLanguage,
     city: formValues.city.trim() ? formValues.city.trim() : null,
     birthdate: formValues.birthdate || null,
@@ -162,7 +167,10 @@ const { values, errors, isValid, isSubmitting, submitError, handleSubmit, handle
       name: required(t('signup.requiredField')),
       username: required(t('signup.requiredField')),
       email: compose(required<string>(t('signup.requiredField')), email(t('signup.emailInvalid'))),
-      password: compose(required<string>(t('signup.requiredField')), validatePassword),
+      password: (value: string) =>
+        passwordRequired.value
+          ? compose(required<string>(t('signup.requiredField')), validatePassword)(value)
+          : null,
       // Height is captured per unit system and only the active system's inputs
       // are rendered. Skip the imperial validators in metric mode (and vice
       // versa) so a hidden field's stale value can't silently fail validation
@@ -278,7 +286,12 @@ onMounted(async () => {
           </template>
         </FormField>
 
+        <p v-if="!passwordRequired" class="text-hint">
+          {{ t('signup.passwordByEmailHint') }}
+        </p>
+
         <FormField
+          v-if="passwordRequired"
           :label="t('signup.password')"
           :placeholder="t('signup.password')"
           required
@@ -301,6 +314,7 @@ onMounted(async () => {
         </FormField>
 
         <FormField
+          v-if="passwordRequired"
           :label="t('signup.confirmPassword')"
           :placeholder="t('signup.confirmPassword')"
           required
@@ -493,7 +507,9 @@ onMounted(async () => {
         <Button
           class="w-full"
           type="submit"
-          :disabled="!isValid || !passwordsMatch || isSubmitting"
+          :disabled="
+            !isValid || (passwordRequired && !passwordsMatch) || isSubmitting || isSettingsLoading
+          "
         >
           <LoaderCircle v-if="isSubmitting" class="size-4 animate-spin" aria-hidden="true" />
           <span>{{ isSubmitting ? t('signup.signingUp') : t('signup.signUpButton') }}</span>

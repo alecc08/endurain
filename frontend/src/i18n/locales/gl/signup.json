@@ -6,6 +6,7 @@
   "email": "Correo electrónico",
   "password": "Contrasinal",
   "confirmPassword": "Confirmar contrasinal",
+  "passwordByEmailHint": "Enviaremosche un correo cunha ligazón de confirmación. Alí escollerás o teu contrasinal.",
   "showOptionalFields": "Mostrar campos opcionais",
   "hideOptionalFields": "Ocultar campos opcionais",
   "preferredLanguage": "Idioma preferido",

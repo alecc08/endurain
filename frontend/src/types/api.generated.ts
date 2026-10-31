@@ -631,10 +631,12 @@ export interface paths {
          *
          *     Protection Mechanisms:
          *     - Rate limiting: 10 requests per minute per IP (SENSITIVE tier, prevents DoS attacks)
-         *     - Progressive lockout: Per-username tracking prevents targeted brute-force:
+         *     - Progressive lockout: Per-username and client-address tracking prevents targeted brute-force without
+         *       letting one client lock the account for everyone:
          *       * 5 failures: 5 minute lockout
          *       * 10 failures: 30 minute lockout
          *       * 20 failures: 24 hour lockout
+         *       * A much higher account-wide threshold across all addresses stops a distributed brute force
          *
          *     This endpoint authenticates a user using provided credentials, checks if the user is active,
          *     and determines if MFA is required. If MFA is enabled for the user, it stores the pending login
@@ -4179,7 +4181,7 @@ export interface paths {
         };
         /**
          * Read Identity Provider Icon
-         * @description Serve the uploaded icon of an enabled identity provider (unauthenticated).
+         * @description Serve the uploaded icon of an identity provider (unauthenticated).
          *
          *     The login screen renders before anyone is signed in, so the icon is public by design; it is one
          *     admin-chosen image, not user data. The response carries an ETag derived from the provider version and must
@@ -4196,7 +4198,7 @@ export interface paths {
          *         The image bytes, or a 304 when the client's copy is current.
          *
          *     Raises:
-         *         NotFoundError: 404 when the provider is unknown, disabled or has no uploaded icon.
+         *         NotFoundError: 404 when the provider is unknown or has no uploaded icon.
          */
         get: operations["read_identity_provider_icon_api_v1_public_idp__idp_slug__icon_get"];
         put?: never;
@@ -4678,7 +4680,7 @@ export interface paths {
         put?: never;
         /**
          * Verify Email
-         * @description Verify an account's email address using its one-time token.
+         * @description Verify an account's email address using its one-time token; a sign-up also chooses its password.
          */
         post: operations["verify_email_api_v1_sign_up_confirm_post"];
         delete?: never;
@@ -8827,7 +8829,7 @@ export interface components {
             enabled: boolean;
             /**
              * Icon
-             * @description Icon name or URL
+             * @description Built-in icon key
              */
             icon?: string | null;
             /**
@@ -9077,7 +9079,7 @@ export interface components {
             enabled: boolean;
             /**
              * Icon
-             * @description Icon name or URL
+             * @description Built-in icon key
              */
             icon?: string | null;
             /**
@@ -9235,7 +9237,7 @@ export interface components {
             enabled: boolean;
             /**
              * Icon
-             * @description Icon name or URL
+             * @description Built-in icon key
              */
             icon?: string | null;
             /**
@@ -11018,14 +11020,17 @@ export interface components {
          * ServerSettingsReadPublic
          * @description Public-facing schema for unauthenticated server settings access.
          *
-         *     Provides only public-safe server settings, excluding sensitive
-         *     configuration like signup requirements. Used for the public API
+         *     Provides only public-safe server settings. Used for the public API
          *     endpoint that doesn't require authentication.
          *
          *     Inherits all safe fields from ServerSettingsBase but explicitly
-         *     excludes admin-level configuration fields.
+         *     excludes admin-level configuration fields. The email-verification
+         *     requirement is public because the sign-up form depends on it and the
+         *     sign-up response already discloses it; admin approval stays admin-only.
          *
          *     Attributes:
+         *         signup_require_email_verification: Whether a new sign-up must verify its email
+         *             address, which is also when the password is chosen.
          *         login_photo_set: Whether a custom login photo is configured.
          *         allowed_redirect_schemes: Custom URI schemes (ALLOWED_REDIRECT_SCHEMES) that
          *             SSO redirects may target, so the frontend validates the same allow-list
@@ -11087,6 +11092,11 @@ export interface components {
              */
             signup_enabled: boolean;
             /**
+             * Signup Require Email Verification
+             * @description Require email verification for new sign-ups (true - yes, false - no)
+             */
+            signup_require_email_verification: boolean;
+            /**
              * Sso Auto Redirect
              * @description Auto-redirect to SSO if only one IdP (true - yes, false - no)
              */
@@ -11120,8 +11130,11 @@ export interface components {
          *
          *     Attributes:
          *         token: The sign-up token received by user.
+         *         password: The password the user chooses while confirming a sign-up; omitted for an email change.
          */
         SignUpConfirm: {
+            /** Password */
+            password?: string | null;
             /**
              * Token
              * @description The sign-up token received by the user
@@ -13236,7 +13249,8 @@ export interface components {
          * @description Users schema for signup operations.
          *
          *     Attributes:
-         *         password: User's password (min 8 chars).
+         *         password: User's password (min 8 chars). Absent when the password is chosen at email
+         *             verification, and for accounts created through an identity provider.
          */
         UsersSignup: {
             /**
@@ -13285,11 +13299,8 @@ export interface components {
              * @description User's full name
              */
             name: string;
-            /**
-             * Password
-             * @description User's password
-             */
-            password: string;
+            /** Password */
+            password?: string | null;
             /**
              * @description Preferred language
              * @default en

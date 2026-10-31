@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Vänta medan vi bekräftar din adress.",
+  "choosePasswordTitle": "Välj ditt lösenord",
+  "choosePasswordBody": "Din e-postadress bekräftas när du har angett ett lösenord för ditt konto.",
+  "submitPassword": "Ange lösenord",
+  "submittingPassword": "Sparar lösenord",
   "successTitle": "E-post verifierad",
   "successBody": "Din e-postadress har bekräftats.",
   "adminApprovalBody": "Ditt konto väntar nu på administratörsgodkännande.",

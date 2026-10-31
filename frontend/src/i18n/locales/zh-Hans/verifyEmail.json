@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Hang tight while we confirm your address.",
+  "choosePasswordTitle": "选择你的密码",
+  "choosePasswordBody": "为账户设置密码后，你的电子邮件即完成验证。",
+  "submitPassword": "设置密码",
+  "submittingPassword": "正在保存密码",
   "successTitle": "Email verified",
   "successBody": "Your email address has been confirmed.",
   "adminApprovalBody": "Your account is now waiting for administrator approval.",

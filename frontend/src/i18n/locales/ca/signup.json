@@ -6,6 +6,7 @@
   "email": "Correu",
   "password": "Contrasenya",
   "confirmPassword": "Confirma la contrasenya",
+  "passwordByEmailHint": "T'enviarem un correu amb un enllaç de confirmació. Triaràs la contrasenya allà.",
   "showOptionalFields": "Mostra els camps opcionals",
   "hideOptionalFields": "Amaga els camps opcionals",
   "preferredLanguage": "Idioma preferit",

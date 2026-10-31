@@ -200,7 +200,7 @@ class CallbackService:
         if oauth_state.purpose == oauth_state_constants.OAuthStatePurpose.STEP_UP:
             return self.complete_step_up_callback(idp, code, oauth_state, db)
         try:
-            result = self.handle_callback(idp, code, state, password_hasher, oauth_state, db)
+            result = self.handle_callback(idp, code, state, oauth_state, db)
             user = result["user"]
 
             if result.get("mode") == "link":
@@ -282,7 +282,6 @@ class CallbackService:
         idp: identity_provider_contracts.IdentityProviderState,
         code: str,
         state: str,
-        password_hasher: credentials_integration.PasswordHasher,
         oauth_state: oauth_state_schema.OAuthStateRead,
         db: Session,
     ) -> dict[str, Any]:
@@ -298,8 +297,6 @@ class CallbackService:
             code (str): The authorization code returned by the identity provider.
             state (str): The state parameter for CSRF protection (database state ID).
             request (Request): The FastAPI/Starlette request object.
-            password_hasher (credentials_integration.PasswordHasher): Password hasher instance
-                for user authentication operations.
             db (Session): SQLAlchemy database session.
             oauth_state (oauth_state_schema.OAuthStateRead): OAuth-state data.
 
@@ -545,7 +542,7 @@ class CallbackService:
                 }
             else:
                 # LOGIN MODE: Find or create user and establish session
-                user = user_provisioning_service.find_or_create_user(idp, subject, userinfo, password_hasher, db)
+                user = user_provisioning_service.find_or_create_user(idp, subject, userinfo, db)
 
                 # Store IdP tokens for future session renewal
                 self._tokens.store_idp_tokens(user.id, idp.id, token_response, db)

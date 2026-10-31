@@ -234,7 +234,7 @@ class TestHandleCallback:
             patch.object(callback_service.user_provisioning_service, "find_or_create_user", return_value=user),
             patch.object(service._tokens, "store_idp_tokens"),
         ):
-            result = service.handle_callback(idp, "code", "state", MagicMock(), oauth_state, MagicMock())
+            result = service.handle_callback(idp, "code", "state", oauth_state, MagicMock())
 
         get_userinfo.assert_called_once()
         assert result["userinfo"] == userinfo
@@ -269,7 +269,7 @@ class TestHandleCallback:
             patch.object(service._tokens, "store_idp_tokens"),
         ):
             order.attach_mock(get_userinfo, "userinfo")
-            service.handle_callback(idp, "code", "state", MagicMock(), oauth_state, db)
+            service.handle_callback(idp, "code", "state", oauth_state, db)
 
         names = [call[0] for call in order.mock_calls]
         last_network_call = max(names.index("token_exchange"), names.index("userinfo"))
@@ -307,7 +307,7 @@ class TestOidcLoginFailsClosed:
             patch.object(service._tokens, "store_idp_tokens"),
         ):
             try:
-                return service.handle_callback(idp, "code", "state", MagicMock(), oauth_state, db)
+                return service.handle_callback(idp, "code", "state", oauth_state, db)
             finally:
                 self.find_or_create = find_or_create
                 self.get_userinfo = forged
@@ -337,7 +337,7 @@ class TestOidcLoginFailsClosed:
             patch.object(service._oidc, "get_oidc_configuration", side_effect=idp_error),
             pytest.raises(core_exceptions.UpstreamError, match="discovery down"),
         ):
-            service.handle_callback(idp, "code", "state", MagicMock(), oauth_state, MagicMock())
+            service.handle_callback(idp, "code", "state", oauth_state, MagicMock())
 
     @pytest.mark.parametrize("purpose", [_LOGIN, _LINK])
     def test_a_token_response_without_an_id_token_refuses_the_flow(self, service, purpose):
@@ -370,7 +370,7 @@ class TestOidcLoginFailsClosed:
             patch.object(callback_service.identity_provider_links_integration, "create_user_identity_provider") as link,
             pytest.raises(core_exceptions.UpstreamError, match="no ID token"),
         ):
-            service.handle_callback(idp, "code", "state", MagicMock(), oauth_state, MagicMock())
+            service.handle_callback(idp, "code", "state", oauth_state, MagicMock())
 
         find_or_create.assert_not_called()
         link.assert_not_called()
@@ -407,7 +407,7 @@ class TestOauth2LoginKeepsUserinfo:
             patch.object(callback_service.user_provisioning_service, "find_or_create_user", return_value=user),
             patch.object(service._tokens, "store_idp_tokens"),
         ):
-            result = service.handle_callback(idp, "code", "state", MagicMock(), oauth_state, MagicMock())
+            result = service.handle_callback(idp, "code", "state", oauth_state, MagicMock())
 
         discovery.assert_not_called()
         assert get_userinfo.call_args.kwargs["require_id_token"] is False
@@ -434,7 +434,7 @@ class TestTokenExchangeRefusal:
             patch.object(service._oidc, "create_oauth_client", return_value=oauth_client),
             pytest.raises(core_exceptions.UpstreamError),
         ):
-            service.handle_callback(idp, "code", "state", MagicMock(), oauth_state, MagicMock())
+            service.handle_callback(idp, "code", "state", oauth_state, MagicMock())
 
         assert [record.levelno for record in caplog.records if record.levelno >= logging.WARNING] == [logging.WARNING]
 

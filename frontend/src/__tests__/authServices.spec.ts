@@ -75,6 +75,14 @@ describe('signUp service', () => {
     expect(call?.[1].body).toBe(JSON.stringify({ token: 'verify-tok' }))
     expect(result.admin_approval_required).toBe(true)
   })
+
+  it('sends the chosen password when confirming a sign-up link', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'verified' }))
+    await confirmSignUp({ token: 'verify-tok', password: 'chosen-pass' })
+    expect(fetchMock.mock.calls[0]?.[1].body).toBe(
+      JSON.stringify({ token: 'verify-tok', password: 'chosen-pass' }),
+    )
+  })
 })
 
 describe('onboarding service', () => {

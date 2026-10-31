@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Palaukite, kol patvirtinsime jūsų adresą.",
+  "choosePasswordTitle": "Pasirinkite slaptažodį",
+  "choosePasswordBody": "Jūsų el. paštas bus patvirtintas, kai nustatysite paskyros slaptažodį.",
+  "submitPassword": "Nustatyti slaptažodį",
+  "submittingPassword": "Slaptažodis išsaugomas",
   "successTitle": "El. paštas patvirtintas",
   "successBody": "Jūsų el. pašto adresas buvo patvirtintas.",
   "adminApprovalBody": "Jūsų paskyra dabar laukia administratoriaus patvirtinimo.",

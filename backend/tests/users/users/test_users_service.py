@@ -36,9 +36,13 @@ def _edit(user_id: int = 1, **overrides) -> users_schema.UsersEdit:
     return users_schema.UsersEdit.from_read(_user(user_id, **overrides))
 
 
-def _signup() -> users_schema.UsersSignup:
+def _signup(*, with_password: bool = True) -> users_schema.UsersSignup:
     return users_schema.UsersSignup(
-        name="New", username="NewUser", email="New@Example.com", password="SecurePass1!", preferred_language="en"
+        name="New",
+        username="NewUser",
+        email="New@Example.com",
+        password="SecurePass1!" if with_password else None,
+        preferred_language="en",
     )
 
 
@@ -563,7 +567,32 @@ class TestCreateSignupUser:
         identity = _identity()
         mock_crud.create_user.return_value = _user(3)
 
-        users_service.create_signup_user(_signup(), self._settings(False, False), mock_db, False)
+        users_service.create_sso_user(
+            _signup(with_password=False), self._settings(False, False), mock_db, email_verified=True
+        )
+
+        identity.validate_and_hash_password_for_user.assert_not_called()
+        identity.set_local_password_hash.assert_not_called()
+
+    @patch("modules.users.users.service._stage_default_data")
+    @patch(_CRUD)
+    def test_a_supplied_password_is_hashed_and_stored(self, mock_crud, _defaults, mock_db):
+        identity = _identity()
+        identity.validate_and_hash_password_for_user.return_value = "hashed"
+        mock_crud.create_user.return_value = _user(3)
+
+        users_service.create_signup_user(_signup(), self._settings(False, False), mock_db)
+
+        identity.set_local_password_hash.assert_called_once()
+        assert identity.set_local_password_hash.call_args.args[:2] == (3, "hashed")
+
+    @patch("modules.users.users.service._stage_default_data")
+    @patch(_CRUD)
+    def test_a_sign_up_without_a_password_stores_no_credential(self, mock_crud, _defaults, mock_db):
+        identity = _identity()
+        mock_crud.create_user.return_value = _user(3)
+
+        users_service.create_signup_user(_signup(with_password=False), self._settings(True, False), mock_db)
 
         identity.validate_and_hash_password_for_user.assert_not_called()
         identity.set_local_password_hash.assert_not_called()

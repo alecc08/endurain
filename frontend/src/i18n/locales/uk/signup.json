@@ -6,6 +6,7 @@
   "email": "Електронна пошта",
   "password": "Пароль",
   "confirmPassword": "Підтвердьте пароль",
+  "passwordByEmailHint": "Ми надішлемо вам електронний лист із посиланням для підтвердження. Пароль ви оберете там.",
   "showOptionalFields": "Показати необов'язкові поля",
   "hideOptionalFields": "Сховати необов'язкові поля",
   "preferredLanguage": "Бажана мова",

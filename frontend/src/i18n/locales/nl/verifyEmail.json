@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Even geduld, we bevestigen je adres.",
+  "choosePasswordTitle": "Kies je wachtwoord",
+  "choosePasswordBody": "Je e-mailadres wordt bevestigd zodra je een wachtwoord voor je account hebt ingesteld.",
+  "submitPassword": "Wachtwoord instellen",
+  "submittingPassword": "Wachtwoord opslaan",
   "successTitle": "E-mailadres geverifieerd",
   "successBody": "Je e-mailadres is bevestigd.",
   "adminApprovalBody": "Je account wacht nu op goedkeuring door de beheerder.",

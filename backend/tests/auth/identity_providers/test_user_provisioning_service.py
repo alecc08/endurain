@@ -33,7 +33,6 @@ class TestFindOrCreateUserEmailLinking:
         """Linking to an existing account must fail when email unverified."""
         idp = _make_idp()
         mock_db = MagicMock(spec=Session)
-        password_hasher = MagicMock()
         existing_user = MagicMock()
         existing_user.username = "victim"
 
@@ -53,7 +52,7 @@ class TestFindOrCreateUserEmailLinking:
             ) as mock_link,
             pytest.raises(core_exceptions.DomainError) as exc_info,
         ):
-            user_provisioning_service.find_or_create_user(idp, "subject-123", userinfo, password_hasher, mock_db)
+            user_provisioning_service.find_or_create_user(idp, "subject-123", userinfo, mock_db)
 
         assert exc_info.value.status_code == 403
         # No link must be created for the unverified takeover attempt.
@@ -63,7 +62,6 @@ class TestFindOrCreateUserEmailLinking:
         """Linking to an existing account succeeds when email is verified."""
         idp = _make_idp()
         mock_db = MagicMock(spec=Session)
-        password_hasher = MagicMock()
         existing_user = MagicMock()
         existing_user.id = 7
         existing_user.username = "legit"
@@ -83,9 +81,7 @@ class TestFindOrCreateUserEmailLinking:
                 "modules.auth.identity_providers.user_provisioning_service.identity_provider_links_integration.create_user_identity_provider",
             ) as mock_link,
         ):
-            result = user_provisioning_service.find_or_create_user(
-                idp, "subject-123", userinfo, password_hasher, mock_db
-            )
+            result = user_provisioning_service.find_or_create_user(idp, "subject-123", userinfo, mock_db)
 
         assert result is existing_user
         mock_link.assert_called_once_with(existing_user.id, idp.id, "subject-123", mock_db)
@@ -94,7 +90,6 @@ class TestFindOrCreateUserEmailLinking:
         """Unverified email with no existing account still auto-creates."""
         idp = _make_idp()
         mock_db = MagicMock(spec=Session)
-        password_hasher = MagicMock()
         created_user = MagicMock()
 
         userinfo = {"email": "fresh@example.com"}  # unverified, no match
@@ -114,9 +109,7 @@ class TestFindOrCreateUserEmailLinking:
                 new=MagicMock(return_value=created_user),
             ) as mock_create,
         ):
-            result = user_provisioning_service.find_or_create_user(
-                idp, "subject-123", userinfo, password_hasher, mock_db
-            )
+            result = user_provisioning_service.find_or_create_user(idp, "subject-123", userinfo, mock_db)
 
         assert result is created_user
         mock_create.assert_called_once()
@@ -128,8 +121,6 @@ class TestCreatedAccountEmailVerification:
 
     @pytest.mark.parametrize("asserted", [True, False])
     def test_the_flag_follows_the_provider(self, asserted):
-        hasher = MagicMock()
-        hasher.generate_password.return_value = "x" * 16
         with (
             patch.object(user_provisioning_service.users_integration, "get_user_by_username", return_value=None),
             patch.object(user_provisioning_service.server_settings_integration, "get_server_settings"),
@@ -143,7 +134,6 @@ class TestCreatedAccountEmailVerification:
                 _make_idp(),
                 "subject-123",
                 {"username": "new", "email": "new@example.com"},
-                hasher,
                 MagicMock(),
                 email_verified=asserted,
             )
@@ -158,7 +148,7 @@ class TestCreatedAccountEmailVerification:
             pytest.raises(user_provisioning_service.SsoSignInRefusedError) as exc_info,
         ):
             user_provisioning_service.create_user_from_idp(
-                _make_idp(), "subject-123", {"username": "new", **mapped}, MagicMock(), MagicMock(), email_verified=True
+                _make_idp(), "subject-123", {"username": "new", **mapped}, MagicMock(), email_verified=True
             )
 
         assert exc_info.value.login_error == "sso_email_missing"
@@ -191,7 +181,7 @@ class TestLocalEmailVerificationGate:
             ) as mock_link,
             pytest.raises(core_exceptions.DomainError) as exc_info,
         ):
-            user_provisioning_service.find_or_create_user(idp, "subject-123", userinfo, MagicMock(), mock_db)
+            user_provisioning_service.find_or_create_user(idp, "subject-123", userinfo, mock_db)
 
         assert exc_info.value.status_code == 403
         mock_link.assert_not_called()

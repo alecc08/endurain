@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Attendi mentre confermiamo il tuo indirizzo.",
+  "choosePasswordTitle": "Scegli la tua password",
+  "choosePasswordBody": "La tua e-mail viene confermata una volta impostata una password per il tuo account.",
+  "submitPassword": "Imposta password",
+  "submittingPassword": "Salvataggio della password",
   "successTitle": "Email verificata",
   "successBody": "Il tuo indirizzo email è stato confermato.",
   "adminApprovalBody": "Il tuo account è ora in attesa di approvazione da parte dell'amministratore.",

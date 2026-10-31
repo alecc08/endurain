@@ -104,6 +104,9 @@ export type SignUpRequest = Schemas['UsersSignup']
  */
 export type SignUpResponse = Schemas['SignUpRead']
 
+/** Body of `POST /sign-up/confirm`; `password` is only sent for a sign-up link. */
+export type SignUpConfirm = Schemas['SignUpConfirm']
+
 /**
  * Whether the installation still needs its first administrator.
  *

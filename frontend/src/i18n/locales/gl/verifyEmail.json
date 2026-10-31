@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Agarda un momento mentres confirmamos o teu enderezo.",
+  "choosePasswordTitle": "Escolle o teu contrasinal",
+  "choosePasswordBody": "O teu correo confírmase cando estableces un contrasinal para a túa conta.",
+  "submitPassword": "Establecer contrasinal",
+  "submittingPassword": "Gardando o contrasinal",
   "successTitle": "Correo electrónico verificado",
   "successBody": "O teu enderezo de correo electrónico foi confirmado.",
   "adminApprovalBody": "A túa conta está agora agardando a aprobación do administrador.",

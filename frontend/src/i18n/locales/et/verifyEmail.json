@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Palun oota, kuni me sinu aadressi kinnitame.",
+  "choosePasswordTitle": "Vali oma parool",
+  "choosePasswordBody": "Sinu e-post kinnitatakse, kui oled oma kontole parooli määranud.",
+  "submitPassword": "Määra parool",
+  "submittingPassword": "Parooli salvestamine",
   "successTitle": "E-post kinnitatud",
   "successBody": "Sinu e-posti aadress on kinnitatud.",
   "adminApprovalBody": "Sinu konto ootab nüüd administraatori heakskiitu.",

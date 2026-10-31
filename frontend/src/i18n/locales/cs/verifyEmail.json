@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Vydržte, zatímco potvrzujeme vaši adresu.",
+  "choosePasswordTitle": "Zvolte si heslo",
+  "choosePasswordBody": "Váš e-mail bude potvrzen, jakmile pro svůj účet nastavíte heslo.",
+  "submitPassword": "Nastavit heslo",
+  "submittingPassword": "Ukládání hesla",
   "successTitle": "E-mail ověřen",
   "successBody": "Vaše e-mailová adresa byla potvrzena.",
   "adminApprovalBody": "Váš účet nyní čeká na schválení administrátorem.",

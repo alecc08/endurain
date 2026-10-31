@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr
 
+import modules.users.users.schema as users_schema
+
 
 class SignUpToken(BaseModel):
     """Schema representing a sign-up token record.
@@ -68,6 +70,7 @@ class SignUpConfirm(BaseModel):
 
     Attributes:
         token: The sign-up token received by user.
+        password: The password the user chooses while confirming a sign-up; omitted for an email change.
     """
 
     token: StrictStr = Field(
@@ -76,6 +79,8 @@ class SignUpConfirm(BaseModel):
         min_length=1,
         max_length=256,
     )
+
+    password: users_schema.UserPassword | None = None
 
     model_config = ConfigDict(extra="forbid")
 

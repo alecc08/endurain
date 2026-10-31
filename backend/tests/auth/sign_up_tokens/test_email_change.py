@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 import core.exceptions as core_exceptions
 import modules.auth.computation as token_hashing
+import modules.auth.credentials.integration_service as credentials_integration
 import modules.auth.sign_up_tokens.crud as sign_up_crud
 import modules.auth.sign_up_tokens.integration_service as sign_up_integration
 import modules.auth.sign_up_tokens.models as sign_up_models
@@ -221,7 +222,7 @@ class TestVerifyEmailOfAPendingChange:
         _add_token(db, token_id="t1", token="plain", email="New@Example.com", previous_email="user7@example.com")
 
         with patch(_PUBLISH) as publish:
-            result = sign_up_service.verify_email("plain", db)
+            result = sign_up_service.verify_email("plain", None, db)
 
         assert result.message == "Email verified successfully."
         db.expire_all()
@@ -236,7 +237,7 @@ class TestVerifyEmailOfAPendingChange:
         _add_token(db, token_id="t1", token="plain", email="user8@example.com", previous_email="user7@example.com")
 
         with patch(_PUBLISH) as publish, pytest.raises(core_exceptions.ConflictError):
-            sign_up_service.verify_email("plain", db)
+            sign_up_service.verify_email("plain", None, db)
         # get_db rolls the session back on an unhandled exception.
         db.rollback()
 
@@ -256,17 +257,18 @@ class TestVerifyEmailOfAPendingChange:
         )
 
         with patch(_PUBLISH) as publish, pytest.raises(core_exceptions.InvalidInputError):
-            sign_up_service.verify_email("plain", db)
+            sign_up_service.verify_email("plain", None, db)
 
         assert db.get(users_models.Users, 7).email == "user7@example.com"
         publish.assert_not_called()
 
     def test_a_sign_up_token_leaves_the_address_alone_and_sends_no_notice(self, db):
         self._activate(db)
+        credentials_integration.set_local_password_hash(7, "existing-hash", db)
         _add_token(db, token_id="t1", token="plain", email="user7@example.com", previous_email=None)
 
         with patch(_PUBLISH) as publish:
-            sign_up_service.verify_email("plain", db)
+            sign_up_service.verify_email("plain", None, db)
 
         assert db.get(users_models.Users, 7).email == "user7@example.com"
         publish.assert_not_called()
@@ -280,7 +282,11 @@ class TestVerifyEmailOnAnInactiveAccount:
         return patch(
             f"{_SERVICE}.server_settings_integration.get_server_settings",
             return_value=MagicMock(
-                signup_require_email_verification=verification, signup_require_admin_approval=approval
+                signup_require_email_verification=verification,
+                signup_require_admin_approval=approval,
+                password_type="strict",
+                password_length_regular_users=8,
+                password_length_admin_users=12,
             ),
         )
 
@@ -305,7 +311,7 @@ class TestVerifyEmailOnAnInactiveAccount:
             patch(_PUBLISH) as publish,
             patch(f"{_SERVICE}.notifications_integration") as notifications,
         ):
-            result = sign_up_service.verify_email("plain", db)
+            result = sign_up_service.verify_email("plain", None, db)
 
         assert result.message == "Email verified successfully."
         assert result.admin_approval_required is None
@@ -326,7 +332,7 @@ class TestVerifyEmailOnAnInactiveAccount:
             patch(_PUBLISH) as publish,
             patch(f"{_SERVICE}.notifications_integration") as notifications,
         ):
-            result = sign_up_service.verify_email("plain", db)
+            result = sign_up_service.verify_email("plain", None, db)
 
         assert result.message == "Email verified successfully."
         db.expire_all()
@@ -344,7 +350,7 @@ class TestVerifyEmailOnAnInactiveAccount:
             patch(_PUBLISH) as publish,
             patch(f"{_SERVICE}.notifications_integration") as notifications,
         ):
-            result = sign_up_service.verify_email("plain", db)
+            result = sign_up_service.verify_email("plain", "ChosenPass1!", db)
 
         assert result.message == "Email verified successfully. You can now log in."
         db.expire_all()
@@ -363,7 +369,7 @@ class TestVerifyEmailOnAnInactiveAccount:
             patch(f"{_SERVICE}.notifications_integration") as notifications,
         ):
             notifications.create_admin_sign_up_approval_notifications.return_value = []
-            result = sign_up_service.verify_email("plain", db)
+            result = sign_up_service.verify_email("plain", "ChosenPass1!", db)
 
         assert result.admin_approval_required is True
         db.expire_all()
@@ -500,3 +506,55 @@ def test_get_sign_up_token_by_id(db):
 
     assert sign_up_crud.get_sign_up_token_by_id("t1", db).previous_email == "user7@example.com"
     assert sign_up_crud.get_sign_up_token_by_id("nope", db) is None
+
+
+class TestVerifyEmailLeavesTheTokenUsableWithoutAPassword:
+    def test_the_refused_request_rolls_the_claim_back(self, db):
+        _add_token(db, token_id="t", token="raw", email="user7@example.com", previous_email=None)
+        settings = MagicMock(signup_require_email_verification=True, signup_require_admin_approval=False)
+
+        with (
+            patch(f"{_SERVICE}.server_settings_integration.get_server_settings", return_value=settings),
+            patch(f"{_SERVICE}.users_integration") as users,
+        ):
+            users.get_user.return_value = MagicMock(id=7, active=False)
+            users.is_deactivated.return_value = False
+            with pytest.raises(core_exceptions.PasswordRequiredError):
+                sign_up_service.verify_email("raw", None, db)
+            db.rollback()
+
+        assert _tokens(db).one().used is False
+
+
+class TestSignUpPrehijack:
+    def test_the_confirming_user_password_replaces_a_hash_staged_at_sign_up(self, db):
+        """Whoever staged the account cannot keep a password: confirming sets the owner's."""
+        user = db.get(users_models.Users, 7)
+        user.active = False
+        credentials_integration.set_local_password_hash(
+            7, credentials_integration.get_password_hasher().hash_password("AttackerPass1!"), db
+        )
+        _add_token(db, token_id="t1", token="plain", email="user7@example.com", previous_email=None)
+        db.commit()
+        settings = MagicMock(
+            signup_require_email_verification=True,
+            signup_require_admin_approval=False,
+            password_type="strict",
+            password_length_regular_users=8,
+            password_length_admin_users=12,
+        )
+
+        with (
+            patch(f"{_SERVICE}.server_settings_integration.get_server_settings", return_value=settings),
+            patch(f"{_SERVICE}.sessions_integration") as sessions,
+            patch(f"{_SERVICE}.mfa_integration") as mfa,
+        ):
+            sign_up_service.verify_email("plain", "OwnerChosen1!", db)
+
+        db.expire_all()
+        stored = credentials_integration.get_password_hash(7, db)
+        assert credentials_integration.verify_password("OwnerChosen1!", stored)
+        assert not credentials_integration.verify_password("AttackerPass1!", stored)
+        assert db.get(users_models.Users, 7).active is True
+        sessions.delete_sessions_by_user.assert_called_once_with(7, db)
+        mfa.clear_pending_mfa_for_user.assert_called_once_with(7)

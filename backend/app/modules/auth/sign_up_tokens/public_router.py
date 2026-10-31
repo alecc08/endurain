@@ -37,5 +37,5 @@ def verify_email(
     confirm_data: sign_up_schema.SignUpConfirm,
     db: core_dependencies.DbSession,
 ) -> sign_up_schema.SignUpRead:
-    """Verify an account's email address using its one-time token."""
-    return sign_up_service.verify_email(confirm_data.token, db)
+    """Verify an account's email address using its one-time token; a sign-up also chooses its password."""
+    return sign_up_service.verify_email(confirm_data.token, confirm_data.password, db)

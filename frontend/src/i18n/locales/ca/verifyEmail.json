@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Espera mentre confirmem la teva adreça.",
+  "choosePasswordTitle": "Tria la teva contrasenya",
+  "choosePasswordBody": "El teu correu es confirma quan defineixes una contrasenya per al compte.",
+  "submitPassword": "Defineix la contrasenya",
+  "submittingPassword": "Desant la contrasenya",
   "successTitle": "Correu verificat",
   "successBody": "La teva adreça de correu ha estat confirmada.",
   "adminApprovalBody": "El teu compte ara està esperant l'aprovació de l'administrador.",

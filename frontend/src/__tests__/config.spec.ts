@@ -9,6 +9,7 @@ import { DEFAULT_PUBLIC_SERVER_SETTINGS } from '@/features/config/services/serve
 const publicSettings: PublicServerSettings = {
   login_photo_set: false,
   signup_enabled: true,
+  signup_require_email_verification: false,
   sso_enabled: false,
   local_login_enabled: true,
   sso_auto_redirect: false,
@@ -55,5 +56,11 @@ describe('mapServerSettingsToAppConfig', () => {
       attribution: publicSettings.tileserver_attribution,
     })
     expect(config.enabledLocales).toBe(DEFAULT_APP_CONFIG.enabledLocales)
+  })
+})
+
+describe('public server settings fallback', () => {
+  it('carries the sign-up email verification flag, off when the server is unreachable', () => {
+    expect(DEFAULT_PUBLIC_SERVER_SETTINGS.signup_require_email_verification).toBe(false)
   })
 })

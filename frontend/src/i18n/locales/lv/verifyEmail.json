@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Uzgaidiet, kamēr apstiprinām jūsu adresi.",
+  "choosePasswordTitle": "Izvēlieties paroli",
+  "choosePasswordBody": "Jūsu e-pasts tiks apstiprināts, kad būsiet iestatījis sava konta paroli.",
+  "submitPassword": "Iestatīt paroli",
+  "submittingPassword": "Saglabā paroli",
   "successTitle": "E-pasts verificēts",
   "successBody": "Jūsu e-pasta adrese ir apstiprināta.",
   "adminApprovalBody": "Jūsu konts tagad gaida administratora apstiprinājumu.",

@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Veuillez patienter pendant que nous confirmons votre adresse.",
+  "choosePasswordTitle": "Choisissez votre mot de passe",
+  "choosePasswordBody": "Votre adresse e-mail est confirmée une fois que vous avez défini un mot de passe pour votre compte.",
+  "submitPassword": "Définir le mot de passe",
+  "submittingPassword": "Enregistrement du mot de passe",
   "successTitle": "E-mail vérifié",
   "successBody": "Votre adresse e-mail a été confirmée.",
   "adminApprovalBody": "Votre compte est maintenant en attente d'approbation par un administrateur.",

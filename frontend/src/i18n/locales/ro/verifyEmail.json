@@ -1,5 +1,9 @@
 {
   "verifyingBody": "Așteaptă puțin cât confirmăm adresa ta.",
+  "choosePasswordTitle": "Alegeți parola",
+  "choosePasswordBody": "Adresa dvs. de e-mail este confirmată după ce setați o parolă pentru cont.",
+  "submitPassword": "Setează parola",
+  "submittingPassword": "Se salvează parola",
   "successTitle": "E-mail verificat",
   "successBody": "Adresa ta de e-mail a fost confirmată.",
   "adminApprovalBody": "Contul tău așteaptă acum aprobarea administratorului.",

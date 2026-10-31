@@ -6,6 +6,7 @@
   "email": "E-post",
   "password": "Lösenord",
   "confirmPassword": "Bekräfta lösenord",
+  "passwordByEmailHint": "Vi skickar ett e-postmeddelande med en bekräftelselänk. Där väljer du ditt lösenord.",
   "showOptionalFields": "Visa valfria fält",
   "hideOptionalFields": "Dölj valfria fält",
   "preferredLanguage": "Föredraget språk",

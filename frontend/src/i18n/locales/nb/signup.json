@@ -6,6 +6,7 @@
   "email": "E-post",
   "password": "Passord",
   "confirmPassword": "Bekreft passord",
+  "passwordByEmailHint": "Vi sender deg en e-post med en bekreftelseslenke. Der velger du passordet ditt.",
   "showOptionalFields": "Vis valgfrie felt",
   "hideOptionalFields": "Skjul valgfrie felt",
   "preferredLanguage": "Foretrukket språk",
