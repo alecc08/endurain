@@ -214,7 +214,9 @@ class TestHandleCallback:
     """The callback fetches userinfo after a successful token exchange."""
 
     def test_login_mode_returns_userinfo_from_token_exchange(self, service):
-        idp = MagicMock(issuer_url=None, userinfo_endpoint="https://idp.example.com/userinfo", slug="idp")
+        idp = MagicMock(
+            issuer_url=None, userinfo_endpoint="https://idp.example.com/userinfo", slug="idp", provider_type="oauth2"
+        )
         idp.name = "Pocket ID"
         oauth_state = MagicMock(user_id=None, purpose=_LOGIN, nonce="nonce", redirect_path="/", client_type="web")
         token_response = {"access_token": "at"}
@@ -241,7 +243,9 @@ class TestHandleCallback:
 
     def test_the_database_is_not_touched_until_the_identity_provider_has_answered(self, service):
         """The session holds a pooled connection once it is used, so no network call may run after that."""
-        idp = MagicMock(issuer_url=None, userinfo_endpoint="https://idp.example.com/userinfo", slug="idp")
+        idp = MagicMock(
+            issuer_url=None, userinfo_endpoint="https://idp.example.com/userinfo", slug="idp", provider_type="oauth2"
+        )
         idp.name = "Pocket ID"
         oauth_state = MagicMock(user_id=None, purpose=_LOGIN, nonce="nonce", redirect_path="/", client_type="web")
         oauth_client = MagicMock()
@@ -272,11 +276,151 @@ class TestHandleCallback:
         assert not any(name.startswith("db") for name in names[: last_network_call + 1])
 
 
+class TestOidcLoginFailsClosed:
+    """An OIDC login is identified by a verified ID token; nothing weaker is accepted."""
+
+    def _handle(self, service, *, config, token_response, purpose=_LOGIN, userinfo_error=None):
+        idp = MagicMock(
+            issuer_url="https://idp.example.com",
+            userinfo_endpoint="https://idp.example.com/userinfo",
+            slug="idp",
+            provider_type="oidc",
+        )
+        idp.name = "Pocket ID"
+        oauth_state = MagicMock(user_id=None, purpose=purpose, nonce="nonce", redirect_path="/", client_type="web")
+        oauth_client = MagicMock()
+        oauth_client.fetch_token.return_value = token_response
+        db = MagicMock()
+        forged = MagicMock(return_value={"sub": "forged"})
+        with (
+            patch.object(service._oidc, "decrypt_client_id", return_value=AUD),
+            patch.object(service._oidc, "decrypt_client_secret", return_value="secret"),
+            patch.object(service._oidc, "resolve_token_endpoint", return_value="https://idp.example.com/token"),
+            patch.object(service._oidc, "create_oauth_client", return_value=oauth_client),
+            patch.object(service._oidc, "get_oidc_configuration", return_value=config),
+            patch.object(service._oidc, "get_userinfo", forged),
+            patch.object(
+                callback_service.user_provisioning_service,
+                "find_or_create_user",
+                return_value=MagicMock(id=1, username="alice"),
+            ) as find_or_create,
+            patch.object(service._tokens, "store_idp_tokens"),
+        ):
+            try:
+                return service.handle_callback(idp, "code", "state", MagicMock(), oauth_state, db)
+            finally:
+                self.find_or_create = find_or_create
+                self.get_userinfo = forged
+                self.fetch_token = oauth_client.fetch_token
+                self.db = db
+
+    @pytest.mark.parametrize(
+        "config",
+        [None, {}, {"issuer": "https://idp.example.com"}, {"jwks_uri": "https://idp.example.com/jwks"}],
+    )
+    def test_discovery_without_issuer_and_keys_refuses_the_login(self, service, config):
+        with pytest.raises(core_exceptions.UpstreamError, match="publishes no issuer or signing keys"):
+            self._handle(service, config=config, token_response={"access_token": "at"})
+
+        self.fetch_token.assert_not_called()
+        self.find_or_create.assert_not_called()
+        self.db.commit.assert_not_called()
+
+    def test_a_discovery_failure_is_not_swallowed(self, service):
+        idp_error = core_exceptions.UpstreamError("discovery down")
+        idp = MagicMock(issuer_url="https://idp.example.com", userinfo_endpoint=None, slug="idp", provider_type="oidc")
+        oauth_state = MagicMock(user_id=None, purpose=_LOGIN, nonce="nonce", redirect_path="/", client_type="web")
+        with (
+            patch.object(service._oidc, "decrypt_client_id", return_value=AUD),
+            patch.object(service._oidc, "decrypt_client_secret", return_value="secret"),
+            patch.object(service._oidc, "resolve_token_endpoint", return_value="https://idp.example.com/token"),
+            patch.object(service._oidc, "get_oidc_configuration", side_effect=idp_error),
+            pytest.raises(core_exceptions.UpstreamError, match="discovery down"),
+        ):
+            service.handle_callback(idp, "code", "state", MagicMock(), oauth_state, MagicMock())
+
+    @pytest.mark.parametrize("purpose", [_LOGIN, _LINK])
+    def test_a_token_response_without_an_id_token_refuses_the_flow(self, service, purpose):
+        """A userinfo answer alone, however plausible, must not identify the user."""
+        config = {"issuer": "https://idp.example.com", "jwks_uri": "https://idp.example.com/jwks"}
+        idp = MagicMock(
+            issuer_url="https://idp.example.com",
+            userinfo_endpoint="https://idp.example.com/userinfo",
+            slug="idp",
+            provider_type="oidc",
+        )
+        idp.name = "Pocket ID"
+        oauth_state = MagicMock(user_id=7, purpose=purpose, nonce="nonce", redirect_path="/", client_type="web")
+        oauth_client = MagicMock()
+        oauth_client.fetch_token.return_value = {"access_token": "at"}
+        oauth_client.get.return_value.json.return_value = {"sub": "forged"}
+        with (
+            patch.object(service._oidc, "decrypt_client_id", return_value=AUD),
+            patch.object(service._oidc, "decrypt_client_secret", return_value="secret"),
+            patch.object(service._oidc, "resolve_token_endpoint", return_value="https://idp.example.com/token"),
+            patch.object(service._oidc, "create_oauth_client", return_value=oauth_client),
+            patch.object(service._oidc, "get_oidc_configuration", return_value=config),
+            patch.object(
+                service._oidc,
+                "get_userinfo",
+                lambda **kw: callback_service.oidc_client_service.OidcClientService.get_userinfo(service._oidc, **kw),
+            ),
+            patch("modules.auth.identity_providers.oidc_client_service.core_network.reject_private_url"),
+            patch.object(callback_service.user_provisioning_service, "find_or_create_user") as find_or_create,
+            patch.object(callback_service.identity_provider_links_integration, "create_user_identity_provider") as link,
+            pytest.raises(core_exceptions.UpstreamError, match="no ID token"),
+        ):
+            service.handle_callback(idp, "code", "state", MagicMock(), oauth_state, MagicMock())
+
+        find_or_create.assert_not_called()
+        link.assert_not_called()
+
+    def test_get_userinfo_is_told_to_require_the_id_token(self, service):
+        config = {"issuer": "https://idp.example.com", "jwks_uri": "https://idp.example.com/jwks"}
+        self._handle(service, config=config, token_response={"access_token": "at", "id_token": "idt"})
+
+        kwargs = self.get_userinfo.call_args.kwargs
+        assert kwargs["require_id_token"] is True
+        assert kwargs["jwks_uri"] == "https://idp.example.com/jwks"
+        assert kwargs["expected_issuer"] == "https://idp.example.com"
+        assert kwargs["expected_nonce"] == "nonce"
+
+
+class TestOauth2LoginKeepsUserinfo:
+    def test_an_oauth2_provider_is_identified_by_userinfo_alone(self, service):
+        idp = MagicMock(
+            issuer_url=None, userinfo_endpoint="https://idp.example.com/userinfo", slug="idp", provider_type="oauth2"
+        )
+        idp.name = "GitHub"
+        oauth_state = MagicMock(user_id=None, purpose=_LOGIN, nonce="nonce", redirect_path="/", client_type="web")
+        oauth_client = MagicMock()
+        oauth_client.fetch_token.return_value = {"access_token": "at"}
+        oauth_client.get.return_value.json.return_value = {"sub": "user-1"}
+        user = MagicMock(id=1, username="alice")
+        with (
+            patch.object(service._oidc, "decrypt_client_id", return_value=AUD),
+            patch.object(service._oidc, "decrypt_client_secret", return_value="secret"),
+            patch.object(service._oidc, "resolve_token_endpoint", return_value="https://idp.example.com/token"),
+            patch.object(service._oidc, "create_oauth_client", return_value=oauth_client),
+            patch.object(service._oidc, "get_oidc_configuration") as discovery,
+            patch.object(service._oidc, "get_userinfo", return_value={"sub": "user-1"}) as get_userinfo,
+            patch.object(callback_service.user_provisioning_service, "find_or_create_user", return_value=user),
+            patch.object(service._tokens, "store_idp_tokens"),
+        ):
+            result = service.handle_callback(idp, "code", "state", MagicMock(), oauth_state, MagicMock())
+
+        discovery.assert_not_called()
+        assert get_userinfo.call_args.kwargs["require_id_token"] is False
+        assert result["user"] is user
+
+
 class TestTokenExchangeRefusal:
     def test_a_provider_error_response_is_a_warning_and_an_upstream_error(self, service, caplog):
         from authlib.integrations.base_client import OAuthError
 
-        idp = MagicMock(issuer_url=None, userinfo_endpoint="https://idp.example.com/userinfo", slug="idp")
+        idp = MagicMock(
+            issuer_url=None, userinfo_endpoint="https://idp.example.com/userinfo", slug="idp", provider_type="oauth2"
+        )
         idp.name = "Pocket ID"
         oauth_state = MagicMock(user_id=None, purpose=_LOGIN, nonce="nonce", redirect_path="/", client_type="web")
         oauth_client = MagicMock()

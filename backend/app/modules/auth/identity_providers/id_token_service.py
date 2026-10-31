@@ -65,7 +65,7 @@ def verify_id_token(
     3. Finds the matching public key in the JWKS
     4. Imports the key based on its type (RSA, EC, or Oct)
     5. Verifies the JWT signature using joserfc
-    6. Validates standard claims (iss, aud, exp, iat), allowing a small clock skew, and the authorized party
+    6. Validates standard claims (iss, aud, sub, exp, iat), allowing a small clock skew, and the authorized party
     7. Validates nonce if provided (required for implicit/hybrid flows)
 
     This replaces the insecure manual JWT decode that was previously used.
@@ -176,12 +176,13 @@ def verify_id_token(
         )
         claims = decoded.claims
 
-        # Step 5a: Validate claims (iss, aud, exp, iat)
+        # Step 5a: Validate claims (iss, aud, sub, exp, iat); OIDC Core 2 makes each of them required
         # This is done separately after decoding in joserfc
         claims_request = jwt.JWTClaimsRegistry(
             leeway=ID_TOKEN_CLOCK_LEEWAY_SECONDS,
             iss={"essential": True, "value": expected_issuer},
             aud={"essential": True, "value": expected_audience},
+            sub={"essential": True},
             exp={"essential": True},
             iat={"essential": True},
         )

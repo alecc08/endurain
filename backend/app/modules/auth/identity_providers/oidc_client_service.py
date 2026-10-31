@@ -428,35 +428,43 @@ class OidcClientService:
         expected_issuer: str | None,
         expected_audience: str,
         expected_nonce: str | None = None,
+        *,
+        require_id_token: bool,
     ) -> dict[str, Any]:
-        """Retrieve user information from an identity provider using the provided token response.
+        """Return the identity claims of a signed-in user.
 
-        This method first attempts to fetch user information from the given `userinfo_endpoint` using the provided
-        OAuth2 client. If the endpoint is unavailable or the request fails, it falls back to extracting claims from
-        the `id_token` in the token response, verifying the ID token signature using JWKS before returning the claims.
-
-        Security Enhancement:
-        - ID tokens are now cryptographically verified using joserfc and JWKS
-        - Signature verification prevents token forgery and tampering
-        - Claims validation ensures token integrity (iss, aud, exp, nonce)
-        - This replaces the insecure manual base64 decode previously used
+        With ``require_id_token`` the token response must carry an ID token that verifies against the provider's
+        signing keys (issuer, audience, expiry and nonce); its claims are the identity and the userinfo endpoint
+        only supplements profile fields. Without it (providers that issue no ID token) the userinfo endpoint claims
+        are used, and an ID token is verified and merged only when one is present and verifiable. Whenever an
+        ID token and userinfo claims are merged, their ``sub`` must match and the ID token claims take precedence.
 
         Args:
-            token_response (dict[str, Any]): The OAuth2 token response containing access and/or ID tokens.
-            userinfo_endpoint (str | None): The endpoint URL to fetch user information, if available.
-            client (OAuth2Client): The asynchronous OAuth2 client used to make HTTP requests.
-            jwks_uri (str | None): The JWKS endpoint URL for verifying ID token signatures.
-            expected_issuer (str | None): Expected 'iss' claim value from OIDC discovery.
-            expected_audience (str): Expected 'aud' claim value (typically the client_id).
-            expected_nonce (str | None): Expected nonce value from session (optional, but recommended).
+            token_response: The OAuth2 token response containing the access token and, for OIDC, the ID token.
+            userinfo_endpoint: The endpoint URL to fetch user information, if available.
+            client: The OAuth2 client used to call the userinfo endpoint.
+            jwks_uri: The JWKS endpoint URL for verifying ID token signatures.
+            expected_issuer: Expected ``iss`` claim value from OIDC discovery.
+            expected_audience: Expected ``aud`` claim value (the client id).
+            expected_nonce: Nonce stored with the authorization request.
+            require_id_token: Whether a verified ID token is mandatory.
 
         Returns:
-            dict[str, Any]: The user information claims retrieved from the identity provider.
+            The identity claims.
 
         Raises:
-            domain error: If user information cannot be retrieved from either the userinfo endpoint or the ID token,
-                          or if ID token verification fails.
+            UpstreamError: If ``require_id_token`` is set and the issuer, the signing keys or the ID token is missing.
+            UnauthenticatedError: If the ID token does not verify, or its ``sub`` differs from the userinfo ``sub``.
+            ProcessingError: If no user information can be retrieved.
         """
+        if require_id_token:
+            if not jwks_uri or not expected_issuer:
+                logger.warning("ID token cannot be verified: missing JWKS URI or issuer")
+                raise core_exceptions.UpstreamError("Identity provider publishes no issuer or signing keys")
+            if not isinstance(token_response.get("id_token"), str):
+                logger.warning("Identity provider returned no ID token")
+                raise core_exceptions.UpstreamError("Identity provider returned no ID token")
+
         # Try to get from userinfo endpoint first
         userinfo_claims = None
         if userinfo_endpoint:
@@ -526,8 +534,10 @@ class OidcClientService:
                 # If we got userinfo from endpoint, merge with ID token claims
                 # ID token claims take precedence for standard claims (sub, iss, aud)
                 if userinfo_claims:
-                    # Merge: userinfo endpoint data + ID token verified claims
-                    # ID token claims override for security-critical fields
+                    # OIDC Core 5.3.2: userinfo is only valid for the subject of the ID token.
+                    if userinfo_claims.get("sub") != id_token_claims.get("sub"):
+                        logger.warning("Userinfo subject does not match the ID token subject")
+                        raise core_exceptions.UnauthenticatedError("Userinfo subject does not match the ID token")
                     merged_claims = {**userinfo_claims, **id_token_claims}
                     logger.debug("Merged userinfo endpoint data with verified ID token claims")
                     return merged_claims
@@ -545,7 +555,7 @@ class OidcClientService:
                 )
                 raise core_exceptions.ProcessingError("Failed to verify ID token") from err
 
-        # If we got userinfo from endpoint but no ID token, return userinfo
+        # Providers without an ID token are identified by the userinfo claims alone
         if userinfo_claims:
             return userinfo_claims
 

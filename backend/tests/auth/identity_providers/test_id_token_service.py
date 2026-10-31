@@ -230,6 +230,18 @@ class TestVerifyIdTokenSignatureAndClaims:
             _verify(service, token, JWKS_URI, ISS, AUD)
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
 
+    def test_missing_subject_raises_401(self, service, rsa_key):
+        claims = _valid_claims()
+        del claims["sub"]
+        token = _sign(rsa_key, claims)
+        with (
+            patch.object(service, "fetch_jwks", MagicMock(return_value=_public_jwks(rsa_key))),
+            pytest.raises(core_exceptions.DomainError) as exc_info,
+        ):
+            _verify(service, token, JWKS_URI, ISS, AUD)
+        assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
+        assert "sub" in exc_info.value.detail
+
 
 # ---------------------------------------------------------------------------
 # verify_id_token — nonce replay protection

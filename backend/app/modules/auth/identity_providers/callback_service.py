@@ -324,7 +324,7 @@ class CallbackService:
             - In link mode, validates that the IdP account is not already linked to any user
             - In login mode, creates new user accounts if they don't exist (SSO provisioning)
             - Stores IdP tokens securely for future session renewal
-            - Performs ID token verification if JWKS URI is available
+            - OIDC providers must return an ID token that verifies against the discovered issuer and signing keys
             - Cleans up OAuth state from database after successful completion
         """
         oauth_client: OAuth2Client | None = None
@@ -358,8 +358,14 @@ class CallbackService:
             userinfo_endpoint = idp.userinfo_endpoint
             jwks_uri = None
             expected_issuer = None
+            require_id_token = idp.provider_type == "oidc"
 
-            if idp.issuer_url:
+            if require_id_token:
+                # An OIDC login is identified by a verified ID token, so discovery must succeed.
+                config = self._oidc.get_oidc_configuration(idp) or {}
+                jwks_uri, expected_issuer = self._require_signing_keys(idp, config)
+                userinfo_endpoint = userinfo_endpoint or config.get("userinfo_endpoint")
+            elif idp.issuer_url:
                 try:
                     config = self._oidc.get_oidc_configuration(idp)
                     if config:
@@ -370,23 +376,22 @@ class CallbackService:
                         # Get JWKS URI for ID token verification
                         jwks_uri = config.get("jwks_uri")
                         expected_issuer = config.get("issuer")
-
-                        logger.debug(
-                            "OIDC discovery complete for <name>: userinfo=<value_2>, jwks_uri=<value_3>, "
-                            "issuer=<value_4>",
-                            extra=core_logger.context(
-                                name=idp.name,
-                                value_2=bool(userinfo_endpoint),
-                                value_3=bool(jwks_uri),
-                                value_4=bool(expected_issuer),
-                            ),
-                        )
                 except Exception as err:
                     logger.warning(
                         "OIDC discovery failed for IdP <name>: <err>",
                         exc_info=err,
                         extra=core_logger.context(name=idp.name, err=err),
                     )
+
+            logger.debug(
+                "OIDC discovery complete for <name>: userinfo=<value_2>, jwks_uri=<value_3>, issuer=<value_4>",
+                extra=core_logger.context(
+                    name=idp.name,
+                    value_2=bool(userinfo_endpoint),
+                    value_3=bool(jwks_uri),
+                    value_4=bool(expected_issuer),
+                ),
+            )
 
             # Retrieve nonce from database state
             expected_nonce = oauth_state.nonce
@@ -466,6 +471,7 @@ class CallbackService:
                 expected_issuer=expected_issuer,
                 expected_audience=client_id,
                 expected_nonce=expected_nonce,
+                require_id_token=require_id_token,
             )
 
             # Extract subject (unique user identifier)
@@ -644,6 +650,31 @@ class CallbackService:
             self._frontend_host, oauth_state.redirect_path, {"step_up_ticket": ticket}
         )
 
+    def _require_signing_keys(
+        self, idp: identity_provider_contracts.IdentityProviderState, config: dict[str, Any]
+    ) -> tuple[str, str]:
+        """Return the JWKS URI and issuer of a provider's discovery document.
+
+        Args:
+            idp: The provider.
+            config: The provider's discovery document, empty when discovery failed.
+
+        Returns:
+            The ``jwks_uri`` and the ``issuer``.
+
+        Raises:
+            UpstreamError: If the document publishes no issuer or no signing keys.
+        """
+        jwks_uri = config.get("jwks_uri")
+        issuer = config.get("issuer")
+        if not jwks_uri or not issuer:
+            logger.warning(
+                "Sign-in refused: IdP <name> publishes no issuer or signing keys",
+                extra=core_logger.context(name=idp.name),
+            )
+            raise core_exceptions.UpstreamError(f"Identity provider {idp.name} publishes no issuer or signing keys")
+        return jwks_uri, issuer
+
     def _verify_step_up_sign_in(
         self,
         idp: identity_provider_contracts.IdentityProviderState,
@@ -666,15 +697,7 @@ class CallbackService:
             _StaleSignInError: If the ID token does not prove a sign-in within the step-up's limit.
         """
         client_id = self._oidc.decrypt_client_id(idp)
-        config = self._oidc.get_oidc_configuration(idp) or {}
-        jwks_uri = config.get("jwks_uri")
-        issuer = config.get("issuer")
-        if not jwks_uri or not issuer:
-            logger.warning(
-                "Step-up refused: IdP <name> publishes no issuer or signing keys",
-                extra=core_logger.context(name=idp.name),
-            )
-            raise core_exceptions.UpstreamError(f"Identity provider {idp.name} publishes no issuer or signing keys")
+        jwks_uri, issuer = self._require_signing_keys(idp, self._oidc.get_oidc_configuration(idp) or {})
         with self._oidc.create_oauth_client(
             client_id=client_id,
             client_secret=self._oidc.decrypt_client_secret(idp),

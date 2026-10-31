@@ -213,58 +213,91 @@ def test_discovery_cache_is_shared_between_services_and_refetches_after_expiry(s
 class TestGetUserinfo:
     """Orchestration of userinfo endpoint and verified ID-token claims."""
 
-    def test_userinfo_endpoint_only_returns_claims(self, service):
+    @staticmethod
+    def _client(claims):
         client = MagicMock()
         response = MagicMock()
         response.raise_for_status.return_value = None
-        response.json.return_value = {"sub": "user-1", "email": "a@example.com"}
+        response.json.return_value = claims
         client.get = MagicMock(return_value=response)
+        return client
+
+    def _get(self, service, *, token_response, client=None, endpoint=None, jwks_uri=JWKS_URI, issuer=ISS, require):
         with patch("modules.auth.identity_providers.oidc_client_service.core_network.reject_private_url"):
-            result = service.get_userinfo(
-                token_response={"access_token": "at"},
-                userinfo_endpoint="https://idp.example.com/userinfo",
-                client=client,
-                jwks_uri=None,
-                expected_issuer=None,
+            return service.get_userinfo(
+                token_response=token_response,
+                userinfo_endpoint=endpoint,
+                client=client or MagicMock(),
+                jwks_uri=jwks_uri,
+                expected_issuer=issuer,
                 expected_audience=AUD,
+                require_id_token=require,
             )
+
+    def test_userinfo_only_is_accepted_for_a_provider_without_id_tokens(self, service):
+        client = self._client({"sub": "user-1", "email": "a@example.com"})
+        result = self._get(
+            service,
+            token_response={"access_token": "at"},
+            client=client,
+            endpoint="https://idp.example.com/userinfo",
+            jwks_uri=None,
+            issuer=None,
+            require=False,
+        )
         assert result == {"sub": "user-1", "email": "a@example.com"}
 
     def test_id_token_claims_override_userinfo_on_merge(self, service):
-        client = MagicMock()
-        response = MagicMock()
-        response.raise_for_status.return_value = None
-        response.json.return_value = {"sub": "endpoint-sub", "name": "From Endpoint"}
-        client.get = MagicMock(return_value=response)
+        client = self._client({"sub": "verified-sub", "name": "From Endpoint", "email": "e@example.com"})
         verified = {"sub": "verified-sub", "email": "v@example.com"}
-        with (
-            patch("modules.auth.identity_providers.oidc_client_service.core_network.reject_private_url"),
-            patch.object(oidc_client_service.id_token_service, "verify_id_token", MagicMock(return_value=verified)),
-        ):
-            result = service.get_userinfo(
+        with patch.object(oidc_client_service.id_token_service, "verify_id_token", MagicMock(return_value=verified)):
+            result = self._get(
+                service,
                 token_response={"access_token": "at", "id_token": "idt"},
-                userinfo_endpoint="https://idp.example.com/userinfo",
                 client=client,
-                jwks_uri=JWKS_URI,
-                expected_issuer=ISS,
-                expected_audience=AUD,
+                endpoint="https://idp.example.com/userinfo",
+                require=True,
             )
         # ID-token claims take precedence; endpoint-only fields are preserved.
-        assert result["sub"] == "verified-sub"
-        assert result["email"] == "v@example.com"
-        assert result["name"] == "From Endpoint"
+        assert result == {"sub": "verified-sub", "email": "v@example.com", "name": "From Endpoint"}
+
+    @pytest.mark.parametrize("require", [True, False])
+    def test_a_userinfo_subject_that_differs_from_the_id_token_subject_is_refused(self, service, require):
+        client = self._client({"sub": "attacker-sub", "email": "a@example.com"})
+        with (
+            patch.object(
+                oidc_client_service.id_token_service, "verify_id_token", MagicMock(return_value={"sub": "verified-sub"})
+            ),
+            pytest.raises(core_exceptions.UnauthenticatedError),
+        ):
+            self._get(
+                service,
+                token_response={"access_token": "at", "id_token": "idt"},
+                client=client,
+                endpoint="https://idp.example.com/userinfo",
+                require=require,
+            )
+
+    def test_a_userinfo_without_a_subject_is_refused_when_an_id_token_is_merged(self, service):
+        client = self._client({"email": "a@example.com"})
+        with (
+            patch.object(
+                oidc_client_service.id_token_service, "verify_id_token", MagicMock(return_value={"sub": "verified-sub"})
+            ),
+            pytest.raises(core_exceptions.UnauthenticatedError),
+        ):
+            self._get(
+                service,
+                token_response={"access_token": "at", "id_token": "idt"},
+                client=client,
+                endpoint="https://idp.example.com/userinfo",
+                require=True,
+            )
 
     def test_id_token_only_returns_verified_claims(self, service):
         verified = {"sub": "verified-sub"}
         with patch.object(oidc_client_service.id_token_service, "verify_id_token", MagicMock(return_value=verified)):
-            result = service.get_userinfo(
-                token_response={"id_token": "idt"},
-                userinfo_endpoint=None,
-                client=MagicMock(),
-                jwks_uri=JWKS_URI,
-                expected_issuer=ISS,
-                expected_audience=AUD,
-            )
+            result = self._get(service, token_response={"id_token": "idt"}, require=True)
         assert result == verified
 
     def test_id_token_verification_failure_is_reraised(self, service):
@@ -276,49 +309,53 @@ class TestGetUserinfo:
             ),
             pytest.raises(core_exceptions.DomainError) as exc_info,
         ):
-            service.get_userinfo(
-                token_response={"id_token": "idt"},
-                userinfo_endpoint=None,
-                client=MagicMock(),
-                jwks_uri=JWKS_URI,
-                expected_issuer=ISS,
-                expected_audience=AUD,
-            )
+            self._get(service, token_response={"id_token": "idt"}, require=True)
         assert exc_info.value.status_code == 401
 
-    def test_no_userinfo_and_no_verifiable_id_token_raises_500(self, service):
-        """Nothing to return → fail closed with 500."""
-        result_client = MagicMock()
-        with (
-            patch("modules.auth.identity_providers.oidc_client_service.core_network.reject_private_url"),
-            pytest.raises(core_exceptions.DomainError) as exc_info,
-        ):
-            service.get_userinfo(
-                token_response={},
-                userinfo_endpoint=None,
-                client=result_client,
-                jwks_uri=None,
-                expected_issuer=None,
-                expected_audience=AUD,
+    @pytest.mark.parametrize("jwks_uri, issuer", [(None, ISS), (JWKS_URI, None), (None, None)])
+    def test_a_required_id_token_cannot_be_checked_without_issuer_and_keys(self, service, jwks_uri, issuer):
+        """A forged userinfo response must not be accepted when the ID token cannot be verified."""
+        client = self._client({"sub": "forged"})
+        with pytest.raises(core_exceptions.UpstreamError):
+            self._get(
+                service,
+                token_response={"access_token": "at", "id_token": "idt"},
+                client=client,
+                endpoint="https://idp.example.com/userinfo",
+                jwks_uri=jwks_uri,
+                issuer=issuer,
+                require=True,
             )
+
+    @pytest.mark.parametrize("token_response", [{"access_token": "at"}, {"access_token": "at", "id_token": None}])
+    def test_a_required_id_token_that_is_missing_is_refused_despite_userinfo(self, service, token_response):
+        client = self._client({"sub": "forged"})
+        with pytest.raises(core_exceptions.UpstreamError):
+            self._get(
+                service,
+                token_response=token_response,
+                client=client,
+                endpoint="https://idp.example.com/userinfo",
+                require=True,
+            )
+
+    def test_nothing_to_return_fails_closed_with_500(self, service):
+        with pytest.raises(core_exceptions.DomainError) as exc_info:
+            self._get(service, token_response={}, jwks_uri=None, issuer=None, require=False)
         assert exc_info.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
 
     def test_endpoint_failure_falls_back_to_verified_id_token(self, service):
-        """If the userinfo endpoint errors, a verified ID token still wins."""
+        """If the userinfo endpoint errors, a verified ID token is still the identity."""
         client = MagicMock()
         client.get = MagicMock(side_effect=httpx2.RequestError("network down"))
         verified = {"sub": "verified-sub"}
-        with (
-            patch("modules.auth.identity_providers.oidc_client_service.core_network.reject_private_url"),
-            patch.object(oidc_client_service.id_token_service, "verify_id_token", MagicMock(return_value=verified)),
-        ):
-            result = service.get_userinfo(
+        with patch.object(oidc_client_service.id_token_service, "verify_id_token", MagicMock(return_value=verified)):
+            result = self._get(
+                service,
                 token_response={"access_token": "at", "id_token": "idt"},
-                userinfo_endpoint="https://idp.example.com/userinfo",
                 client=client,
-                jwks_uri=JWKS_URI,
-                expected_issuer=ISS,
-                expected_audience=AUD,
+                endpoint="https://idp.example.com/userinfo",
+                require=True,
             )
         assert result == verified
 
