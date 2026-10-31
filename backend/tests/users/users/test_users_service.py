@@ -46,6 +46,10 @@ def _signup(*, with_password: bool = True) -> users_schema.UsersSignup:
     )
 
 
+def _profile(**overrides) -> users_schema.UsersBase:
+    return users_schema.UsersBase(name="New", username="NewUser", email="New@Example.com", **overrides)
+
+
 _auth_service_mock: MagicMock | None = None
 _delete_all_sessions_mock: MagicMock
 
@@ -527,7 +531,12 @@ class TestAccountCreationIsOneUnit:
 
 class TestCreateSignupUser:
     def _settings(self, verification: bool, approval: bool):
-        return MagicMock(signup_require_email_verification=verification, signup_require_admin_approval=approval)
+        return MagicMock(
+            signup_require_email_verification=verification,
+            signup_require_admin_approval=approval,
+            units="imperial",
+            currency="dollar",
+        )
 
     @pytest.mark.parametrize(
         ("verification", "approval", "active", "pending"),
@@ -567,9 +576,7 @@ class TestCreateSignupUser:
         identity = _identity()
         mock_crud.create_user.return_value = _user(3)
 
-        users_service.create_sso_user(
-            _signup(with_password=False), self._settings(False, False), mock_db, email_verified=True
-        )
+        users_service.create_sso_user(_profile(), self._settings(False, False), mock_db, email_verified=True)
 
         identity.validate_and_hash_password_for_user.assert_not_called()
         identity.set_local_password_hash.assert_not_called()
@@ -602,7 +609,7 @@ class TestCreateSignupUser:
     def test_sso_user_stages_without_committing(self, mock_crud, _defaults, mock_db):
         mock_crud.create_user.return_value = _user(3)
 
-        created = users_service.create_sso_user(_signup(), self._settings(False, False), mock_db, email_verified=True)
+        created = users_service.create_sso_user(_profile(), self._settings(False, False), mock_db, email_verified=True)
 
         assert created.id == 3
         mock_db.commit.assert_not_called()
@@ -616,9 +623,40 @@ class TestCreateSignupUser:
     ):
         mock_crud.create_user.return_value = _user(3)
 
-        users_service.create_sso_user(_signup(), self._settings(False, False), mock_db, email_verified=email_verified)
+        users_service.create_sso_user(_profile(), self._settings(False, False), mock_db, email_verified=email_verified)
 
         assert mock_crud.create_user.call_args.args[0]["email_verified"] is email_verified
+
+    @patch("modules.users.users.service._stage_default_data")
+    @patch(_CRUD)
+    def test_a_sign_up_starts_from_the_default_profile_and_the_server_units(self, mock_crud, _defaults, mock_db):
+        mock_crud.create_user.return_value = _user(3)
+
+        users_service.create_signup_user(_signup(), self._settings(False, False), mock_db)
+
+        fields = mock_crud.create_user.call_args.args[0]
+        assert (fields["units"], fields["currency"]) == ("imperial", "dollar")
+        assert (fields["preferred_language"], fields["gender"], fields["first_day_of_week"]) == (
+            "en",
+            "unspecified",
+            "monday",
+        )
+        assert (fields["city"], fields["birthdate"], fields["height"]) == (None, None, None)
+        assert "password" not in fields
+
+    @patch("modules.users.users.service._stage_default_data")
+    @patch(_CRUD)
+    def test_an_sso_account_keeps_its_mapped_profile_and_takes_the_server_units(self, mock_crud, _defaults, mock_db):
+        mock_crud.create_user.return_value = _user(3)
+
+        users_service.create_sso_user(
+            _profile(city="Lisbon", height=180), self._settings(False, False), mock_db, email_verified=True
+        )
+
+        fields = mock_crud.create_user.call_args.args[0]
+        assert (fields["city"], fields["height"]) == ("Lisbon", 180)
+        assert (fields["units"], fields["currency"]) == ("imperial", "dollar")
+        assert fields["username"] == "newuser" and fields["email"] == "new@example.com"
 
     @patch(_CRUD)
     def test_duplicate_gives_an_abstract_conflict(self, mock_crud, mock_db):

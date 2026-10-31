@@ -423,7 +423,8 @@ def stage_first_admin(admin: users_schema.FirstAdminCreate, db: Session) -> user
 
 
 def _stage_signup_user(
-    user: users_schema.UsersSignup,
+    profile: users_schema.UsersBase,
+    password: str | None,
     server_settings: server_settings_schema.ServerSettingsRead,
     db: Session,
     *,
@@ -431,14 +432,15 @@ def _stage_signup_user(
 ) -> users_schema.UsersRead:
     """Stage a user through sign-up or SSO, with their default data.
 
-    The account's state follows the server's sign-up policy: it starts inactive when email
-    verification or admin approval is required. Whether the email is verified does not follow the
-    policy: it records whether the address was proven, because an unproven address marked verified
-    could be pre-claimed and receive its owner's later SSO sign-in.
+    The account's units and currency are the server's defaults. Its state follows the server's sign-up
+    policy: it starts inactive when email verification or admin approval is required. Whether the email
+    is verified does not follow the policy: it records whether the address was proven, because an
+    unproven address marked verified could be pre-claimed and receive its owner's later SSO sign-in.
 
     Args:
-        user: User sign-up data.
-        server_settings: Server config for sign-up requirements.
+        profile: The account's profile.
+        password: Plain text password, or ``None`` to store no local credential.
+        server_settings: Server config for sign-up requirements and default units and currency.
         db: Database session.
         email_verified: Whether the address is already proven.
 
@@ -452,12 +454,12 @@ def _stage_signup_user(
     needs_verification = server_settings.signup_require_email_verification
     needs_approval = server_settings.signup_require_admin_approval
 
-    fields = user.model_dump(
-        exclude={"username", "email", "access_type", "active", "email_verified", "pending_admin_approval", "password"}
-    )
+    fields = profile.model_dump(exclude={"username", "email"})
     fields.update(
-        username=user.username.lower(),
-        email=user.email.lower(),
+        username=profile.username.lower(),
+        email=profile.email.lower(),
+        units=server_settings.units,
+        currency=server_settings.currency,
         access_type=users_schema.UserAccessType.REGULAR.value,
         active=not (needs_verification or needs_approval),
         email_verified=email_verified,
@@ -465,9 +467,9 @@ def _stage_signup_user(
     )
 
     hashed_password: str | None = None
-    if user.password is not None:
+    if password is not None:
         hashed_password = credentials_integration.validate_and_hash_password_for_user(
-            server_settings, users_schema.UserAccessType.REGULAR.value, user.password, db
+            server_settings, users_schema.UserAccessType.REGULAR.value, password, db
         )
 
     created = users_crud.create_user(fields, db)
@@ -485,11 +487,17 @@ def create_signup_user(
 ) -> users_schema.UsersRead:
     """Create a user through sign-up and commit the staged defaults.
 
-    The address is not proven yet: the verification link proves it. A local credential is stored only when
-    the sign-up carries a password.
+    The profile starts from the defaults with the chosen language. The address is not proven yet: the
+    verification link proves it. A local credential is stored only when the sign-up carries a password.
     """
+    profile = users_schema.UsersBase(
+        name=user.name,
+        username=user.username,
+        email=user.email,
+        preferred_language=user.preferred_language,
+    )
     try:
-        created = _stage_signup_user(user, server_settings, db, email_verified=False)
+        created = _stage_signup_user(profile, user.password, server_settings, db, email_verified=False)
     except core_exceptions.ConflictError as err:
         db.rollback()
         # Abstract message to reduce information leakage.
@@ -500,7 +508,7 @@ def create_signup_user(
 
 
 def create_sso_user(
-    user: users_schema.UsersSignup,
+    profile: users_schema.UsersBase,
     server_settings: server_settings_schema.ServerSettingsRead,
     db: Session,
     *,
@@ -509,7 +517,7 @@ def create_sso_user(
     """Stage an SSO-only user with the defaults used by regular sign-up.
 
     Args:
-        user: User sign-up data mapped from the provider; it carries no password, so no local credential is stored.
+        profile: The account's profile mapped from the provider. No local credential is stored.
         server_settings: Server config for sign-up requirements.
         db: Database session.
         email_verified: Whether the provider asserted the address as verified.
@@ -521,7 +529,7 @@ def create_sso_user(
         ConflictError: If the username or email is already taken.
     """
     try:
-        created = _stage_signup_user(user, server_settings, db, email_verified=email_verified)
+        created = _stage_signup_user(profile, None, server_settings, db, email_verified=email_verified)
     except core_exceptions.ConflictError as err:
         raise core_exceptions.ConflictError("Unable to create user.") from err
     logger.info("SSO user staged", extra=core_logger.context(user_id=created.id))

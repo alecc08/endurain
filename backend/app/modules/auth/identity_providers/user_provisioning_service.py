@@ -12,7 +12,6 @@ import modules.auth.identity_providers.claim_mapping as claim_mapping
 import modules.auth.identity_providers.contracts as identity_provider_contracts
 import modules.auth.lockout.integration_service as lockout_integration
 import modules.server_settings.integration_service as server_settings_integration
-import modules.server_settings.schema as server_settings_schema
 import modules.users.users.integration_service as users_integration
 import modules.users.users.schema as users_schema
 
@@ -169,9 +168,9 @@ def create_user_from_idp(
 
     This method generates a unique username, creates a user with mapped data from the IdP
     using the existing CRUD layer, and links the user to the IdP subject. SSO accounts get
-    no local password credential: the sign-up carries no password, so no row is written to
-    ``users_local_credentials`` and ``has_local_password`` reports ``False``. The user's email is verified only
-    when the IdP asserted it as verified.
+    no local password credential: no row is written to ``users_local_credentials`` and
+    ``has_local_password`` reports ``False``. Units and currency are the server's defaults. The user's
+    email is verified only when the IdP asserted it as verified.
 
     Args:
         idp (identity_provider_contracts.IdentityProviderState): The identity provider instance.
@@ -201,25 +200,19 @@ def create_user_from_idp(
         # secrets.randbelow is a CSPRNG; generate a 6-digit suffix
         username = f"{base_username}_{secrets_module.randbelow(900000) + 100000}"
 
-    # Create user signup schema
-    user_signup = users_schema.UsersSignup(
+    profile = users_schema.UsersBase(
         username=username,
         email=email,
         city=mapped_data.get("city"),
         birthdate=mapped_data.get("birthdate"),
         name=mapped_data.get("name", username),
-        preferred_language=users_schema.Language.ENGLISH,
-        gender=users_schema.Gender.UNSPECIFIED,
-        units=server_settings_schema.Units.METRIC,
         height=mapped_data.get("height"),
         max_heart_rate=mapped_data.get("max_heart_rate"),
-        first_day_of_week=users_schema.WeekDay.MONDAY,
-        currency=server_settings_schema.Currency.EURO,
     )
 
     server_settings = server_settings_integration.get_server_settings(db)
 
-    created_user = users_integration.create_sso_user(user_signup, server_settings, db, email_verified=email_verified)
+    created_user = users_integration.create_sso_user(profile, server_settings, db, email_verified=email_verified)
 
     # Create the IdP link
     identity_provider_links_integration.create_user_identity_provider(created_user.id, idp.id, subject, db)

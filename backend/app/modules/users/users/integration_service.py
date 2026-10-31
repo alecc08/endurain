@@ -200,14 +200,14 @@ def create_signup_user(
 
 
 def create_sso_user(
-    user: users_schema.UsersSignup,
+    profile: users_schema.UsersBase,
     server_settings: server_settings_schema.ServerSettingsRead,
     db: Session,
     *,
     email_verified: bool,
 ) -> users_schema.UsersRead:
     """Create an SSO-only user through the users module, its email verified only as the provider asserted."""
-    return users_service.create_sso_user(user, server_settings, db, email_verified=email_verified)
+    return users_service.create_sso_user(profile, server_settings, db, email_verified=email_verified)
 
 
 def is_deactivated(user_id: int, db: Session) -> bool:

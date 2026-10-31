@@ -491,15 +491,27 @@ class UsersMe(UsersRead):
     )
 
 
-class UsersSignup(UsersBase):
-    """Users schema for signup operations.
+class UsersSignup(BaseModel):
+    """Users schema for a public sign-up request: only what an account needs.
+
+    The rest of the profile starts from the ``UsersBase`` defaults and is edited after signing in.
 
     Attributes:
-        password: User's password (min 8 chars). Absent when the password is chosen at email
-            verification, and for accounts created through an identity provider.
+        name: User's full name (1-250 chars).
+        username: Unique username (1-250 chars, alphanumeric and dots).
+        email: User's email address (max 250 chars).
+        password: User's password (min 8 chars). Absent when the password is chosen at email verification.
+        preferred_language: Language of the account's emails and interface.
     """
 
+    name: UserName
+    username: UserUsername
+    email: UserEmail
     password: UserPassword | None = None
+    preferred_language: Language = Field(
+        default=Language.ENGLISH,
+        description="Preferred language",
+    )
 
     model_config = ConfigDict(use_enum_values=True, validate_default=True, extra="forbid")
 

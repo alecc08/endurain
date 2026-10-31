@@ -91,4 +91,32 @@ describe('SignUpView', () => {
 
     expect(requestSignUp.mock.calls[0]?.[0]).toMatchObject({ password: 'long-enough-pass' })
   })
+
+  it('asks only for the account fields', async () => {
+    requireVerification.value = true
+    const wrapper = await mountFilled()
+
+    const fields = wrapper.findAll('input, select').map((field) => field.attributes('name'))
+    expect(fields).toEqual(['name', 'username', 'email'])
+
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    const payload = requestSignUp.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(Object.keys(payload).sort()).toEqual(['email', 'name', 'preferred_language', 'username'])
+  })
+
+  it('sends the language the form is shown in', async () => {
+    requireVerification.value = true
+    i18n.global.locale.value = 'pt-PT'
+    try {
+      const wrapper = await mountFilled()
+      await wrapper.get('form').trigger('submit')
+      await flushPromises()
+    } finally {
+      i18n.global.locale.value = 'en'
+    }
+
+    expect(requestSignUp.mock.calls[0]?.[0]).toMatchObject({ preferred_language: 'pt-PT' })
+  })
 })

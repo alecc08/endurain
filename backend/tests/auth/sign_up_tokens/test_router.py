@@ -218,6 +218,23 @@ class TestSignupEndpoint:
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     @patch("modules.auth.sign_up_tokens.service.users_integration.create_signup_user")
+    def test_signup_with_profile_fields_returns_422(self, mock_create_user, signup_client) -> None:
+        """Sign-up takes only the account fields; profile details are set after signing in."""
+        response = signup_client.post(
+            "/sign-up/sign-up/request",
+            json={
+                "name": "Test User",
+                "username": "testuser",
+                "email": "test@example.com",
+                "password": "SecurePass1!",
+                "units": "imperial",
+            },
+        )
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+        mock_create_user.assert_not_called()
+
+    @patch("modules.auth.sign_up_tokens.service.users_integration.create_signup_user")
     @patch("modules.auth.sign_up_tokens.service.server_settings_integration.get_server_settings")
     def test_signup_duplicate_user_propagates_conflict(
         self,

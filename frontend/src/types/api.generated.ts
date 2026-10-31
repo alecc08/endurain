@@ -13246,54 +13246,24 @@ export interface components {
         };
         /**
          * UsersSignup
-         * @description Users schema for signup operations.
+         * @description Users schema for a public sign-up request: only what an account needs.
+         *
+         *     The rest of the profile starts from the ``UsersBase`` defaults and is edited after signing in.
          *
          *     Attributes:
-         *         password: User's password (min 8 chars). Absent when the password is chosen at email
-         *             verification, and for accounts created through an identity provider.
+         *         name: User's full name (1-250 chars).
+         *         username: Unique username (1-250 chars, alphanumeric and dots).
+         *         email: User's email address (max 250 chars).
+         *         password: User's password (min 8 chars). Absent when the password is chosen at email verification.
+         *         preferred_language: Language of the account's emails and interface.
          */
         UsersSignup: {
-            /**
-             * Birthdate
-             * @description User's birthdate
-             */
-            birthdate?: string | null;
-            /**
-             * City
-             * @description User's city
-             */
-            city?: string | null;
-            /**
-             * @description User currency (euro, dollar, pound)
-             * @default euro
-             */
-            currency: components["schemas"]["Currency"];
             /**
              * Email
              * Format: email
              * @description User's email address
              */
             email: string;
-            /**
-             * @description First day of the week
-             * @default monday
-             */
-            first_day_of_week: components["schemas"]["WeekDay"];
-            /**
-             * @description User's gender
-             * @default unspecified
-             */
-            gender: components["schemas"]["Gender"];
-            /**
-             * Height
-             * @description Height in centimeters
-             */
-            height?: number | null;
-            /**
-             * Max Heart Rate
-             * @description Maximum heart rate in bpm
-             */
-            max_heart_rate?: number | null;
             /**
              * Name
              * @description User's full name
@@ -13306,16 +13276,6 @@ export interface components {
              * @default en
              */
             preferred_language: components["schemas"]["Language"];
-            /**
-             * Timezone
-             * @description IANA timezone the athlete lives in. Used as the fallback for activities imported without a GPS track, which would otherwise inherit the server's timezone. Null means not set.
-             */
-            timezone?: string | null;
-            /**
-             * @description User units (metric, imperial)
-             * @default metric
-             */
-            units: components["schemas"]["Units"];
             /**
              * Username
              * @description Unique username (alphanumeric, dots, hyphen, underscore)

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ChevronDown, ChevronUp, LoaderCircle } from '@lucide/vue'
+import { LoaderCircle } from '@lucide/vue'
 
 import type { SignUpRequest } from '@/features/auth/types'
 
@@ -12,11 +12,10 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
-import { inputFieldClass } from '@/components/ui/input/fieldClasses'
-import { Select } from '@/components/ui/select'
 import { useForm } from '@/composables/useForm'
 import { usePublicServerSettings } from '@/features/config/composables/usePublicServerSettings'
 import { useToasts } from '@/composables/useToasts'
+import { DEFAULT_LOCALE, isSupportedLocale } from '@/i18n'
 import { HttpError } from '@/services/http'
 import { requestSignUp } from '@/features/auth/services/signUp'
 import PasswordInput from '@/features/security/components/PasswordInput.vue'
@@ -24,14 +23,6 @@ import {
   usePasswordConfirmation,
   usePasswordPolicy,
 } from '@/features/security/composables/usePasswordPolicy'
-import {
-  CURRENCY_OPTIONS,
-  GENDER_OPTIONS,
-  numberRange,
-  resolveHeightCm,
-  sortLanguageCodes,
-  WEEKDAY_OPTIONS,
-} from '@/features/users/utils/userFieldOptions'
 import { compose, email, required } from '@/utils/validators'
 
 /** Form field shape backing the sign-up form. */
@@ -41,28 +32,12 @@ interface SignUpFormValues {
   email: string
   password: string
   confirmPassword: string
-  preferredLanguage: SignUpRequest['preferred_language']
-  city: string
-  birthdate: string
-  gender: SignUpRequest['gender']
-  units: SignUpRequest['units']
-  currency: SignUpRequest['currency']
-  firstDayOfWeek: SignUpRequest['first_day_of_week']
-  heightCm: number | null
-  heightFeet: number | null
-  heightInches: number | null
 }
 
 const router = useRouter()
 const { t, locale } = useI18n()
-
-const languageCodes = computed(() =>
-  sortLanguageCodes((code) => t(`signup.languages.${code}`), locale.value),
-)
 const { serverSettings, loginImageUrl, isSettingsLoading, load } = usePublicServerSettings()
 const toasts = useToasts()
-
-const showOptionalFields = ref(false)
 
 // Standalone ref (not read from `values`) so the password validator and the
 // submit gate can depend on it without a circular reference.
@@ -110,14 +85,8 @@ async function submitForm(formValues: SignUpFormValues): Promise<void> {
     email: formValues.email.trim().toLowerCase(),
     // With email verification the password is chosen from the emailed link.
     ...(passwordRequired.value ? { password: formValues.password } : {}),
-    preferred_language: formValues.preferredLanguage,
-    city: formValues.city.trim() ? formValues.city.trim() : null,
-    birthdate: formValues.birthdate || null,
-    gender: formValues.gender,
-    units: formValues.units,
-    height: resolveHeightCm(formValues),
-    first_day_of_week: formValues.firstDayOfWeek,
-    currency: formValues.currency,
+    // The account's emails and interface start in the language the form is shown in.
+    preferred_language: isSupportedLocale(locale.value) ? locale.value : DEFAULT_LOCALE,
   }
 
   try {
@@ -138,12 +107,6 @@ async function submitForm(formValues: SignUpFormValues): Promise<void> {
   }
 }
 
-// Validators can't read `values.units` directly: `values` is destructured from
-// this same `useForm(...)` call, so referencing it here is a circular reference.
-// Mirror the active unit system into a standalone ref the validators can read,
-// kept in sync with `values.units` via the watch below.
-const activeUnits = ref<SignUpFormValues['units']>('metric')
-
 const { values, errors, isValid, isSubmitting, submitError, handleSubmit, handleBlur } =
   useForm<SignUpFormValues>({
     initialValues: {
@@ -152,16 +115,6 @@ const { values, errors, isValid, isSubmitting, submitError, handleSubmit, handle
       email: '',
       password: '',
       confirmPassword: '',
-      preferredLanguage: 'en',
-      city: '',
-      birthdate: '',
-      gender: 'unspecified',
-      units: 'metric',
-      currency: 'euro',
-      firstDayOfWeek: 'monday',
-      heightCm: null,
-      heightFeet: null,
-      heightInches: null,
     },
     validators: {
       name: required(t('signup.requiredField')),
@@ -171,19 +124,9 @@ const { values, errors, isValid, isSubmitting, submitError, handleSubmit, handle
         passwordRequired.value
           ? compose(required<string>(t('signup.requiredField')), validatePassword)(value)
           : null,
-      // Height is captured per unit system and only the active system's inputs
-      // are rendered. Skip the imperial validators in metric mode (and vice
-      // versa) so a hidden field's stale value can't silently fail validation
-      // and disable submit with no visible error.
-      heightFeet: (value: number | null) =>
-        activeUnits.value === 'metric' ? null : numberRange(10, t('signup.feetInvalid'))(value),
-      heightInches: (value: number | null) =>
-        activeUnits.value === 'metric' ? null : numberRange(11, t('signup.inchesInvalid'))(value),
     },
     onSubmit: submitForm,
   })
-
-const isMetric = computed(() => values.units === 'metric')
 
 // A validator can't safely read the sibling `password` field (`values` is
 // destructured from this same `useForm(...)` call, so referencing it inside a
@@ -194,28 +137,13 @@ const { matches: passwordsMatch, error: confirmPasswordError } = usePasswordConf
   () => values.confirmPassword,
 )
 
-// Keep `activeUnits` in step with the unit selector so the height validators
-// re-run against the correct system whenever the user toggles units.
-watch(
-  () => values.units,
-  (units) => {
-    activeUnits.value = units
-  },
-  { immediate: true },
-)
-
 onMounted(async () => {
   await load()
 
   if (!serverSettings.value.signup_enabled) {
     toasts.error(t('signup.signupDisabled'))
     await router.replace({ name: 'login' })
-    return
   }
-
-  // Seed unit-dependent defaults from the instance configuration.
-  values.units = serverSettings.value.units
-  values.currency = serverSettings.value.currency
 })
 </script>
 
@@ -333,174 +261,6 @@ onMounted(async () => {
             />
           </template>
         </FormField>
-
-        <button
-          type="button"
-          class="flex items-center gap-1.5 self-start text-meta text-muted-foreground hover:text-foreground"
-          :aria-expanded="showOptionalFields"
-          @click="showOptionalFields = !showOptionalFields"
-        >
-          <ChevronUp v-if="showOptionalFields" class="size-4" />
-          <ChevronDown v-else class="size-4" />
-          <span>{{
-            showOptionalFields ? t('signup.hideOptionalFields') : t('signup.showOptionalFields')
-          }}</span>
-        </button>
-
-        <div v-if="showOptionalFields" class="flex flex-col gap-3">
-          <FormField :label="t('signup.preferredLanguage')">
-            <template #default="{ fieldId }">
-              <Select
-                :id="fieldId"
-                v-model="values.preferredLanguage"
-                name="preferredLanguage"
-                :disabled="isSubmitting"
-              >
-                <option v-for="code in languageCodes" :key="code" :value="code">
-                  {{ t(`signup.languages.${code}`) }}
-                </option>
-              </Select>
-            </template>
-          </FormField>
-
-          <FormField :label="t('signup.city')">
-            <template #default="{ fieldId }">
-              <Input
-                :id="fieldId"
-                v-model="values.city"
-                name="city"
-                type="text"
-                autocomplete="address-level2"
-                :disabled="isSubmitting"
-              />
-            </template>
-          </FormField>
-
-          <FormField :label="t('signup.birthdate')">
-            <template #default="{ fieldId }">
-              <Input
-                :id="fieldId"
-                v-model="values.birthdate"
-                name="birthdate"
-                type="date"
-                :disabled="isSubmitting"
-              />
-            </template>
-          </FormField>
-
-          <FormField :label="t('signup.gender')">
-            <template #default="{ fieldId }">
-              <Select :id="fieldId" v-model="values.gender" name="gender" :disabled="isSubmitting">
-                <option v-for="value in GENDER_OPTIONS" :key="value" :value="value">
-                  {{ t(`signup.genders.${value}`) }}
-                </option>
-              </Select>
-            </template>
-          </FormField>
-
-          <FormField :label="t('signup.units')">
-            <template #default="{ fieldId }">
-              <Select :id="fieldId" v-model="values.units" name="units" :disabled="isSubmitting">
-                <option value="metric">{{ t('signup.metric') }}</option>
-                <option value="imperial">{{ t('signup.imperial') }}</option>
-              </Select>
-            </template>
-          </FormField>
-
-          <FormField v-if="isMetric" :label="`${t('signup.height')} (${t('signup.unitCm')})`">
-            <template #default="{ fieldId }">
-              <input
-                :id="fieldId"
-                v-model.number="values.heightCm"
-                :class="inputFieldClass"
-                name="heightCm"
-                type="number"
-                min="0"
-                max="300"
-                step="1"
-                :disabled="isSubmitting"
-              />
-            </template>
-          </FormField>
-
-          <div v-else class="flex flex-col gap-1.5">
-            <span class="text-meta font-medium text-foreground">
-              {{ t('signup.height') }}
-            </span>
-            <div class="flex gap-3">
-              <FormField class="flex-1" :error="errors.heightFeet">
-                <template #default="{ fieldId, describedBy, invalid }">
-                  <input
-                    :id="fieldId"
-                    v-model.number="values.heightFeet"
-                    :class="inputFieldClass"
-                    :aria-describedby="describedBy"
-                    :aria-invalid="invalid"
-                    :aria-label="`${t('signup.height')} (${t('signup.unitFeet')})`"
-                    name="heightFeet"
-                    type="number"
-                    min="0"
-                    max="10"
-                    step="1"
-                    :placeholder="t('signup.unitFeet')"
-                    :disabled="isSubmitting"
-                    @blur="handleBlur('heightFeet')"
-                  />
-                </template>
-              </FormField>
-              <FormField class="flex-1" :error="errors.heightInches">
-                <template #default="{ fieldId, describedBy, invalid }">
-                  <input
-                    :id="fieldId"
-                    v-model.number="values.heightInches"
-                    :class="inputFieldClass"
-                    :aria-describedby="describedBy"
-                    :aria-invalid="invalid"
-                    :aria-label="`${t('signup.height')} (${t('signup.unitInches')})`"
-                    name="heightInches"
-                    type="number"
-                    min="0"
-                    max="11"
-                    step="1"
-                    :placeholder="t('signup.unitInches')"
-                    :disabled="isSubmitting"
-                    @blur="handleBlur('heightInches')"
-                  />
-                </template>
-              </FormField>
-            </div>
-          </div>
-
-          <FormField :label="t('signup.firstDayOfWeek')">
-            <template #default="{ fieldId }">
-              <Select
-                :id="fieldId"
-                v-model="values.firstDayOfWeek"
-                name="firstDayOfWeek"
-                :disabled="isSubmitting"
-              >
-                <option v-for="value in WEEKDAY_OPTIONS" :key="value" :value="value">
-                  {{ t(`signup.weekdays.${value}`) }}
-                </option>
-              </Select>
-            </template>
-          </FormField>
-
-          <FormField :label="t('signup.currency')">
-            <template #default="{ fieldId }">
-              <Select
-                :id="fieldId"
-                v-model="values.currency"
-                name="currency"
-                :disabled="isSubmitting"
-              >
-                <option v-for="value in CURRENCY_OPTIONS" :key="value" :value="value">
-                  {{ t(`signup.currencies.${value}`) }}
-                </option>
-              </Select>
-            </template>
-          </FormField>
-        </div>
 
         <p class="text-hint">* {{ t('signup.requiredField') }}</p>
 

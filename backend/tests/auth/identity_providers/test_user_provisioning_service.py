@@ -140,6 +140,27 @@ class TestCreatedAccountEmailVerification:
 
         assert create_sso_user.call_args.kwargs["email_verified"] is asserted
 
+    def test_the_account_carries_the_mapped_profile(self):
+        with (
+            patch.object(user_provisioning_service.users_integration, "get_user_by_username", return_value=None),
+            patch.object(user_provisioning_service.server_settings_integration, "get_server_settings"),
+            patch.object(user_provisioning_service.users_integration, "create_sso_user") as create_sso_user,
+            patch.object(
+                user_provisioning_service.identity_provider_links_integration, "create_user_identity_provider"
+            ),
+        ):
+            create_sso_user.return_value = MagicMock(id=3, username="new")
+            user_provisioning_service.create_user_from_idp(
+                _make_idp(),
+                "subject-123",
+                {"username": "new", "email": "new@example.com", "city": "Lisbon", "height": 180},
+                MagicMock(),
+                email_verified=True,
+            )
+
+        profile = create_sso_user.call_args.args[0]
+        assert (profile.username, profile.city, profile.height) == ("new", "Lisbon", 180)
+
     @pytest.mark.parametrize("mapped", [{}, {"email": ""}, {"email": None}])
     def test_an_account_without_an_email_is_refused_with_its_own_reason(self, mapped):
         """Every account needs a real address for reset and notices, so none is invented for it."""
